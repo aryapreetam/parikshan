@@ -34,5 +34,8 @@ plugins {
 }
 
 include(":lib")
+include(":parikshan-core")
+include(":parikshan-server")
+include(":parikshan-client")
+include(":parikshan-gradle-plugin")
 include(":sample:composeApp")
-

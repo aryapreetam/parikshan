@@ -1,0 +1,32 @@
+# This file defines code owners for the repository
+# Code owners are automatically requested for review when someone opens a pull request
+# that modifies code they own.
+#
+# Learn more: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repo
+* @aryapreetam
+
+# Library code
+/lib/ @aryapreetam
+
+# Sample application
+/sample/ @aryapreetam
+
+# CI/CD workflows
+/.github/workflows/ @aryapreetam
+
+# Documentation
+/docs/ @aryapreetam
+/README.MD @aryapreetam
+/CONTRIBUTING.md @aryapreetam
+
+# Build configuration
+/gradle/ @aryapreetam
+build.gradle.kts @aryapreetam
+settings.gradle.kts @aryapreetam
+gradle.properties @aryapreetam
+
+# Maestro E2E tests
+/maestro-e2e/ @aryapreetam
+

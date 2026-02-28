@@ -1,0 +1,504 @@
+name: Publish Multiplatform Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  pages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  JAVA_VERSION: '21'
+
+jobs:
+  # Reuse CI (lint + tests) instead of duplicating in release
+  ci:
+    name: CI (lint, build+tests, android UI)
+    uses: ./.github/workflows/ci.yml
+
+  # Build APK and wasm on Ubuntu in parallel after all tests (lib+sample) succeed
+  build-linux:
+    name: Build Android APK and wasm (Ubuntu)
+    runs-on: ubuntu-latest
+    needs: [ ci ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Try to download Android APK from CI artifacts
+        id: download-apk
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: ${{ github.workspace }}/ci-artifacts
+      - name: Check if APK artifact exists
+        id: check-apk
+        run: |
+          if [ -f "${{ github.workspace }}/ci-artifacts/sample-app-android-unsigned.apk" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "APK artifact found from CI, will reuse it"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "APK artifact not found, will build fresh"
+          fi
+      - name: Cache Gradle Wrapper
+        if: steps.check-apk.outputs.exists == 'false'
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/wrapper/dists
+          key: gradle-wrapper-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-wrapper-${{ runner.os }}-
+      - name: Set up JDK
+        if: steps.check-apk.outputs.exists == 'false'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Setup Gradle
+        if: steps.check-apk.outputs.exists == 'false'
+        uses: gradle/actions/setup-gradle@v3
+      - name: Setup Node.js (for wasm build)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Setup Android SDK
+        if: steps.check-apk.outputs.exists == 'false'
+        uses: android-actions/setup-android@v3
+      - name: Cache Kotlin JS Store
+        uses: actions/cache@v4
+        with:
+          path: kotlin-js-store
+          key: kjs-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml', '**/gradle-wrapper.properties') }}
+          restore-keys: kjs-${{ runner.os }}-
+      - name: Accept Android SDK licenses
+        if: steps.check-apk.outputs.exists == 'false'
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+      - name: Build APK and wasm
+        if: steps.check-apk.outputs.exists == 'false'
+        run: |
+          ./gradlew :sample:composeApp:assembleRelease
+          ./gradlew :sample:composeApp:wasmJsBrowserDistribution
+      - name: Build wasm only (APK reused)
+        if: steps.check-apk.outputs.exists == 'true'
+        run: ./gradlew :sample:composeApp:wasmJsBrowserDistribution
+      - name: Collect artifacts (APK + wasm)
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/release-upload
+          
+          # Check if we have APK from CI artifacts, otherwise use freshly built
+          if [ -f "${{ github.workspace }}/ci-artifacts/sample-app-android-unsigned.apk" ]; then
+            echo "Using APK from CI artifacts"
+            cp "${{ github.workspace }}/ci-artifacts/sample-app-android-unsigned.apk" "$GITHUB_WORKSPACE/release-upload/sample-app-android-unsigned.apk"
+          else
+            echo "Using freshly built APK"
+            APK_SRC=$(find sample/composeApp/build/outputs/apk -type f -name '*-release-*.apk' | head -n1)
+            if [ -n "$APK_SRC" ]; then
+              cp "$APK_SRC" "$GITHUB_WORKSPACE/release-upload/sample-app-android-unsigned.apk"
+            fi
+          fi
+          
+          # Collect wasm
+          WASM_DIR="$GITHUB_WORKSPACE/sample/composeApp/build/dist/wasmJs/productionExecutable"
+          if [ -d "$WASM_DIR" ]; then
+            (cd "$WASM_DIR" && zip -r "$GITHUB_WORKSPACE/release-upload/sample-app-wasm.zip" ./*)
+          fi
+      - name: Upload artifacts (Linux)
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-upload-linux
+          path: ${{ github.workspace }}/release-upload/*
+          compression-level: 1
+          if-no-files-found: warn
+
+  # Build DMGs on macOS runners
+  build-macos:
+    name: Build sample DMG artifacts (macOS variants)
+    strategy:
+      fail-fast: true
+      matrix:
+        mac-arch: [ macos-13, macos-latest ]
+    runs-on: ${{ matrix.mac-arch }}
+    needs: [ ci ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Cache Gradle Wrapper
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/wrapper/dists
+          key: gradle-wrapper-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-wrapper-${{ runner.os }}-
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml', '**/gradle-wrapper.properties') }}
+          restore-keys: konan-${{ runner.os }}-
+      - name: Grant Gradlew execute permission
+        run: chmod +x gradlew
+      - name: Accept Android SDK licenses
+        if: matrix.mac-arch == 'macos-latest'
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+      - name: Build Desktop DMG
+        run: ./gradlew :sample:composeApp:packageDmg
+      - name: Collect DMG artifacts
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/release-upload
+          if [[ "${{ matrix.mac-arch }}" == "macos-13" ]]; then ARCH_SUFFIX="x64"; else ARCH_SUFFIX="arm64"; fi
+          DMG_SRC=$(find sample/composeApp/build/compose/binaries -type f -name '*.dmg' | head -n1)
+          if [ -n "$DMG_SRC" ]; then
+            cp "$DMG_SRC" "$GITHUB_WORKSPACE/release-upload/sample-app-desktop-$ARCH_SUFFIX.dmg"
+          fi
+      - name: Codesign Mac .app (ad-hoc)
+        run: |
+          APP_DIR=$(find sample/composeApp/build/compose/binaries -type d -name '*.app' | head -n1)
+          if [ -d "$APP_DIR" ]; then
+            codesign --force --sign - --timestamp=none "$APP_DIR" || true
+            codesign --verify --deep --strict "$APP_DIR" || true
+          fi
+      - name: Upload artifacts (macOS ${{ matrix.mac-arch }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-upload-${{ matrix.mac-arch }}
+          path: ${{ github.workspace }}/release-upload/*
+          compression-level: 1
+
+  # Build Windows MSI on Windows runner
+  build-windows:
+    name: Build Windows MSI
+    runs-on: windows-latest
+    needs: [ ci ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Cache Gradle Wrapper
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/wrapper/dists
+          key: gradle-wrapper-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-wrapper-${{ runner.os }}-
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+      - name: Build Windows MSI
+        run: ./gradlew :sample:composeApp:packageMsi
+      - name: Collect MSI artifacts
+        shell: bash
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/release-upload
+          MSI_SRC=$(find sample/composeApp/build/compose/binaries/main/msi -type f -name '*.msi' | head -n1)
+          if [ -n "$MSI_SRC" ]; then
+            cp "$MSI_SRC" "$GITHUB_WORKSPACE/release-upload/sample-app-windows.msi"
+          else
+            echo "Warning: No MSI file found"
+            find sample/composeApp/build/compose/binaries -type f -name '*.msi' || echo "No MSI files at all"
+          fi
+      - name: Upload artifacts (Windows)
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-upload-windows
+          path: ${{ github.workspace }}/release-upload/*
+          compression-level: 1
+          if-no-files-found: warn
+
+  build-ios-sim:
+    name: Build iOS simulator app
+    runs-on: macos-latest
+    needs: [ ci ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Try to download iOS app from CI artifacts
+        id: download-ios
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-app
+          path: ${{ github.workspace }}/ci-artifacts
+      - name: Check if iOS artifact exists
+        id: check-ios
+        run: |
+          if [ -f "${{ github.workspace }}/ci-artifacts/sample-app-ios-simulator.zip" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "iOS artifact found from CI, will reuse it"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "iOS artifact not found, will build fresh"
+          fi
+      - name: Set up JDK
+        if: steps.check-ios.outputs.exists == 'false'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Cache Gradle Wrapper
+        if: steps.check-ios.outputs.exists == 'false'
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/wrapper/dists
+          key: gradle-wrapper-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-wrapper-${{ runner.os }}-
+      - name: Build iOS Simulator App
+        if: steps.check-ios.outputs.exists == 'false'
+        run: |
+          SIMULATOR_ID=$(xcrun simctl list devices available | grep -m1 -Eo '[A-F0-9-]{36}')
+          if [ -z "$SIMULATOR_ID" ]; then echo "No available iOS Simulator found!"; exit 1; fi
+          xcodebuild -project sample/iosApp/iosApp.xcodeproj -scheme iosApp -destination "id=$SIMULATOR_ID" -configuration Release build
+          XCODE_IOS_APP=$(find ~/Library/Developer/Xcode/DerivedData/ -type d -path '*/Build/Products/Release-iphonesimulator/*.app' | sort -r | head -n1)
+          if [ -d "$XCODE_IOS_APP" ]; then
+            APP_DIR=$(dirname "$XCODE_IOS_APP"); APP_NAME=$(basename "$XCODE_IOS_APP")
+            mkdir -p "$GITHUB_WORKSPACE/release-upload"
+            (cd "$APP_DIR" && zip -r "$GITHUB_WORKSPACE/release-upload/sample-app-ios-simulator.zip" "$APP_NAME")
+          else
+            echo "No iOS Simulator .app from xcodebuild found; nothing to upload."
+          fi
+      - name: Reuse iOS artifact from CI
+        if: steps.check-ios.outputs.exists == 'true'
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/release-upload"
+          cp "${{ github.workspace }}/ci-artifacts/sample-app-ios-simulator.zip" "$GITHUB_WORKSPACE/release-upload/sample-app-ios-simulator.zip"
+          echo "Reused iOS simulator app from CI artifacts"
+      - name: Upload iOS simulator artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sample-app-ios-simulator
+          path: ${{ github.workspace }}/release-upload/sample-app-ios-simulator.zip
+          if-no-files-found: ignore
+          compression-level: 1
+
+  create-release:
+    name: Create GitHub Release and upload assets
+    runs-on: ubuntu-latest
+    needs: [ build-linux, build-macos, build-windows, build-ios-sim ]
+    steps:
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-upload-linux
+          path: artifacts/linux
+      - name: Download macos-13 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-upload-macos-13
+          path: artifacts/macos-13
+      - name: Download macos-latest artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-upload-macos-latest
+          path: artifacts/macos-latest
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-upload-windows
+          path: artifacts/windows
+      - name: Download iOS simulator artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sample-app-ios-simulator
+          path: artifacts/ios
+      - name: Detect pre-release
+        id: pre
+        run: |
+          TAG=${GITHUB_REF##*/}
+          if [[ "$TAG" =~ -(beta|rc|alpha) ]]; then echo "is_pre=true" >> $GITHUB_OUTPUT; else echo "is_pre=false" >> $GITHUB_OUTPUT; fi
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          prerelease: ${{ steps.pre.outputs.is_pre }}
+          files: |
+            artifacts/linux/sample-app-android-unsigned.apk
+            artifacts/macos-13/sample-app-desktop-*.dmg
+            artifacts/macos-latest/sample-app-desktop-*.dmg
+            artifacts/windows/sample-app-windows.msi
+            artifacts/linux/sample-app-wasm.zip
+            artifacts/ios/sample-app-ios-simulator.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-to-maven-central:
+    name: Publish library to Maven Central
+    runs-on: macos-latest
+    needs: [ create-release ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Cache Gradle Wrapper
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/wrapper/dists
+          key: gradle-wrapper-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-wrapper-${{ runner.os }}-
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+      - name: Publish to MavenCentral
+        run: ./gradlew :lib:publishAndReleaseToMavenCentral --no-configuration-cache
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_KEY_CONTENTS }}
+
+
+  # Single job to deploy homepage, demo, and API docs sequentially to avoid gh-pages ref lock
+  deploy-pages:
+    # NOTE: This job deploys to the 'github-pages' environment.
+    # Ensure Settings → Environments → github-pages allows the tag pattern you release with (e.g., 'v*').
+    # Otherwise, tag-triggered runs will be blocked with:
+    # "Tag 'vX.Y.Z' is not allowed to deploy to github-pages due to environment protection rules."
+    name: Deploy GitHub Pages (homepage, demo, api)
+    runs-on: ubuntu-latest
+    needs: [ create-release ]
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+    environment:
+      name: github-pages
+      url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+    steps:
+      - name: Checkout Sources
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      # Build site root (Docsify homepage)
+      - name: Prepare Site Root
+        run: |
+          mkdir -p site
+          cat > site/index.html <<'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Compose Multiplatform Library Template</title>
+          <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify-themeable@0/dist/css/theme-simple.css">
+          </head>
+          <body>
+          <div id="app"></div>
+          <script type="module">
+          import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+          mermaid.initialize({ startOnLoad: false, theme: 'default' });
+          
+          window.$docsify = {
+            name: 'cmp-lib-template',
+            repo: 'https://github.com/aryapreetam/cmp-lib-template',
+            homepage: 'README.MD',
+            loadSidebar: false,
+            loadNavbar: false,
+            coverpage: false,
+            markdown: {
+              renderer: {
+                code: function(code, lang) {
+                  if (lang === "mermaid") {
+                    return '<div class="mermaid">' + code + '</div>';
+                  }
+                  return this.origin.code.apply(this, arguments);
+                }
+              }
+            },
+            plugins: [
+              function(hook, vm) {
+                hook.doneEach(function() {
+                  mermaid.run({
+                    querySelector: '.mermaid'
+                  });
+                });
+              }
+            ]
+          }
+          </script>
+          <!-- Docsify core -->
+          <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/docsify.min.js"></script>
+          <!-- Optional theme JS (themeable) -->
+          <script src="https://cdn.jsdelivr.net/npm/docsify-themeable@0"></script>
+          </body>
+          </html>
+          EOF
+          cp README.MD site/
+          cp CONTRIBUTING.md site/
+          cp -r readme_images site/ || true
+          cp -r docs site/ || true
+
+      # Demo (reuse Linux artifact into site/demo)
+      - name: Download Linux wasm artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-upload-linux
+          path: linux-artifacts
+      - name: Prepare Demo Folder from artifact
+        run: |
+          mkdir -p site/demo
+          ZIP_PATH="linux-artifacts/sample-app-wasm.zip"
+          if [ -f "$ZIP_PATH" ]; then
+            unzip -o "$ZIP_PATH" -d site/demo
+          else
+            echo "Wasm artifact ZIP not found at $ZIP_PATH" >&2
+            exit 1
+          fi
+
+      # API docs (Dokka) into site/api
+      - name: Generate API Docs (Dokka)
+        run: ./gradlew :lib:dokkaGeneratePublicationHtml --stacktrace --warning-mode=all
+      - name: Prepare API Docs Folder
+        run: |
+          mkdir -p site/api
+          if [ -d lib/build/dokka/html ]; then
+            cp -r lib/build/dokka/html/* site/api/
+          else
+            # Fallback: copy whatever dokka produced
+            cp -r lib/build/dokka/* site/api/
+          fi
+      # Configure and deploy GitHub Pages (no gh-pages branch needed)
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

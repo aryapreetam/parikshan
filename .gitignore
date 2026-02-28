@@ -1,0 +1,20 @@
+*.iml
+.gradle
+.idea
+.kotlin
+.DS_Store
+build
+*/build
+captures
+.externalNativeBuild
+.cxx
+local.properties
+xcuserdata/
+Pods/
+*.jks
+*.gpg
+*yarn.lock
+/.github/copilot-instructions.md
+/doc-to-ignore/
+# Template configuration (each user should run setup-template.sh)
+.template-config.json

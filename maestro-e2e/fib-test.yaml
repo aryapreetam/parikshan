@@ -1,0 +1,11 @@
+appId: ${ APP_ID }
+---
+- launchApp
+- assertVisible: "Fibonacci Generator"
+- tapOn:
+    text: "Enter a number(1-9)"
+- inputText: "1"
+- assertVisible: "First fibonacci number=0"
+- eraseText
+- inputText: "2"
+- assertVisible: "First 2 fibonacci numbers=0, 1"

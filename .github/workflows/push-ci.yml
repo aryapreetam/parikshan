@@ -1,0 +1,106 @@
+name: CI (push & PR)
+
+on:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - 'v*'
+    paths:
+      # Run CI only when these files/directories change
+      - 'lib/**'
+      - 'sample/**'
+      - 'gradle/**'
+      - 'gradle.properties'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/push-ci.yml'
+      - 'maestro-e2e/**'
+  pull_request:
+    paths:
+      # Same path filters for PRs
+      - 'lib/**'
+      - 'sample/**'
+      - 'gradle/**'
+      - 'gradle.properties'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/push-ci.yml'
+      - 'maestro-e2e/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-template-setup:
+    name: Check if template is configured
+    runs-on: ubuntu-latest
+    outputs:
+      is_configured: ${{ steps.check.outputs.is_configured }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check if template has been configured
+        id: check
+        run: |
+          # Extract the repository name from GitHub context
+          REPO_NAME="${{ github.event.repository.name }}"
+          echo "GitHub repository name: $REPO_NAME"
+          
+          # Extract rootProject.name from settings.gradle.kts
+          ROOT_PROJECT_NAME=$(grep -oP 'rootProject\.name = "\K[^"]+' settings.gradle.kts || echo "")
+          echo "settings.gradle.kts rootProject.name: $ROOT_PROJECT_NAME"
+          
+          # Check if we're in the template repo itself
+          if [ "$REPO_NAME" = "cmp-lib-template" ] && [ "$ROOT_PROJECT_NAME" = "cmp-lib-template" ]; then
+            echo "is_configured=true" >> $GITHUB_OUTPUT
+            echo "✅ Running CI on template repository itself"
+          # Check if repo name doesn't match settings.gradle.kts (template not configured)
+          elif [ "$ROOT_PROJECT_NAME" = "cmp-lib-template" ] && [ "$REPO_NAME" != "cmp-lib-template" ]; then
+            echo "is_configured=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Template created but not yet configured"
+            echo "Repository name: $REPO_NAME"
+            echo "settings.gradle.kts still has: cmp-lib-template"
+            echo "Please run setup-template.sh (Linux/Mac) or setup-template.bat (Windows) to configure this template."
+          else
+            echo "is_configured=true" >> $GITHUB_OUTPUT
+            echo "✅ Template is configured, proceeding with CI"
+          fi
+
+  ci:
+    name: Reuse CI (lint, build+tests, android UI)
+    needs: check-template-setup
+    if: needs.check-template-setup.outputs.is_configured == 'true'
+    uses: ./.github/workflows/ci.yml
+
+  skip-ci:
+    name: Template not configured - CI skipped
+    needs: check-template-setup
+    if: needs.check-template-setup.outputs.is_configured == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show setup instructions
+        run: |
+          echo "================================================"
+          echo "⚠️  CI SKIPPED: Template Not Configured"
+          echo "================================================"
+          echo ""
+          echo "This repository was created from the template but"
+          echo "has not been configured yet."
+          echo ""
+          echo "Repository name: ${{ github.event.repository.name }}"
+          echo "settings.gradle.kts still shows: cmp-lib-template"
+          echo ""
+          echo "To configure this template, run:"
+          echo "  • Linux/Mac: ./setup-template.sh"
+          echo "  • Windows:   setup-template.bat"
+          echo ""
+          echo "After configuration, CI will run automatically."
+          echo "================================================"

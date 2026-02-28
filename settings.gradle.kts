@@ -1,4 +1,4 @@
-rootProject.name = "cmp-lib-template"
+rootProject.name = "parikshan"
 
 pluginManagement {
   repositories {

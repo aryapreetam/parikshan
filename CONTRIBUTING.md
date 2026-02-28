@@ -7,7 +7,7 @@ Thank you for your interest in contributing! This document provides guidelines f
 ## 🏗️ Project Structure
 
 ```
-cmp-lib-template/
+parikshan/
 ├── .github/workflows/      # CI/CD pipelines
 │   ├── ci.yml             # Reusable CI (lint, tests, build)
 │   ├── push-ci.yml        # Runs on every push/PR
@@ -40,8 +40,8 @@ cmp-lib-template/
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/aryapreetam/cmp-lib-template.git
-   cd cmp-lib-template
+   git clone https://github.com/aryapreetam/parikshan.git
+   cd parikshan
    ```
 
 2. **Build the project**
@@ -117,7 +117,7 @@ repositories {
 }
 
 dependencies {
-    implementation("io.github.aryapreetam:fiblib:0.0.3")
+    implementation("io.github.aryapreetam:parikshan:0.0.3")
 }
 ```
 
@@ -173,7 +173,7 @@ dependencies {
 
 1. **Update version in `lib/build.gradle.kts`**
    ```kotlin
-   coordinates("io.github.aryapreetam", "fiblib", "0.0.4") // Bump this
+   coordinates("io.github.aryapreetam", "parikshan", "0.0.4") // Bump this
    ```
 
 2. **Commit and push**

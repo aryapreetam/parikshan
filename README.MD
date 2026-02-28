@@ -6,13 +6,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/aryapreetam/cmp-lib-template/actions/workflows/release.yml">
-    <img src="https://github.com/aryapreetam/cmp-lib-template/actions/workflows/release.yml/badge.svg" alt="Release workflow status">
+  <a href="https://github.com/aryapreetam/parikshan/actions/workflows/release.yml">
+    <img src="https://github.com/aryapreetam/parikshan/actions/workflows/release.yml/badge.svg" alt="Release workflow status">
   </a>
-  <a href="https://mvnrepository.com/artifact/io.github.aryapreetam/fiblib">
-    <img src="https://img.shields.io/maven-central/v/io.github.aryapreetam/fiblib?label=Maven%20Central&color=blue" alt="Maven Central Version">
+  <a href="https://mvnrepository.com/artifact/io.github.aryapreetam/parikshan">
+    <img src="https://img.shields.io/maven-central/v/io.github.aryapreetam/parikshan?label=Maven%20Central&color=blue" alt="Maven Central Version">
   </a>
-  <a href="https://github.com/aryapreetam/cmp-lib-template/blob/main/LICENSE">
+  <a href="https://github.com/aryapreetam/parikshan/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License">
   </a>
 </p>
@@ -34,10 +34,10 @@ This repository is a ready-to-ship template for building and releasing Compose M
 - Wires a complete CI/CD: test → package → GitHub Release → Pages deploy → optional Maven Central publish on tags.
 
 Wasm Demo: 
-[![Try Live Demo](https://img.shields.io/badge/Try%20Live%20Demo-Web%20wasmJs-blueviolet?style=for-the-badge)](https://aryapreetam.github.io/cmp-lib-template/demo/)
+[![Try Live Demo](https://img.shields.io/badge/Try%20Live%20Demo-Web%20wasmJs-blueviolet?style=for-the-badge)](https://aryapreetam.github.io/parikshan/demo/)
 
 API Docs:
-[![Library API Docs](https://img.shields.io/badge/API%20Reference-Library%20Docs-green?style=for-the-badge)](https://aryapreetam.github.io/cmp-lib-template/api/)
+[![Library API Docs](https://img.shields.io/badge/API%20Reference-Library%20Docs-green?style=for-the-badge)](https://aryapreetam.github.io/parikshan/api/)
 
 ---
 
@@ -114,7 +114,7 @@ repositories {
 Minimal usage example:
 
 ```kotlin
-import fiblib.getFibonacciNumbers
+import parikshan.getFibonacciNumbers
 
 val first10 = getFibonacciNumbers(10)
 println(first10)
@@ -128,12 +128,12 @@ Download and try the sample app on your platform without building from source:
 
 | Platform | Download Link |
 |----------|--------------|
-| 🍏 **macOS (Intel)** | [![Download](https://img.shields.io/badge/Download--Mac--x64--DMG-blue?style=for-the-badge)](https://github.com/aryapreetam/cmp-lib-template/releases/latest/download/sample-app-desktop-x64.dmg) |
-| 🍎 **macOS (Apple Silicon)** | [![Download](https://img.shields.io/badge/Download--Mac--arm64--DMG-blue?style=for-the-badge)](https://github.com/aryapreetam/cmp-lib-template/releases/latest/download/sample-app-desktop-arm64.dmg) |
-| 🪟 **Windows** | [![Download](https://img.shields.io/badge/Download--Windows--MSI-0078D4?style=for-the-badge&logo=windows)](https://github.com/aryapreetam/cmp-lib-template/releases/latest/download/sample-app-windows.msi) |
-| 🤖 **Android** | [![Download](https://img.shields.io/badge/Download--Android--APK-green?style=for-the-badge&logo=android)](https://github.com/aryapreetam/cmp-lib-template/releases/latest/download/sample-app-android-unsigned.apk) |
-| 🌐 **Web (Wasm)** | [![Download](https://img.shields.io/badge/Download--Web--Wasm--zip-purple?style=for-the-badge)](https://github.com/aryapreetam/cmp-lib-template/releases/latest/download/sample-app-wasm.zip) |
-|  **iOS Simulator** | [![Download](https://img.shields.io/badge/Download--iOS--Simulator--zip-orange?style=for-the-badge&logo=apple)](https://github.com/aryapreetam/cmp-lib-template/releases/latest/download/sample-app-ios-simulator.zip) |
+| 🍏 **macOS (Intel)** | [![Download](https://img.shields.io/badge/Download--Mac--x64--DMG-blue?style=for-the-badge)](https://github.com/aryapreetam/parikshan/releases/latest/download/sample-app-desktop-x64.dmg) |
+| 🍎 **macOS (Apple Silicon)** | [![Download](https://img.shields.io/badge/Download--Mac--arm64--DMG-blue?style=for-the-badge)](https://github.com/aryapreetam/parikshan/releases/latest/download/sample-app-desktop-arm64.dmg) |
+| 🪟 **Windows** | [![Download](https://img.shields.io/badge/Download--Windows--MSI-0078D4?style=for-the-badge&logo=windows)](https://github.com/aryapreetam/parikshan/releases/latest/download/sample-app-windows.msi) |
+| 🤖 **Android** | [![Download](https://img.shields.io/badge/Download--Android--APK-green?style=for-the-badge&logo=android)](https://github.com/aryapreetam/parikshan/releases/latest/download/sample-app-android-unsigned.apk) |
+| 🌐 **Web (Wasm)** | [![Download](https://img.shields.io/badge/Download--Web--Wasm--zip-purple?style=for-the-badge)](https://github.com/aryapreetam/parikshan/releases/latest/download/sample-app-wasm.zip) |
+|  **iOS Simulator** | [![Download](https://img.shields.io/badge/Download--iOS--Simulator--zip-orange?style=for-the-badge&logo=apple)](https://github.com/aryapreetam/parikshan/releases/latest/download/sample-app-ios-simulator.zip) |
 
 ### How to Run the Sample App
 
@@ -152,10 +152,10 @@ adb install sample-app-android-unsigned.apk
 - Download and unzip `sample-app-wasm.zip`
 - Open `index.html` in a web browser
 
-**Note:** You can also try the live demo without downloading: [Try Live Demo](https://aryapreetam.github.io/cmp-lib-template/demo/)
+**Note:** You can also try the live demo without downloading: [Try Live Demo](https://aryapreetam.github.io/parikshan/demo/)
 
 #### 🍏 iOS Simulator
-- Download `sample-app-ios-simulator.zip` from the [latest release](https://github.com/aryapreetam/cmp-lib-template/releases)
+- Download `sample-app-ios-simulator.zip` from the [latest release](https://github.com/aryapreetam/parikshan/releases)
 - Unzip to get `sample-app-ios-simulator.app`
 - Open your iOS Simulator in Xcode
 - Drag the `.app` onto the Simulator window OR run:
@@ -260,7 +260,7 @@ Key points:
 ### Publish to MavenLocal
 
 1) Run `./gradlew :lib:publishToMavenLocal`
-2) Open `~/.m2/repository/fiblib/`
+2) Open `~/.m2/repository/parikshan/`
 
 ### Publish to MavenCentral
 

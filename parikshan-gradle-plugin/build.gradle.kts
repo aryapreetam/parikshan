@@ -3,6 +3,12 @@ plugins {
   `java-gradle-plugin`
 }
 
+repositories {
+  gradlePluginPortal()
+  mavenCentral()
+  google()
+}
+
 java {
   toolchain {
     languageVersion.set(JavaLanguageVersion.of(17))

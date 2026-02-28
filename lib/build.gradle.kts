@@ -1,3 +1,5 @@
+@file:OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
+
 plugins {
   alias(libs.plugins.multiplatform)
   alias(libs.plugins.maven.publish)
@@ -7,10 +9,17 @@ plugins {
 kotlin {
   jvmToolchain(17)
   jvm()
+  wasmJs {
+    browser()
+  }
+  iosX64()
+  iosArm64()
+  iosSimulatorArm64()
 
   sourceSets {
     commonMain.dependencies {
       api(project(":parikshan-core"))
+      api(project(":parikshan-client"))
     }
 
     commonTest.dependencies {
@@ -18,7 +27,6 @@ kotlin {
     }
 
     jvmMain.dependencies {
-      api(project(":parikshan-client"))
       api(project(":parikshan-server"))
     }
   }

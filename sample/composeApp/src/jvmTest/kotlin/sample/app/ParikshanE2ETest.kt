@@ -7,21 +7,21 @@ import kotlin.test.assertTrue
 
 class ParikshanE2ETest {
   @Test
-  fun testParimandalList() =
+  fun testTaskList() =
     e2eTest {
-      click("nav_parimandal")
-      waitFor("parimandal_list_screen")
-      assertVisible("parimandal_item_1")
-      screenshot("build/parikshan/screenshots/parimandal-list.png")
+      click("nav_task_list")
+      waitFor("task_list_screen")
+      assertVisible("task_item_1")
+      screenshot("build/parikshan/screenshots/task-list.png")
     }
 
   @Test
-  fun testHindiInputViaClipboardPaste() =
+  fun testInputForm() =
     e2eTest {
       click("nav_input_form")
       waitFor("input_form_screen")
-      input("input_name_field", "नया परिमंडल")
-      assertText("input_name_preview", "नया परिमंडल")
+      input("input_name_field", "New Task")
+      assertText("input_name_preview", "New Task")
       click("form_submit_button")
       waitFor("form_success_message")
       assertVisible("form_success_message")

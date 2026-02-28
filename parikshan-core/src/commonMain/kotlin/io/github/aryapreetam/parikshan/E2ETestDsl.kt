@@ -6,7 +6,6 @@ import io.github.aryapreetam.parikshan.protocol.Response
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import kotlin.random.Random
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
 
 interface TestDriver {
   suspend fun send(command: Command): Response
@@ -155,25 +154,23 @@ class E2ETestScope internal constructor(
   }
 }
 
-fun e2eTest(
+suspend fun e2eTest(
   driver: TestDriver,
   config: E2ETestConfig = E2ETestConfig(),
   block: suspend E2ETestScope.() -> Unit
 ) {
-  runBlocking {
-    val scope = E2ETestScope(driver = driver, config = config)
-    try {
-      scope.block()
-    } catch (throwable: Throwable) {
-      if (config.captureScreenshotOnFailure) {
-        runCatching {
-          scope.screenshot(config.failureScreenshotPath)
-        }
+  val scope = E2ETestScope(driver = driver, config = config)
+  try {
+    scope.block()
+  } catch (throwable: Throwable) {
+    if (config.captureScreenshotOnFailure) {
+      runCatching {
+        scope.screenshot(config.failureScreenshotPath)
       }
-      throw throwable
-    } finally {
-      driver.close()
     }
+    throw throwable
+  } finally {
+    driver.close()
   }
 }
 

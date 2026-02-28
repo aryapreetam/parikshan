@@ -4,6 +4,7 @@ import io.github.aryapreetam.parikshan.client.ParikshanClient
 import io.github.aryapreetam.parikshan.client.ParikshanClientConfig
 import io.github.aryapreetam.parikshan.client.ParikshanVideoConfig
 import io.github.aryapreetam.parikshan.client.ParikshanVideoSessionManager
+import io.github.aryapreetam.parikshan.client.ParikshanWasmConfig
 import io.github.aryapreetam.parikshan.protocol.Command
 import io.github.aryapreetam.parikshan.protocol.Response
 import kotlinx.coroutines.runBlocking
@@ -35,13 +36,29 @@ fun e2eTest(
   runBlocking {
     val callerClassName = inferCallerClassName()
     val videoConfig = ParikshanVideoConfig.fromSystemProperties()
-    val driver = DesktopDriver.connect(config = clientConfig)
-    ParikshanVideoSessionManager.beforeScenario(
-      driver = driver,
-      clientConfig = clientConfig,
-      config = videoConfig,
-      className = callerClassName
-    )
+    val target = ParikshanTarget.fromSystemProperty()
+
+    val driver =
+      when (target) {
+        ParikshanTarget.Desktop -> {
+          val desktopDriver = DesktopDriver.connect(config = clientConfig)
+          ParikshanVideoSessionManager.beforeScenario(
+            driver = desktopDriver,
+            clientConfig = clientConfig,
+            config = videoConfig,
+            className = callerClassName
+          )
+          desktopDriver
+        }
+
+        ParikshanTarget.Wasm ->
+          WasmDriver.connect(
+            className = callerClassName,
+            wasmConfig = ParikshanWasmConfig.fromSystemProperties(),
+            videoConfig = videoConfig
+          )
+      }
+
     val effectiveConfig =
       if (videoConfig.enabled && config.commandDelayMs == 0L) {
         config.copy(commandDelayMs = videoConfig.stepDelayMs)
@@ -69,4 +86,19 @@ private fun inferCallerClassName(): String {
       .firstOrNull()
 
   return stack ?: "unknown.test.Class"
+}
+
+private enum class ParikshanTarget {
+  Desktop,
+  Wasm;
+
+  companion object {
+    fun fromSystemProperty(): ParikshanTarget {
+      return when (System.getProperty("parikshan.target")?.trim()?.lowercase()) {
+        null, "", "desktop" -> Desktop
+        "wasm", "web" -> Wasm
+        else -> error("Unsupported parikshan.target value. Expected 'desktop' or 'wasm'.")
+      }
+    }
+  }
 }

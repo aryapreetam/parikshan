@@ -10,6 +10,7 @@ coroutines = "1.10.2"
 serialization = "1.9.0"
 ktor = "3.3.0"
 jcodec = "0.2.5"
+playwright = "1.58.0"
 
 [libraries]
 android-documentation-plugin = { module = "org.jetbrains.dokka:android-documentation-plugin", version.ref = "dokka" }
@@ -25,6 +26,7 @@ ktor-server-core = { module = "io.ktor:ktor-server-core-jvm", version.ref = "kto
 ktor-server-netty = { module = "io.ktor:ktor-server-netty-jvm", version.ref = "ktor" }
 ktor-server-websockets = { module = "io.ktor:ktor-server-websockets-jvm", version.ref = "ktor" }
 jcodec-javase = { module = "org.jcodec:jcodec-javase", version.ref = "jcodec" }
+playwright-java = { module = "com.microsoft.playwright:playwright", version.ref = "playwright" }
 
 [plugins]
 

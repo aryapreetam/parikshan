@@ -1,25 +1,35 @@
 package sample.app
 
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.aryapreetam.parikshan.E2ETestScope
-import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import io.github.aryapreetam.parikshan.e2eTest
+import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import kotlin.test.Test
 import kotlin.test.assertTrue
+import org.junit.Rule
+import org.junit.runner.RunWith
 
-class ParikshanE2ETest {
+@RunWith(AndroidJUnit4::class)
+class ParikshanAndroidE2ETest {
+  @get:Rule
+  val composeRule = createAndroidComposeRule<AppActivity>()
+
   @Test
   fun testTaskList() =
-    e2eTest {
+    e2eTest(composeRule) {
       waitFor("nav_task_list")
       click("nav_task_list")
       waitFor("task_list_screen")
       assertVisible("task_item_1")
-      screenshot("build/parikshan/screenshots/task-list.png")
+      val screenshotPath =
+        "${composeRule.activity.cacheDir.absolutePath}/parikshan/task-list-android.png"
+      screenshot(screenshotPath)
     }
 
   @Test
   fun testInputForm() =
-    e2eTest {
+    e2eTest(composeRule) {
       waitFor("nav_input_form")
       click("nav_input_form")
       waitFor("input_form_screen")
@@ -32,7 +42,7 @@ class ParikshanE2ETest {
 
   @Test
   fun testScrollAndTree() =
-    e2eTest {
+    e2eTest(composeRule) {
       waitFor("nav_scroll_demo")
       click("nav_scroll_demo")
       waitFor("scroll_demo_screen")

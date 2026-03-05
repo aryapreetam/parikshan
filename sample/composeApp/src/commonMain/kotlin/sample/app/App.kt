@@ -29,79 +29,174 @@ fun App() {
   val formValue = remember { mutableStateOf("") }
   val showFormSuccess = remember { mutableStateOf(false) }
   val showScrollSuccess = remember { mutableStateOf(false) }
+  val onTaskListSelected = { activeScreen.value = SampleScreen.TaskList }
+  val onInputFormSelected = {
+    showFormSuccess.value = false
+    activeScreen.value = SampleScreen.InputForm
+  }
+  val onScrollDemoSelected = {
+    showScrollSuccess.value = false
+    activeScreen.value = SampleScreen.ScrollDemo
+  }
 
   MaterialTheme {
-    Row(
+    BoxWithConstraints(
       modifier =
         Modifier
           .fillMaxSize()
           .background(Color(0xFFF5F1E8))
           .padding(12.dp)
     ) {
-      Column(
-        modifier =
-          Modifier
-            .width(220.dp)
-            .fillMaxHeight()
-            .background(Color.White)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-      ) {
-        Text("Parikshan Sample", style = MaterialTheme.typography.titleMedium)
-        Button(
-          onClick = { activeScreen.value = SampleScreen.TaskList },
-          modifier = Modifier.fillMaxWidth().parikshanTag("nav_task_list")
-        ) {
-          Text("Task List")
+      if (maxWidth < 700.dp) {
+        Column(modifier = Modifier.fillMaxSize()) {
+          CompactNavigation(
+            onTaskListSelected = onTaskListSelected,
+            onInputFormSelected = onInputFormSelected,
+            onScrollDemoSelected = onScrollDemoSelected
+          )
+          Spacer(modifier = Modifier.height(12.dp))
+          ContentSurface(
+            modifier = Modifier.fillMaxSize(),
+            activeScreen = activeScreen.value,
+            formValue = formValue.value,
+            onFormValueChange = { formValue.value = it },
+            onFormSubmit = { showFormSuccess.value = true },
+            showFormSuccess = showFormSuccess.value,
+            showScrollSuccess = showScrollSuccess.value,
+            onBottomAction = { showScrollSuccess.value = true }
+          )
         }
-        Button(
-          onClick = {
-            showFormSuccess.value = false
-            activeScreen.value = SampleScreen.InputForm
-          },
-          modifier = Modifier.fillMaxWidth().parikshanTag("nav_input_form")
-        ) {
-          Text("Input Form")
-        }
-        Button(
-          onClick = {
-            showScrollSuccess.value = false
-            activeScreen.value = SampleScreen.ScrollDemo
-          },
-          modifier = Modifier.fillMaxWidth().parikshanTag("nav_scroll_demo")
-        ) {
-          Text("Scroll Demo")
-        }
-      }
-
-      Spacer(modifier = Modifier.width(12.dp))
-
-      Box(
-        modifier =
-          Modifier
-            .fillMaxSize()
-            .background(Color.White)
-            .padding(20.dp)
-      ) {
-        when (activeScreen.value) {
-          SampleScreen.TaskList ->
-            TaskListScreen()
-
-          SampleScreen.InputForm ->
-            InputFormScreen(
-              value = formValue.value,
-              onValueChange = { formValue.value = it },
-              onSubmit = { showFormSuccess.value = true },
-              showSuccess = showFormSuccess.value
-            )
-
-          SampleScreen.ScrollDemo ->
-            ScrollDemoScreen(
-              showSuccess = showScrollSuccess.value,
-              onBottomAction = { showScrollSuccess.value = true }
-            )
+      } else {
+        Row(modifier = Modifier.fillMaxSize()) {
+          SidebarNavigation(
+            onTaskListSelected = onTaskListSelected,
+            onInputFormSelected = onInputFormSelected,
+            onScrollDemoSelected = onScrollDemoSelected
+          )
+          Spacer(modifier = Modifier.width(12.dp))
+          ContentSurface(
+            modifier = Modifier.fillMaxSize(),
+            activeScreen = activeScreen.value,
+            formValue = formValue.value,
+            onFormValueChange = { formValue.value = it },
+            onFormSubmit = { showFormSuccess.value = true },
+            showFormSuccess = showFormSuccess.value,
+            showScrollSuccess = showScrollSuccess.value,
+            onBottomAction = { showScrollSuccess.value = true }
+          )
         }
       }
+    }
+  }
+}
+
+@Composable
+private fun SidebarNavigation(
+  onTaskListSelected: () -> Unit,
+  onInputFormSelected: () -> Unit,
+  onScrollDemoSelected: () -> Unit
+) {
+  Column(
+    modifier =
+      Modifier
+        .width(220.dp)
+        .fillMaxHeight()
+        .background(Color.White)
+        .padding(12.dp),
+    verticalArrangement = Arrangement.spacedBy(10.dp)
+  ) {
+    Text("Parikshan Sample", style = MaterialTheme.typography.titleMedium)
+    Button(
+      onClick = onTaskListSelected,
+      modifier = Modifier.fillMaxWidth().parikshanTag("nav_task_list")
+    ) {
+      Text("Task List")
+    }
+    Button(
+      onClick = onInputFormSelected,
+      modifier = Modifier.fillMaxWidth().parikshanTag("nav_input_form")
+    ) {
+      Text("Input Form")
+    }
+    Button(
+      onClick = onScrollDemoSelected,
+      modifier = Modifier.fillMaxWidth().parikshanTag("nav_scroll_demo")
+    ) {
+      Text("Scroll Demo")
+    }
+  }
+}
+
+@Composable
+private fun CompactNavigation(
+  onTaskListSelected: () -> Unit,
+  onInputFormSelected: () -> Unit,
+  onScrollDemoSelected: () -> Unit
+) {
+  Column(
+    modifier =
+      Modifier
+        .fillMaxWidth()
+        .background(Color.White)
+        .padding(12.dp),
+    verticalArrangement = Arrangement.spacedBy(10.dp)
+  ) {
+    Text("Parikshan Sample", style = MaterialTheme.typography.titleMedium)
+    Button(
+      onClick = onTaskListSelected,
+      modifier = Modifier.fillMaxWidth().parikshanTag("nav_task_list")
+    ) {
+      Text("Task List")
+    }
+    Button(
+      onClick = onInputFormSelected,
+      modifier = Modifier.fillMaxWidth().parikshanTag("nav_input_form")
+    ) {
+      Text("Input Form")
+    }
+    Button(
+      onClick = onScrollDemoSelected,
+      modifier = Modifier.fillMaxWidth().parikshanTag("nav_scroll_demo")
+    ) {
+      Text("Scroll Demo")
+    }
+  }
+}
+
+@Composable
+private fun ContentSurface(
+  modifier: Modifier,
+  activeScreen: SampleScreen,
+  formValue: String,
+  onFormValueChange: (String) -> Unit,
+  onFormSubmit: () -> Unit,
+  showFormSuccess: Boolean,
+  showScrollSuccess: Boolean,
+  onBottomAction: () -> Unit
+) {
+  Box(
+    modifier =
+      modifier
+        .background(Color.White)
+        .padding(20.dp)
+  ) {
+    when (activeScreen) {
+      SampleScreen.TaskList ->
+        TaskListScreen()
+
+      SampleScreen.InputForm ->
+        InputFormScreen(
+          value = formValue,
+          onValueChange = onFormValueChange,
+          onSubmit = onFormSubmit,
+          showSuccess = showFormSuccess
+        )
+
+      SampleScreen.ScrollDemo ->
+        ScrollDemoScreen(
+          showSuccess = showScrollSuccess,
+          onBottomAction = onBottomAction
+        )
     }
   }
 }

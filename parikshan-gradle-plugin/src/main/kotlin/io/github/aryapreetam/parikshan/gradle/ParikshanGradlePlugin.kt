@@ -282,6 +282,24 @@ class ParikshanGradlePlugin : Plugin<Project> {
               }
           }
       }
+
+      // Android E2E Test Task (instrumentation/emulator)
+      project.tasks.register("e2eAndroidTest") {
+        group = "verification"
+        description = "Runs Android emulator instrumentation tests for Parikshan E2E"
+
+        val connectedTask = project.tasks.findByName("connectedDebugAndroidTest")
+        if (connectedTask != null) {
+          dependsOn(connectedTask)
+        } else {
+          doFirst {
+            throw GradleException(
+              "Parikshan could not find 'connectedDebugAndroidTest'. " +
+                "Ensure the Android target is configured and an emulator/device is available."
+            )
+          }
+        }
+      }
     }
   }
 }

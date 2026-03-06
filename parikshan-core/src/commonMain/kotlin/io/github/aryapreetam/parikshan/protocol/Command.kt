@@ -104,6 +104,18 @@ sealed interface Command {
     val sessionName: String
   ) : Command
 
+  @Serializable
+  @SerialName("pressBack")
+  data class PressBack(
+    override val id: String
+  ) : Command
+
+  @Serializable
+  @SerialName("pressHome")
+  data class PressHome(
+    override val id: String
+  ) : Command
+
   // Used by orchestrators to check liveness before test execution.
   @Serializable
   @SerialName("ping")

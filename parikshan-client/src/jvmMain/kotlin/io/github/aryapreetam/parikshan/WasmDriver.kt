@@ -190,6 +190,8 @@ private class WasmPlaywrightSession private constructor(
           nodes = getTree()
         )
 
+      is Command.PressBack -> Response.Ok(command.id) // No-op on WASM
+      is Command.PressHome -> Response.Ok(command.id) // No-op on WASM
       is Command.StartRecording -> Response.Ok(command.id)
       is Command.StopRecording -> Response.Ok(command.id)
       is Command.Shutdown -> Response.Ok(command.id)

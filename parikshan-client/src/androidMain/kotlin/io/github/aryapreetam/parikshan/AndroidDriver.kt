@@ -3,6 +3,9 @@ package io.github.aryapreetam.parikshan
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.test.espresso.Espresso
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiDevice
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -141,6 +144,17 @@ class AndroidDriver private constructor(
           id = command.id,
           nodes = snapshotTree()
         )
+
+      is Command.PressBack -> {
+        Espresso.pressBack()
+        Response.Ok(command.id)
+      }
+
+      is Command.PressHome -> {
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        device.pressHome()
+        Response.Ok(command.id)
+      }
 
       is Command.StartRecording -> Response.Ok(command.id)
       is Command.StopRecording -> Response.Ok(command.id)

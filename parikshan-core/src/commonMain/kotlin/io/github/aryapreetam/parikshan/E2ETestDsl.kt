@@ -106,6 +106,22 @@ class E2ETestScope internal constructor(
     settleAfterCommand()
   }
 
+  suspend fun pressBack() {
+    expectOk(
+      action = "pressBack()",
+      response = driver.send(Command.PressBack(id = nextId()))
+    )
+    settleAfterCommand()
+  }
+
+  suspend fun pressHome() {
+    expectOk(
+      action = "pressHome()",
+      response = driver.send(Command.PressHome(id = nextId()))
+    )
+    settleAfterCommand()
+  }
+
   suspend fun getTree(): List<NodeSnapshot> {
     val nodes =
       when (

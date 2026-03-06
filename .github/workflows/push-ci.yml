@@ -10,6 +10,10 @@ on:
       # Run CI only when these files/directories change
       - 'lib/**'
       - 'sample/**'
+      - 'parikshan-core/**'
+      - 'parikshan-client/**'
+      - 'parikshan-server/**'
+      - 'parikshan-gradle-plugin/**'
       - 'gradle/**'
       - 'gradle.properties'
       - 'settings.gradle.kts'
@@ -22,6 +26,10 @@ on:
       # Same path filters for PRs
       - 'lib/**'
       - 'sample/**'
+      - 'parikshan-core/**'
+      - 'parikshan-client/**'
+      - 'parikshan-server/**'
+      - 'parikshan-gradle-plugin/**'
       - 'gradle/**'
       - 'gradle.properties'
       - 'settings.gradle.kts'

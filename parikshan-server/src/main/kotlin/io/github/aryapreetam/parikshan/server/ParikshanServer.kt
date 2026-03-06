@@ -247,6 +247,8 @@ private class RunningParikshanServer(
         Response.Ok(command.id)
       }
 
+      is Command.PressBack -> Response.Ok(command.id) // No-op on desktop
+      is Command.PressHome -> Response.Ok(command.id) // No-op on desktop
       is Command.Shutdown -> Response.Ok(command.id)
       is Command.Ping -> Response.Ok(command.id)
     }

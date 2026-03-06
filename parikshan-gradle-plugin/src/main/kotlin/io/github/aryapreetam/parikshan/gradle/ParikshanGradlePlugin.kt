@@ -284,12 +284,98 @@ class ParikshanGradlePlugin : Plugin<Project> {
       }
 
       // Android E2E Test Task (instrumentation/emulator)
+      val stopAndroidVideoTask =
+        project.tasks.register("stopParikshanAndroidVideo") {
+          group = "verification"
+          description = "Stops Android screen recording and pulls video artifact for Parikshan E2E tests"
+
+          doLast {
+            val enabled =
+              project.providers.gradleProperty("parikshan.video.enabled").orNull
+                ?: System.getProperty("parikshan.video.enabled")
+                ?: "false"
+            if (!enabled.toBooleanStrictOrNull().orFalse()) {
+              return@doLast
+            }
+
+            val postRollMs =
+              project.providers.gradleProperty("parikshan.video.postRollMs").orNull
+                ?.toLongOrNull()
+                ?.coerceIn(0L, 10_000L)
+                ?: 1_500L
+
+            ParikshanAndroidRecorder.stopAndPull(
+              project = project,
+              postRollMs = postRollMs
+            )
+          }
+        }
+
       project.tasks.register("e2eAndroidTest") {
         group = "verification"
         description = "Runs Android emulator instrumentation tests for Parikshan E2E"
 
         val connectedTask = project.tasks.findByName("connectedDebugAndroidTest")
         if (connectedTask != null) {
+          connectedTask.doFirst {
+            val enabled =
+              project.providers.gradleProperty("parikshan.video.enabled").orNull
+                ?: System.getProperty("parikshan.video.enabled")
+                ?: "false"
+            if (!enabled.toBooleanStrictOrNull().orFalse()) {
+              return@doFirst
+            }
+
+            val outputDir =
+              project.providers.gradleProperty("parikshan.video.outputDir").orNull
+                ?: System.getProperty("parikshan.video.outputDir")
+                ?: project.layout.buildDirectory.dir("parikshan/videos/android").get().asFile.absolutePath
+            val remoteOutputPath =
+              project.providers.gradleProperty("parikshan.video.remotePath").orNull
+                ?: System.getProperty("parikshan.video.remotePath")
+                ?: "/sdcard/Download/parikshan-e2e.mp4"
+            val maxDurationSec =
+              project.providers.gradleProperty("parikshan.video.maxDurationSec").orNull
+                ?.toIntOrNull()
+                ?.coerceIn(10, 180)
+                ?: 180
+            val watchPackage =
+              project.providers.gradleProperty("parikshan.android.watchPackage").orNull
+            val testFilter =
+              project.providers.gradleProperty("parikshan.testFilter").orNull
+            val startTimeoutMs =
+              project.providers.gradleProperty("parikshan.video.startTimeoutMs").orNull
+                ?.toLongOrNull()
+                ?.coerceIn(5_000L, 600_000L)
+                ?: 180_000L
+            val startDelayMs =
+              project.providers.gradleProperty("parikshan.video.startDelayMs").orNull
+                ?.toLongOrNull()
+                ?.coerceIn(0L, 10_000L)
+                ?: 3_000L
+
+            val explicitSerial =
+              project.providers.gradleProperty("parikshan.android.deviceSerial").orNull
+                ?: System.getenv("ANDROID_SERIAL")
+            val serial = ParikshanAndroidRecorder.resolveDeviceSerial(project, explicitSerial)
+
+            val outputDirectoryFile = File(outputDir).also { it.mkdirs() }
+            val timestamp = System.currentTimeMillis()
+            val localOutputPath = File(outputDirectoryFile, "android-e2e-$timestamp.mp4").absolutePath
+
+            ParikshanAndroidRecorder.start(
+              project = project,
+              serial = serial,
+              remoteOutputPath = remoteOutputPath,
+              localOutputPath = localOutputPath,
+              maxDurationSec = maxDurationSec,
+              watchPackage = watchPackage,
+              testFilter = testFilter,
+              startTimeoutMs = startTimeoutMs,
+              startDelayMs = startDelayMs
+            )
+          }
+          connectedTask.finalizedBy(stopAndroidVideoTask)
           dependsOn(connectedTask)
         } else {
           doFirst {
@@ -374,6 +460,442 @@ private object ParikshanWasmServer {
         server?.stop(0)
         server = null
     }
+}
+
+private object ParikshanAndroidRecorder {
+  @Volatile
+  private var serial: String? = null
+
+  @Volatile
+  private var remoteOutputPath: String? = null
+
+  @Volatile
+  private var localOutputPath: String? = null
+
+  @Volatile
+  private var recordingProcess: Process? = null
+
+  @Volatile
+  private var startWatcherThread: Thread? = null
+
+  @Volatile
+  private var stopRequested: Boolean = false
+
+  @Volatile
+  private var startFailure: String? = null
+
+  fun resolveDeviceSerial(
+    project: Project,
+    explicitSerial: String?
+  ): String {
+    if (!explicitSerial.isNullOrBlank()) {
+      return explicitSerial
+    }
+
+    val output =
+      runAdbCommand(
+        project = project,
+        serial = null,
+        args = listOf("devices"),
+        ignoreExitCode = false
+      )
+    val devices =
+      output
+        .lineSequence()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && !it.startsWith("List of devices attached") }
+        .mapNotNull { line ->
+          val parts = line.split(Regex("\\s+"))
+          if (parts.size >= 2 && parts[1] == "device") parts[0] else null
+        }
+        .toList()
+
+    if (devices.isEmpty()) {
+      throw GradleException(
+        "Parikshan could not find a connected Android device. " +
+          "Connect a device/emulator or pass -Pparikshan.android.deviceSerial=<serial>."
+      )
+    }
+    if (devices.size > 1) {
+      project.logger.lifecycle(
+        "Parikshan: Multiple Android devices detected (${devices.joinToString()}). Using '${devices.first()}'. " +
+          "Set -Pparikshan.android.deviceSerial to override."
+      )
+    }
+    return devices.first()
+  }
+
+  fun start(
+    project: Project,
+    serial: String,
+    remoteOutputPath: String,
+    localOutputPath: String,
+    maxDurationSec: Int,
+    watchPackage: String?,
+    testFilter: String?,
+    startTimeoutMs: Long,
+    startDelayMs: Long
+  ) {
+    stopRequested = false
+    startFailure = null
+    runCatching {
+      startWatcherThread?.interrupt()
+      startWatcherThread?.join(1_000)
+    }
+    runCatching { recordingProcess?.destroyForcibly() }
+    runAdbCommand(
+      project = project,
+      serial = serial,
+      args = listOf("shell", "sh", "-c", "pkill -2 screenrecord || killall -2 screenrecord || true"),
+      ignoreExitCode = true
+    )
+    Thread.sleep(300)
+
+    runAdbCommand(
+      project = project,
+      serial = serial,
+      args = listOf("shell", "rm", "-f", remoteOutputPath),
+      ignoreExitCode = true
+    )
+
+    this.serial = serial
+    this.remoteOutputPath = remoteOutputPath
+    this.localOutputPath = localOutputPath
+    this.recordingProcess = null
+
+    val resolvedWatchPackage = resolveWatchPackage(project, serial, watchPackage, testFilter)
+    if (!resolvedWatchPackage.isNullOrBlank()) {
+      runAdbCommand(
+        project = project,
+        serial = serial,
+        args = listOf("shell", "am", "force-stop", resolvedWatchPackage),
+        ignoreExitCode = true
+      )
+      project.logger.lifecycle(
+        "Parikshan: Will start Android video capture when package '$resolvedWatchPackage' starts."
+      )
+    } else {
+      project.logger.lifecycle(
+        "Parikshan: Could not resolve a watch package; recording will start immediately."
+      )
+    }
+
+    val watcher =
+      Thread(
+        {
+          try {
+            if (!resolvedWatchPackage.isNullOrBlank()) {
+              val deadline = System.currentTimeMillis() + startTimeoutMs
+              var detected = false
+              while (!stopRequested && System.currentTimeMillis() <= deadline) {
+                if (isPackageProcessRunning(project, serial, resolvedWatchPackage)) {
+                  detected = true
+                  break
+                }
+                Thread.sleep(250)
+              }
+
+              if (!detected && !stopRequested) {
+                project.logger.warn(
+                  "Parikshan: Timed out waiting for package '$resolvedWatchPackage'; " +
+                    "starting recording immediately."
+                )
+              } else if (detected && startDelayMs > 0L) {
+                Thread.sleep(startDelayMs)
+              }
+            }
+
+            if (stopRequested) {
+              return@Thread
+            }
+
+            startScreenrecordProcess(
+              project = project,
+              serial = serial,
+              remoteOutputPath = remoteOutputPath,
+              maxDurationSec = maxDurationSec
+            )
+          } catch (ie: InterruptedException) {
+            // Expected when build stops/cancels.
+          } catch (t: Throwable) {
+            startFailure = t.message ?: t::class.java.simpleName
+            project.logger.warn("Parikshan: Android video start watcher failed: ${t.message}")
+          }
+        },
+        "parikshan-android-video-start-watcher"
+      )
+    watcher.isDaemon = true
+    watcher.start()
+    this.startWatcherThread = watcher
+  }
+
+  fun stopAndPull(
+    project: Project,
+    postRollMs: Long
+  ) {
+    val activeSerial = serial
+    val activeRemoteOutputPath = remoteOutputPath
+    val activeLocalOutputPath = localOutputPath
+
+    try {
+      if (activeSerial.isNullOrBlank() || activeRemoteOutputPath.isNullOrBlank() || activeLocalOutputPath.isNullOrBlank()) {
+        return
+      }
+
+      stopRequested = true
+      runCatching {
+        startWatcherThread?.interrupt()
+        startWatcherThread?.join(2_000)
+      }
+
+      val activeRecordingProcess = recordingProcess
+      val activeStartFailure = startFailure
+      if (activeRecordingProcess == null) {
+        if (!activeStartFailure.isNullOrBlank()) {
+          throw GradleException("Parikshan Android video capture failed to start: $activeStartFailure")
+        }
+        project.logger.warn("Parikshan: Android video recording did not start; skipping artifact pull.")
+        return
+      }
+
+      if (postRollMs > 0L) {
+        project.logger.lifecycle("Parikshan: Android video post-roll ${postRollMs}ms")
+        Thread.sleep(postRollMs)
+      }
+
+      runAdbCommand(
+        project = project,
+        serial = activeSerial,
+        args = listOf("shell", "sh", "-c", "pkill -2 screenrecord || killall -2 screenrecord || true"),
+        ignoreExitCode = true
+      )
+      if (!activeRecordingProcess.waitFor(20, TimeUnit.SECONDS)) {
+        activeRecordingProcess.destroy()
+        if (!activeRecordingProcess.waitFor(5, TimeUnit.SECONDS)) {
+          activeRecordingProcess.destroyForcibly()
+          activeRecordingProcess.waitFor(5, TimeUnit.SECONDS)
+        }
+      }
+      Thread.sleep(500)
+
+      val outputFile = File(activeLocalOutputPath)
+      outputFile.parentFile?.mkdirs()
+
+      runAdbCommand(
+        project = project,
+        serial = activeSerial,
+        args = listOf("pull", activeRemoteOutputPath, activeLocalOutputPath),
+        ignoreExitCode = true
+      )
+      runAdbCommand(
+        project = project,
+        serial = activeSerial,
+        args = listOf("shell", "rm", "-f", activeRemoteOutputPath),
+        ignoreExitCode = true
+      )
+
+      if (outputFile.exists() && outputFile.length() > 0L) {
+        project.logger.lifecycle("Parikshan: Android video saved to ${outputFile.absolutePath}")
+      } else {
+        project.logger.warn(
+          "Parikshan: Android video was not produced at ${outputFile.absolutePath}. " +
+            "Check build/parikshan/android-screenrecord.log"
+        )
+      }
+    } finally {
+      clearState()
+    }
+  }
+
+  private fun runAdbCommand(
+    project: Project,
+    serial: String?,
+    args: List<String>,
+    ignoreExitCode: Boolean
+  ): String {
+    val adbExecutable = resolveAdbCommand()
+    val command = mutableListOf(adbExecutable)
+    if (!serial.isNullOrBlank()) {
+      command += listOf("-s", serial)
+    }
+    command += args
+
+    val process =
+      ProcessBuilder(command)
+        .directory(project.projectDir)
+        .redirectErrorStream(true)
+        .start()
+    val output = process.inputStream.bufferedReader().readText().trim()
+    val code = process.waitFor()
+
+    if (!ignoreExitCode && code != 0) {
+      throw GradleException(
+        "Parikshan adb command failed (${command.joinToString(" ")}), exit=$code, output=${output.ifBlank { "<empty>" }}"
+      )
+    }
+    return output
+  }
+
+  private fun resolveAdbCommand(): String {
+    val sdkRoot = System.getenv("ANDROID_SDK_ROOT") ?: System.getenv("ANDROID_HOME")
+    if (!sdkRoot.isNullOrBlank()) {
+      val candidate = File(sdkRoot, "platform-tools/adb")
+      if (candidate.exists()) {
+        return candidate.absolutePath
+      }
+      val windowsCandidate = File(sdkRoot, "platform-tools/adb.exe")
+      if (windowsCandidate.exists()) {
+        return windowsCandidate.absolutePath
+      }
+    }
+    return "adb"
+  }
+
+  private fun clearState() {
+    serial = null
+    remoteOutputPath = null
+    localOutputPath = null
+    recordingProcess = null
+    startWatcherThread = null
+    stopRequested = false
+    startFailure = null
+  }
+
+  private fun startScreenrecordProcess(
+    project: Project,
+    serial: String,
+    remoteOutputPath: String,
+    maxDurationSec: Int
+  ) {
+    val logFile = project.layout.buildDirectory.file("parikshan/android-screenrecord.log").get().asFile
+    logFile.parentFile.mkdirs()
+    val adbExecutable = resolveAdbCommand()
+    val command =
+      mutableListOf(
+        adbExecutable,
+        "-s",
+        serial,
+        "shell",
+        "screenrecord",
+        "--time-limit",
+        maxDurationSec.toString(),
+        remoteOutputPath
+      )
+    val process =
+      ProcessBuilder(command)
+        .directory(project.projectDir)
+        .redirectErrorStream(true)
+        .redirectOutput(ProcessBuilder.Redirect.appendTo(logFile))
+        .start()
+
+    Thread.sleep(250)
+    if (!process.isAlive) {
+      val exitCode = runCatching { process.exitValue() }.getOrNull()
+      throw GradleException(
+        "Parikshan Android video capture failed to start (exit=${exitCode ?: "unknown"}). " +
+          "Check ${logFile.absolutePath}"
+      )
+    }
+    recordingProcess = process
+    project.logger.lifecycle("Parikshan: Started Android video capture for '$serial' (maxDurationSec=$maxDurationSec)")
+  }
+
+  private fun resolveWatchPackage(
+    project: Project,
+    serial: String,
+    explicitWatchPackage: String?,
+    testFilter: String?
+  ): String? {
+    if (!explicitWatchPackage.isNullOrBlank()) {
+      return explicitWatchPackage
+    }
+    resolveAndroidApplicationId(project)?.let { return it }
+    extractPackageFromTestFilter(testFilter)?.let { return it }
+
+    val output =
+      runAdbCommand(
+        project = project,
+        serial = serial,
+        args = listOf("shell", "pm", "list", "instrumentation"),
+        ignoreExitCode = true
+      )
+    if (output.isBlank()) {
+      return null
+    }
+
+    val regex =
+      Regex("^instrumentation:([^/]+)/([^\\s]+) \\(target=([^)]+)\\)$")
+    val entries =
+      output
+        .lineSequence()
+        .map { it.trim() }
+        .mapNotNull { line ->
+          val match = regex.find(line) ?: return@mapNotNull null
+          InstrumentationEntry(
+            runner = match.groupValues[2],
+            target = match.groupValues[3]
+          )
+        }
+        .toList()
+    if (entries.isEmpty()) {
+      return null
+    }
+
+    val preferred = entries.filter { it.runner.endsWith("AndroidJUnitRunner") }
+    val candidates = if (preferred.isNotEmpty()) preferred else entries
+    val targets = candidates.map { it.target }.distinct()
+    return if (targets.size == 1) targets.first() else null
+  }
+
+  private fun resolveAndroidApplicationId(project: Project): String? {
+    val androidExtension = project.extensions.findByName("android") ?: return null
+    val defaultConfig =
+      runCatching {
+        androidExtension.javaClass.methods.firstOrNull { it.name == "getDefaultConfig" }?.invoke(androidExtension)
+      }.getOrNull() ?: return null
+
+    return runCatching {
+      defaultConfig.javaClass.methods.firstOrNull { it.name == "getApplicationId" }?.invoke(defaultConfig) as? String
+    }.getOrNull()?.takeIf { it.isNotBlank() }
+  }
+
+  private fun extractPackageFromTestFilter(testFilter: String?): String? {
+    if (testFilter.isNullOrBlank()) {
+      return null
+    }
+    val firstPattern =
+      testFilter
+        .split(",")
+        .firstOrNull { it.isNotBlank() }
+        ?.trim()
+        ?.substringBefore('#')
+        ?: return null
+    val lastDot = firstPattern.lastIndexOf('.')
+    if (lastDot <= 0) {
+      return null
+    }
+    return firstPattern.substring(0, lastDot).takeIf { it.isNotBlank() }
+  }
+
+  private fun isPackageProcessRunning(
+    project: Project,
+    serial: String,
+    packageName: String
+  ): Boolean {
+    val output =
+      runAdbCommand(
+        project = project,
+        serial = serial,
+        args = listOf("shell", "pidof", packageName),
+        ignoreExitCode = true
+      )
+    return output.isNotBlank()
+  }
+
+  private data class InstrumentationEntry(
+    val runner: String,
+    val target: String
+  )
 }
 
 private object ParikshanDesktopProcess {
@@ -470,3 +992,5 @@ private object ParikshanDesktopProcess {
     throw GradleException("Parikshan timed out waiting for app server at $host:$port")
   }
 }
+
+private fun Boolean?.orFalse(): Boolean = this == true

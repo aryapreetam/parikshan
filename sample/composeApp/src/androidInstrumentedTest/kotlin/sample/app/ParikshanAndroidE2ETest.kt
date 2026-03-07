@@ -4,6 +4,8 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.aryapreetam.parikshan.E2ETestScope
 import io.github.aryapreetam.parikshan.e2eTest
+import io.github.aryapreetam.parikshan.protocol.Bounds
+import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import kotlin.test.Test
 import kotlin.test.assertTrue
@@ -63,7 +65,7 @@ private suspend fun E2ETestScope.scrollUntilVisible(
   maxScrolls: Int = 40
 ) {
   repeat(maxScrolls + 1) { attempt ->
-    val targetVisible = getTree().any { it.tag == targetTag && it.visible }
+    val targetVisible = getTree().isVisibleWithin(containerTag, targetTag)
     if (targetVisible) {
       return
     }
@@ -73,3 +75,43 @@ private suspend fun E2ETestScope.scrollUntilVisible(
     scroll(containerTag, ScrollDirection.Down)
   }
 }
+
+private fun List<NodeSnapshot>.isVisibleWithin(
+  containerTag: String,
+  targetTag: String,
+  edgePadding: Double = 24.0
+): Boolean {
+  val containerBounds = firstOrNull { it.tag == containerTag }?.bounds ?: return false
+  val target = firstOrNull { it.tag == targetTag } ?: return false
+  if (!target.visible) return false
+  return containerBounds.canSafelyInteractWith(target.bounds, edgePadding)
+}
+
+private fun Bounds.canSafelyInteractWith(
+  other: Bounds,
+  edgePadding: Double
+): Boolean {
+  if (!hasArea() || !other.hasArea()) return false
+  val overlapLeft = maxOf(left, other.left)
+  val overlapTop = maxOf(top, other.top)
+  val overlapRight = minOf(right, other.right)
+  val overlapBottom = minOf(bottom, other.bottom)
+  if (overlapRight <= overlapLeft || overlapBottom <= overlapTop) return false
+
+  val centerX = (other.left + other.right) / 2.0
+  val centerY = (other.top + other.bottom) / 2.0
+  val horizontalPadding = edgePadding
+  val topPadding = edgePadding
+  val bottomPadding = maxOf(edgePadding, height() * 0.2)
+  val safeLeft = left + horizontalPadding
+  val safeTop = top + topPadding
+  val safeRight = right - horizontalPadding
+  val safeBottom = bottom - bottomPadding
+  if (safeRight <= safeLeft || safeBottom <= safeTop) return false
+
+  return centerX in safeLeft..safeRight && centerY in safeTop..safeBottom
+}
+
+private fun Bounds.hasArea(): Boolean = right > left && bottom > top
+
+private fun Bounds.height(): Double = bottom - top

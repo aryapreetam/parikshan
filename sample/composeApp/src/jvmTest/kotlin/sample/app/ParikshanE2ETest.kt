@@ -90,13 +90,18 @@ private fun Bounds.canSafelyInteractWith(
 
   val centerX = (other.left + other.right) / 2.0
   val centerY = (other.top + other.bottom) / 2.0
-  val safeLeft = left + edgePadding
-  val safeTop = top + edgePadding
-  val safeRight = right - edgePadding
-  val safeBottom = bottom - edgePadding
+  val horizontalPadding = edgePadding
+  val topPadding = edgePadding
+  val bottomPadding = maxOf(edgePadding, height() * 0.2)
+  val safeLeft = left + horizontalPadding
+  val safeTop = top + topPadding
+  val safeRight = right - horizontalPadding
+  val safeBottom = bottom - bottomPadding
   if (safeRight <= safeLeft || safeBottom <= safeTop) return false
 
   return centerX in safeLeft..safeRight && centerY in safeTop..safeBottom
 }
 
 private fun Bounds.hasArea(): Boolean = right > left && bottom > top
+
+private fun Bounds.height(): Double = bottom - top

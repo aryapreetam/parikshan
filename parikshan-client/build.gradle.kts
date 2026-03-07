@@ -42,10 +42,10 @@ kotlin {
     }
 
     androidMain.dependencies {
-      compileOnly("androidx.compose.ui:ui-test-junit4-android:1.9.0")
-      compileOnly("androidx.test.espresso:espresso-core:3.6.1")
-      compileOnly("androidx.test.uiautomator:uiautomator:2.3.0")
-      compileOnly("androidx.test:runner:1.6.2")
+      implementation("androidx.compose.ui:ui-test-junit4-android:1.9.0")
+      implementation("androidx.test.espresso:espresso-core:3.6.1")
+      implementation("androidx.test.uiautomator:uiautomator:2.3.0")
+      implementation("androidx.test:runner:1.6.2")
     }
   }
 }

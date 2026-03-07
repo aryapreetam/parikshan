@@ -17,11 +17,6 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeDown
-import androidx.compose.ui.test.swipeLeft
-import androidx.compose.ui.test.swipeRight
-import androidx.compose.ui.test.swipeUp
 import io.github.aryapreetam.parikshan.protocol.Bounds
 import io.github.aryapreetam.parikshan.protocol.Command
 import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
@@ -29,6 +24,7 @@ import io.github.aryapreetam.parikshan.protocol.Response
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.math.roundToInt
 import kotlinx.coroutines.runBlocking
 
 @OptIn(ExperimentalTestApi::class)
@@ -68,16 +64,18 @@ class AndroidDriver private constructor(
       }
 
       is Command.Scroll -> {
-        val interaction = findFirstInteraction(command.tag)
+        val node = findFirstNode(command.tag)
           ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
-        interaction.performTouchInput {
-          when (command.direction) {
-            ScrollDirection.Up -> swipeDown()
-            ScrollDirection.Down -> swipeUp()
-            ScrollDirection.Left -> swipeRight()
-            ScrollDirection.Right -> swipeLeft()
-          }
+        val bridgeHandled =
+          ParikshanTagBridgeHooks.performScroll(
+            tag = command.tag,
+            direction = command.direction,
+            viewportHeightPx = node.boundsInRoot.height
+          )
+        if (!bridgeHandled) {
+          performDeviceSwipe(node, command.direction)
         }
+        composeUiTest.waitForIdle()
         Response.Ok(command.id)
       }
 
@@ -215,6 +213,31 @@ class AndroidDriver private constructor(
   private fun isVisible(node: SemanticsNode): Boolean {
     val bounds = node.boundsInRoot
     return bounds.width > 0f && bounds.height > 0f && node.layoutInfo.isPlaced
+  }
+
+  private fun performDeviceSwipe(
+    node: SemanticsNode,
+    direction: ScrollDirection
+  ) {
+    val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+    val bounds = node.boundsInRoot
+    val horizontalPadding = maxOf(bounds.width * 0.12f, 24f)
+    val verticalPadding = maxOf(bounds.height * 0.12f, 24f)
+    val centerX = ((bounds.left + bounds.right) / 2f).roundToInt()
+    val centerY = ((bounds.top + bounds.bottom) / 2f).roundToInt()
+    val leftX = (bounds.left + horizontalPadding).roundToInt()
+    val rightX = (bounds.right - horizontalPadding).roundToInt()
+    val topY = (bounds.top + verticalPadding).roundToInt()
+    val bottomY = (bounds.bottom - verticalPadding).roundToInt()
+
+    val (startX, startY, endX, endY) =
+      when (direction) {
+        ScrollDirection.Up -> listOf(centerX, topY, centerX, bottomY)
+        ScrollDirection.Down -> listOf(centerX, bottomY, centerX, topY)
+        ScrollDirection.Left -> listOf(leftX, centerY, rightX, centerY)
+        ScrollDirection.Right -> listOf(rightX, centerY, leftX, centerY)
+      }
+    device.swipe(startX, startY, endX, endY, 18)
   }
 
   private fun textOf(node: SemanticsNode): String? {

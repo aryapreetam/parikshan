@@ -223,6 +223,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
           dependsOn(installPlaywrightTask)
           dependsOn(startWasmTask)
           finalizedBy(stopWasmTask)
+          outputs.upToDateWhen { false } // Always re-run against the live Wasm app
 
           // Inherit classpath/testClasses from the standard test task or a configured one
           val jvmTestTask = project.tasks.findByName("jvmTest") as? Test 
@@ -282,6 +283,206 @@ class ParikshanGradlePlugin : Plugin<Project> {
                   includeTestsMatching("*E2ETest*")
               }
           }
+      }
+
+      // --- iOS E2E Test Task ---
+      // Follows the same task-dependency pattern as Desktop E2E:
+      // startIosApp → jvmTest (with parikshan.target=ios) → stopIosApp
+
+      fun resolveIosRuntimeProperty(name: String): String? =
+        project.providers.gradleProperty(name).orNull ?: System.getProperty(name)
+
+      val iosDevice = resolveIosRuntimeProperty("parikshan.ios.device") ?: "iPhone 16"
+      val iosPort = resolveIosRuntimeProperty("parikshan.ios.port")?.toIntOrNull() ?: 9878
+      val iosBundleId = resolveIosRuntimeProperty("parikshan.ios.bundleId") ?: "sample.app.ios"
+      val iosVideoEnabled = resolveIosRuntimeProperty("parikshan.video.enabled")?.toBooleanStrictOrNull() ?: false
+      val iosVideoOutputDir = resolveIosRuntimeProperty("parikshan.video.outputDir")
+        ?: project.layout.buildDirectory.dir("parikshan/videos/ios").get().asFile.absolutePath
+      val iosXcodeProject = resolveIosRuntimeProperty("parikshan.ios.xcodeProject")
+        ?: "${project.projectDir}/../iosApp/iosApp.xcodeproj"
+      val iosXcodeScheme = resolveIosRuntimeProperty("parikshan.ios.xcodeScheme") ?: "iosApp"
+      val iosDerivedData = project.layout.buildDirectory.dir("parikshan/ios-xcode-build").get().asFile
+      val iosBuildProducts = File(iosDerivedData, "Build/Products/Debug-iphonesimulator")
+
+      // Shared mutable state for video process cleanup
+      var iosVideoProcess: Process? = null
+      var iosVideoFile: String? = null
+
+      val startIosAppTask = project.tasks.register("startIosApp") {
+        group = "verification"
+        description = "Builds, installs, and launches the iOS app on the simulator for E2E testing"
+        outputs.upToDateWhen { false }
+        doLast {
+          val xcodeProjectFile = File(iosXcodeProject)
+          if (!xcodeProjectFile.exists()) {
+            throw GradleException("Xcode project not found at ${xcodeProjectFile.absolutePath}")
+          }
+
+          // 1. Boot simulator
+          logger.lifecycle("Parikshan iOS: Booting simulator '$iosDevice'...")
+          val bootResult = ProcessBuilder("xcrun", "simctl", "boot", iosDevice)
+            .redirectErrorStream(true).start()
+          bootResult.inputStream.bufferedReader().readText()
+          bootResult.waitFor()
+
+          // 2. Build via xcodebuild
+          logger.lifecycle("Parikshan iOS: Building via xcodebuild (scheme: $iosXcodeScheme)...")
+          iosBuildProducts.mkdirs()
+          val buildProc = ProcessBuilder(
+            "xcodebuild", "build",
+            "-project", xcodeProjectFile.absolutePath,
+            "-scheme", iosXcodeScheme,
+            "-configuration", "Debug",
+            "-destination", "platform=iOS Simulator,name=$iosDevice",
+            "-derivedDataPath", iosDerivedData.absolutePath,
+            "CONFIGURATION_BUILD_DIR=${iosBuildProducts.absolutePath}"
+          ).redirectErrorStream(true).start()
+          val buildOutput = buildProc.inputStream.bufferedReader().readText()
+          val buildExit = buildProc.waitFor()
+          if (buildExit != 0) {
+            logger.error(buildOutput)
+            throw GradleException("xcodebuild failed with exit code $buildExit")
+          }
+          logger.lifecycle("Parikshan iOS: xcodebuild succeeded")
+
+          // 3. Find .app bundle
+          val appBundle = iosBuildProducts.listFiles()
+            ?.firstOrNull { f -> f.name.endsWith(".app") && f.isDirectory }
+            ?: throw GradleException("No .app bundle found in ${iosBuildProducts.absolutePath}")
+          logger.lifecycle("Parikshan iOS: Built ${appBundle.name}")
+
+          // 4. Install on simulator
+          ProcessBuilder("xcrun", "simctl", "uninstall", "booted", iosBundleId)
+            .redirectErrorStream(true).start().waitFor()
+          val installProc = ProcessBuilder("xcrun", "simctl", "install", "booted", appBundle.absolutePath)
+            .redirectErrorStream(true).start()
+          val installOutput = installProc.inputStream.bufferedReader().readText()
+          if (installProc.waitFor() != 0) {
+            throw GradleException("Failed to install ${appBundle.name}: $installOutput")
+          }
+          logger.lifecycle("Parikshan iOS: Installed on simulator")
+
+          // 5. Start video recording (if enabled)
+          if (iosVideoEnabled) {
+            val videoDir = File(iosVideoOutputDir).also { it.mkdirs() }
+            iosVideoFile = File(videoDir, "ios-e2e-${System.currentTimeMillis()}.mp4").absolutePath
+            iosVideoProcess = ProcessBuilder(
+              "xcrun", "simctl", "io", "booted", "recordVideo", "--codec=h264", iosVideoFile!!
+            ).redirectErrorStream(true).start()
+            Thread.sleep(1000)
+            logger.lifecycle("Parikshan iOS: Video recording started → $iosVideoFile")
+          }
+
+          // 6. Launch app on simulator
+          logger.lifecycle("Parikshan iOS: Launching app on simulator...")
+          val launchProc = ProcessBuilder(
+            "xcrun", "simctl", "launch", "booted", iosBundleId
+          ).redirectErrorStream(true).start()
+          val launchOutput = launchProc.inputStream.bufferedReader().readText()
+          if (launchProc.waitFor() != 0) {
+            throw GradleException("Failed to launch app: $launchOutput")
+          }
+          logger.lifecycle("Parikshan iOS: App launched ($launchOutput)")
+
+          // 7. Wait for the in-app HTTP server to become available
+          logger.lifecycle("Parikshan iOS: Waiting for in-app server on port $iosPort...")
+          val host = extension.host.get()
+          val deadline = System.currentTimeMillis() + extension.startupTimeoutMs.get()
+          var serverReady = false
+          while (System.currentTimeMillis() <= deadline) {
+            val ready = runCatching {
+              Socket().use { socket ->
+                socket.connect(InetSocketAddress(host, iosPort), 750)
+              }
+              true
+            }.getOrDefault(false)
+            if (ready) {
+              serverReady = true
+              break
+            }
+            Thread.sleep(extension.startupPollIntervalMs.get())
+          }
+          if (!serverReady) {
+            throw GradleException("Parikshan iOS server did not start on port $iosPort")
+          }
+          logger.lifecycle("Parikshan iOS: Server ready on port $iosPort")
+        }
+        notCompatibleWithConfigurationCache(
+          "Parikshan iOS E2E uses runtime simctl/xcodebuild process management."
+        )
+      }
+
+      val stopIosAppTask = project.tasks.register("stopIosApp") {
+        group = "verification"
+        description = "Terminates the iOS app and stops video recording"
+        doLast {
+          // Stop video recording — must send SIGINT (not SIGTERM) so simctl
+          // writes the moov atom and produces a valid video file.
+          iosVideoProcess?.let { proc ->
+            val pid = proc.pid()
+            logger.lifecycle("Parikshan iOS: Stopping video recording (pid=$pid) with SIGINT...")
+            ProcessBuilder("kill", "-2", pid.toString())
+              .redirectErrorStream(true).start().waitFor(5, TimeUnit.SECONDS)
+            // Give simctl time to finalize the file
+            proc.waitFor(15, TimeUnit.SECONDS)
+            if (proc.isAlive) {
+              logger.warn("Parikshan iOS: Video process did not exit after SIGINT, forcing...")
+              proc.destroyForcibly()
+            }
+            iosVideoFile?.let { path ->
+              val vf = File(path)
+              if (vf.exists() && vf.length() > 0) {
+                logger.lifecycle("Parikshan iOS: Video saved → $path (${vf.length()} bytes)")
+              } else {
+                logger.warn("Parikshan iOS: Video file missing or empty at $path")
+              }
+            }
+          }
+          // Terminate the app
+          ProcessBuilder("xcrun", "simctl", "terminate", "booted", iosBundleId)
+            .redirectErrorStream(true).start().waitFor()
+          logger.lifecycle("Parikshan iOS: App terminated")
+        }
+      }
+
+      // Configure the iOS E2E test task (mirrors e2eWasmTest pattern)
+      project.tasks.register<Test>("e2eIosTest") {
+        group = "verification"
+        description = "Runs iOS simulator E2E tests: builds via xcodebuild, launches on simulator, runs JVM tests"
+        dependsOn(startIosAppTask)
+        finalizedBy(stopIosAppTask)
+        outputs.upToDateWhen { false } // Always re-run against the live iOS app
+
+        val jvmTestTask = project.tasks.findByName(extension.desktopTestTaskName.get()) as? Test
+          ?: project.tasks.findByName("test") as? Test
+
+        if (jvmTestTask != null) {
+          testClassesDirs = jvmTestTask.testClassesDirs
+          classpath = jvmTestTask.classpath
+        }
+
+        systemProperty("parikshan.target", "ios")
+        systemProperty("parikshan.host", extension.host.get())
+        systemProperty("parikshan.port", iosPort.toString())
+
+        // Pass through video properties
+        val videoEnabled = resolveIosRuntimeProperty("parikshan.video.enabled") ?: "false"
+        systemProperty("parikshan.video.enabled", videoEnabled)
+        systemProperty("parikshan.video.outputDir", iosVideoOutputDir)
+
+        val videoStepDelayMs = resolveIosRuntimeProperty("parikshan.video.stepDelayMs")
+        if (videoStepDelayMs != null) systemProperty("parikshan.video.stepDelayMs", videoStepDelayMs)
+
+        // Test filter
+        val testFilter = project.providers.gradleProperty("parikshan.testFilter").orNull
+        filter {
+          isFailOnNoMatchingTests = true
+          if (!testFilter.isNullOrBlank()) {
+            testFilter.split(",").map { it.trim() }.filter { it.isNotBlank() }.forEach { includeTestsMatching(it) }
+          } else {
+            includeTestsMatching("*E2ETest*")
+          }
+        }
       }
 
       // Android E2E Test Task (instrumentation/emulator)

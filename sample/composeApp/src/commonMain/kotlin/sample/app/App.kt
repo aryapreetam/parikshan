@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -108,19 +109,28 @@ private fun SidebarNavigation(
     Text("Parikshan Sample", style = MaterialTheme.typography.titleMedium)
     Button(
       onClick = onTaskListSelected,
-      modifier = Modifier.fillMaxWidth().parikshanTag("nav_task_list")
+      modifier = Modifier.fillMaxWidth().parikshanTag(
+        tag = "nav_task_list",
+        onClick = onTaskListSelected
+      )
     ) {
       Text("Task List")
     }
     Button(
       onClick = onInputFormSelected,
-      modifier = Modifier.fillMaxWidth().parikshanTag("nav_input_form")
+      modifier = Modifier.fillMaxWidth().parikshanTag(
+        tag = "nav_input_form",
+        onClick = onInputFormSelected
+      )
     ) {
       Text("Input Form")
     }
     Button(
       onClick = onScrollDemoSelected,
-      modifier = Modifier.fillMaxWidth().parikshanTag("nav_scroll_demo")
+      modifier = Modifier.fillMaxWidth().parikshanTag(
+        tag = "nav_scroll_demo",
+        onClick = onScrollDemoSelected
+      )
     ) {
       Text("Scroll Demo")
     }
@@ -144,19 +154,28 @@ private fun CompactNavigation(
     Text("Parikshan Sample", style = MaterialTheme.typography.titleMedium)
     Button(
       onClick = onTaskListSelected,
-      modifier = Modifier.fillMaxWidth().parikshanTag("nav_task_list")
+      modifier = Modifier.fillMaxWidth().parikshanTag(
+        tag = "nav_task_list",
+        onClick = onTaskListSelected
+      )
     ) {
       Text("Task List")
     }
     Button(
       onClick = onInputFormSelected,
-      modifier = Modifier.fillMaxWidth().parikshanTag("nav_input_form")
+      modifier = Modifier.fillMaxWidth().parikshanTag(
+        tag = "nav_input_form",
+        onClick = onInputFormSelected
+      )
     ) {
       Text("Input Form")
     }
     Button(
       onClick = onScrollDemoSelected,
-      modifier = Modifier.fillMaxWidth().parikshanTag("nav_scroll_demo")
+      modifier = Modifier.fillMaxWidth().parikshanTag(
+        tag = "nav_scroll_demo",
+        onClick = onScrollDemoSelected
+      )
     ) {
       Text("Scroll Demo")
     }
@@ -229,7 +248,12 @@ private fun InputFormScreen(
       value = value,
       onValueChange = onValueChange,
       label = { Text("Name") },
-      modifier = Modifier.fillMaxWidth().parikshanTag("input_name_field", text = value)
+      modifier =
+        Modifier.fillMaxWidth().parikshanTag(
+          tag = "input_name_field",
+          text = value,
+          onInput = onValueChange
+        )
     )
     Text(
       text = value,
@@ -237,7 +261,10 @@ private fun InputFormScreen(
     )
     Button(
       onClick = onSubmit,
-      modifier = Modifier.parikshanTag("form_submit_button")
+      modifier = Modifier.parikshanTag(
+        tag = "form_submit_button",
+        onClick = onSubmit
+      )
     ) {
       Text("Submit")
     }
@@ -259,7 +286,10 @@ private fun ScrollDemoScreen(
       Modifier
         .fillMaxSize()
         .verticalScroll(scrollState)
-        .parikshanTag("scroll_demo_screen"),
+        .parikshanTag(
+          tag = "scroll_demo_screen",
+          scrollState = scrollState
+        ),
     verticalArrangement = Arrangement.spacedBy(12.dp)
   ) {
     Text("Scroll Demo", style = MaterialTheme.typography.headlineSmall)
@@ -273,7 +303,11 @@ private fun ScrollDemoScreen(
 
     Button(
       onClick = onBottomAction,
-      modifier = Modifier.align(Alignment.Start).parikshanTag("scroll_target_button")
+      modifier =
+        Modifier.align(Alignment.Start).parikshanTag(
+          tag = "scroll_target_button",
+          onClick = onBottomAction
+        )
     ) {
       Text("Trigger Bottom Action")
     }

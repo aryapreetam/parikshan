@@ -24,6 +24,7 @@ kotlin {
     commonMain.dependencies {
       api(project(":parikshan-core"))
       implementation(compose.runtime)
+      implementation(compose.foundation)
       implementation(compose.ui)
       implementation(libs.kotlinx.coroutines.core)
       implementation(libs.kotlinx.serialization.json)

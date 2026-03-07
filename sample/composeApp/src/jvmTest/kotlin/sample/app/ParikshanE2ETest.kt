@@ -1,6 +1,8 @@
 package sample.app
 
 import io.github.aryapreetam.parikshan.E2ETestScope
+import io.github.aryapreetam.parikshan.protocol.Bounds
+import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import io.github.aryapreetam.parikshan.e2eTest
 import kotlin.test.Test
@@ -43,7 +45,7 @@ class ParikshanE2ETest {
       click("scroll_target_button")
       waitFor("scrolled_action_done")
       val nodes = getTree()
-      assertTrue(nodes.any { it.tag == "scroll_target_button" })
+      assertTrue(nodes.isVisibleWithin("scroll_demo_screen", "scroll_target_button"))
     }
 }
 
@@ -53,7 +55,7 @@ private suspend fun E2ETestScope.scrollUntilVisible(
   maxScrolls: Int = 40
 ) {
   repeat(maxScrolls + 1) { attempt ->
-    val targetVisible = getTree().any { it.tag == targetTag && it.visible }
+    val targetVisible = getTree().isVisibleWithin(containerTag, targetTag)
     if (targetVisible) {
       return
     }
@@ -63,3 +65,38 @@ private suspend fun E2ETestScope.scrollUntilVisible(
     scroll(containerTag, ScrollDirection.Down)
   }
 }
+
+private fun List<NodeSnapshot>.isVisibleWithin(
+  containerTag: String,
+  targetTag: String,
+  edgePadding: Double = 24.0
+): Boolean {
+  val containerBounds = firstOrNull { it.tag == containerTag }?.bounds ?: return false
+  val target = firstOrNull { it.tag == targetTag } ?: return false
+  if (!target.visible) return false
+  return containerBounds.canSafelyInteractWith(target.bounds, edgePadding)
+}
+
+private fun Bounds.canSafelyInteractWith(
+  other: Bounds,
+  edgePadding: Double
+): Boolean {
+  if (!hasArea() || !other.hasArea()) return false
+  val overlapLeft = maxOf(left, other.left)
+  val overlapTop = maxOf(top, other.top)
+  val overlapRight = minOf(right, other.right)
+  val overlapBottom = minOf(bottom, other.bottom)
+  if (overlapRight <= overlapLeft || overlapBottom <= overlapTop) return false
+
+  val centerX = (other.left + other.right) / 2.0
+  val centerY = (other.top + other.bottom) / 2.0
+  val safeLeft = left + edgePadding
+  val safeTop = top + edgePadding
+  val safeRight = right - edgePadding
+  val safeBottom = bottom - edgePadding
+  if (safeRight <= safeLeft || safeBottom <= safeTop) return false
+
+  return centerX in safeLeft..safeRight && centerY in safeTop..safeBottom
+}
+
+private fun Bounds.hasArea(): Boolean = right > left && bottom > top

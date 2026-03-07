@@ -39,6 +39,7 @@ kotlin {
     }
   }
 
+
   sourceSets {
     commonMain.dependencies {
       implementation(compose.runtime)
@@ -121,3 +122,7 @@ tasks.withType<Test>().configureEach {
     exclude("**/*UITest*")
   }
 }
+
+// iOS E2E orchestration is handled by the Parikshan Gradle plugin (e2eIosTest task).
+// The plugin builds via xcodebuild, installs on the simulator, launches the app,
+// waits for the in-app HTTP server, then runs JVM tests with parikshan.target=ios.

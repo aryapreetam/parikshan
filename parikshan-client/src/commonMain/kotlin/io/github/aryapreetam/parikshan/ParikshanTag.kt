@@ -1,5 +1,6 @@
 package io.github.aryapreetam.parikshan
 
+import androidx.compose.foundation.ScrollState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Modifier
@@ -7,6 +8,7 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
+import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 
 /**
  * Tracks node geometry/text for Parikshan web automation while preserving Compose testTag semantics.
@@ -14,7 +16,11 @@ import androidx.compose.ui.platform.testTag
 fun Modifier.parikshanTag(
   tag: String,
   text: String? = null,
-  visible: Boolean = true
+  visible: Boolean = true,
+  onClick: (() -> Unit)? = null,
+  onInput: ((String) -> Unit)? = null,
+  onScroll: ((ScrollDirection) -> Unit)? = null,
+  scrollState: ScrollState? = null
 ): Modifier =
   composed {
     SideEffect {
@@ -22,6 +28,13 @@ fun Modifier.parikshanTag(
         tag = tag,
         text = text,
         visible = visible
+      )
+      ParikshanTagBridgeHooks.onTagActions(
+        tag = tag,
+        onClick = onClick,
+        onInput = onInput,
+        onScroll = onScroll,
+        scrollState = scrollState
       )
     }
     DisposableEffect(tag) {
@@ -59,4 +72,12 @@ internal expect object ParikshanTagBridgeHooks {
   )
 
   fun onTagRemoved(tag: String)
+
+  fun onTagActions(
+    tag: String,
+    onClick: (() -> Unit)?,
+    onInput: ((String) -> Unit)?,
+    onScroll: ((ScrollDirection) -> Unit)?,
+    scrollState: ScrollState?
+  )
 }

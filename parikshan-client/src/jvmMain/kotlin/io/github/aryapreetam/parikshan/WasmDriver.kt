@@ -104,31 +104,37 @@ private class WasmPlaywrightSession private constructor(
       is Command.Click -> {
         val node = getNode(command.tag)
           ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
-        page.mouse().click(node.bounds.centerX, node.bounds.centerY)
+        if (!invokeBridgeClick(command.tag)) {
+          page.mouse().click(node.bounds.centerX, node.bounds.centerY)
+        }
         Response.Ok(command.id)
       }
 
       is Command.Input -> {
         val node = getNode(command.tag)
           ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
-        page.mouse().click(node.bounds.centerX, node.bounds.centerY)
-        page.keyboard().press("ControlOrMeta+A")
-        page.keyboard().type(command.text)
+        if (!invokeBridgeInput(command.tag, command.text)) {
+          page.mouse().click(node.bounds.centerX, node.bounds.centerY)
+          page.keyboard().press("ControlOrMeta+A")
+          page.keyboard().type(command.text)
+        }
         Response.Ok(command.id)
       }
 
       is Command.Scroll -> {
         val node = getNode(command.tag)
           ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
-        page.mouse().move(node.bounds.centerX, node.bounds.centerY)
-        val (deltaX, deltaY) =
-          when (command.direction) {
-            ScrollDirection.Up -> 0.0 to -420.0
-            ScrollDirection.Down -> 0.0 to 420.0
-            ScrollDirection.Left -> -420.0 to 0.0
-            ScrollDirection.Right -> 420.0 to 0.0
-          }
-        page.mouse().wheel(deltaX, deltaY)
+        if (!invokeBridgeScroll(command.tag, command.direction)) {
+          page.mouse().move(node.bounds.centerX, node.bounds.centerY)
+          val (deltaX, deltaY) =
+            when (command.direction) {
+              ScrollDirection.Up -> 0.0 to -420.0
+              ScrollDirection.Down -> 0.0 to 420.0
+              ScrollDirection.Left -> -420.0 to 0.0
+              ScrollDirection.Right -> 420.0 to 0.0
+            }
+          page.mouse().wheel(deltaX, deltaY)
+        }
         Response.Ok(command.id)
       }
 
@@ -253,6 +259,36 @@ private class WasmPlaywrightSession private constructor(
       payload
     )
   }
+
+  private fun invokeBridgeClick(tag: String): Boolean =
+    runCatching {
+      page.evaluate(
+        "tag => (window.__parikshan_click ? window.__parikshan_click(tag) : false)",
+        tag
+      ) as? Boolean ?: false
+    }.getOrDefault(false)
+
+  private fun invokeBridgeInput(
+    tag: String,
+    text: String
+  ): Boolean =
+    runCatching {
+      page.evaluate(
+        "([tag, text]) => (window.__parikshan_input ? window.__parikshan_input(tag, text) : false)",
+        arrayOf(tag, text)
+      ) as? Boolean ?: false
+    }.getOrDefault(false)
+
+  private fun invokeBridgeScroll(
+    tag: String,
+    direction: ScrollDirection
+  ): Boolean =
+    runCatching {
+      page.evaluate(
+        "([tag, direction]) => (window.__parikshan_scroll ? window.__parikshan_scroll(tag, direction) : false)",
+        arrayOf(tag, direction.name)
+      ) as? Boolean ?: false
+    }.getOrDefault(false)
 
   companion object {
     fun start(

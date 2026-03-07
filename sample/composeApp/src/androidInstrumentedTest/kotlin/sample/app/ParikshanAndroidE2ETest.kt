@@ -101,8 +101,8 @@ private fun Bounds.canSafelyInteractWith(
   val centerX = (other.left + other.right) / 2.0
   val centerY = (other.top + other.bottom) / 2.0
   val horizontalPadding = edgePadding
-  val topPadding = edgePadding
-  val bottomPadding = maxOf(edgePadding, height() * 0.2)
+  val topPadding = maxOf(edgePadding, other.height() * 0.2)
+  val bottomPadding = maxOf(edgePadding, other.height() * 0.35)
   val safeLeft = left + horizontalPadding
   val safeTop = top + topPadding
   val safeRight = right - horizontalPadding

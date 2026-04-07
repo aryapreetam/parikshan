@@ -29,10 +29,12 @@ fun App() {
   val activeScreen = remember { mutableStateOf(SampleScreen.TaskList) }
   val formValue = remember { mutableStateOf("") }
   val showFormSuccess = remember { mutableStateOf(false) }
+  val selectorResultMessage = remember { mutableStateOf<String?>(null) }
   val showScrollSuccess = remember { mutableStateOf(false) }
   val onTaskListSelected = { activeScreen.value = SampleScreen.TaskList }
   val onInputFormSelected = {
     showFormSuccess.value = false
+    selectorResultMessage.value = null
     activeScreen.value = SampleScreen.InputForm
   }
   val onScrollDemoSelected = {
@@ -63,6 +65,9 @@ fun App() {
             onFormValueChange = { formValue.value = it },
             onFormSubmit = { showFormSuccess.value = true },
             showFormSuccess = showFormSuccess.value,
+            selectorResultMessage = selectorResultMessage.value,
+            onTagPriorityAction = { selectorResultMessage.value = "Tag selector won" },
+            onUniqueTextAction = { selectorResultMessage.value = "Unique text clicked" },
             showScrollSuccess = showScrollSuccess.value,
             onBottomAction = { showScrollSuccess.value = true }
           )
@@ -82,6 +87,9 @@ fun App() {
             onFormValueChange = { formValue.value = it },
             onFormSubmit = { showFormSuccess.value = true },
             showFormSuccess = showFormSuccess.value,
+            selectorResultMessage = selectorResultMessage.value,
+            onTagPriorityAction = { selectorResultMessage.value = "Tag selector won" },
+            onUniqueTextAction = { selectorResultMessage.value = "Unique text clicked" },
             showScrollSuccess = showScrollSuccess.value,
             onBottomAction = { showScrollSuccess.value = true }
           )
@@ -190,6 +198,9 @@ private fun ContentSurface(
   onFormValueChange: (String) -> Unit,
   onFormSubmit: () -> Unit,
   showFormSuccess: Boolean,
+  selectorResultMessage: String?,
+  onTagPriorityAction: () -> Unit,
+  onUniqueTextAction: () -> Unit,
   showScrollSuccess: Boolean,
   onBottomAction: () -> Unit
 ) {
@@ -208,7 +219,10 @@ private fun ContentSurface(
           value = formValue,
           onValueChange = onFormValueChange,
           onSubmit = onFormSubmit,
-          showSuccess = showFormSuccess
+          showSuccess = showFormSuccess,
+          selectorResultMessage = selectorResultMessage,
+          onTagPriorityAction = onTagPriorityAction,
+          onUniqueTextAction = onUniqueTextAction
         )
 
       SampleScreen.ScrollDemo ->
@@ -237,7 +251,10 @@ private fun InputFormScreen(
   value: String,
   onValueChange: (String) -> Unit,
   onSubmit: () -> Unit,
-  showSuccess: Boolean
+  showSuccess: Boolean,
+  selectorResultMessage: String?,
+  onTagPriorityAction: () -> Unit,
+  onUniqueTextAction: () -> Unit
 ) {
   Column(
     modifier = Modifier.fillMaxSize().parikshanTag("input_form_screen"),
@@ -260,13 +277,61 @@ private fun InputFormScreen(
       modifier = Modifier.fillMaxWidth().parikshanTag("input_name_preview", text = value)
     )
     Button(
+      onClick = onTagPriorityAction,
+      modifier =
+        Modifier.parikshanTag(
+          tag = "Submit",
+          text = "Tag Selector Wins",
+          onClick = onTagPriorityAction
+        )
+    ) {
+      Text("Tag Selector Wins")
+    }
+    Button(
       onClick = onSubmit,
       modifier = Modifier.parikshanTag(
         tag = "form_submit_button",
+        text = "Submit",
         onClick = onSubmit
       )
     ) {
       Text("Submit")
+    }
+    Button(
+      onClick = onUniqueTextAction,
+      modifier =
+        Modifier.parikshanTag(
+          tag = "unique_text_button",
+          text = "Unique Text Action",
+          onClick = onUniqueTextAction
+        )
+    ) {
+      Text("Unique Text Action")
+    }
+    Button(
+      onClick = {},
+      modifier =
+        Modifier.parikshanTag(
+          tag = "duplicate_action_primary",
+          text = "Duplicate Action",
+          onClick = {}
+        )
+    ) {
+      Text("Duplicate Action")
+    }
+    Button(
+      onClick = {},
+      modifier =
+        Modifier.parikshanTag(
+          tag = "duplicate_action_secondary",
+          text = "Duplicate Action",
+          onClick = {}
+        )
+    ) {
+      Text("Duplicate Action")
+    }
+    selectorResultMessage?.let { message ->
+      Text(message, modifier = Modifier.parikshanTag("selector_result_message", text = message))
     }
     if (showSuccess) {
       Text("Submit Successful", modifier = Modifier.parikshanTag("form_success_message", text = "Submit Successful"))
@@ -306,6 +371,7 @@ private fun ScrollDemoScreen(
       modifier =
         Modifier.align(Alignment.Start).parikshanTag(
           tag = "scroll_target_button",
+          text = "Trigger Bottom Action",
           onClick = onBottomAction
         )
     ) {

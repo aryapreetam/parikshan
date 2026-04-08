@@ -14,8 +14,6 @@ plugins {
   id("io.github.aryapreetam.parikshan.gradle-plugin")
 }
 
-val parikshanTestFilter = providers.gradleProperty("parikshan.testFilter").orNull
-
 kotlin {
   jvmToolchain(17)
 
@@ -46,7 +44,6 @@ kotlin {
       implementation(compose.ui)
       implementation(compose.foundation)
       implementation(compose.material3)
-      implementation(project(":lib"))
     }
 
     commonTest.dependencies {
@@ -77,11 +74,6 @@ android {
     applicationId = "sample.app"
     versionCode = 1
     versionName = "1.0.0"
-    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    if (!parikshanTestFilter.isNullOrBlank()) {
-      testInstrumentationRunnerArguments["class"] = parikshanTestFilter
-    }
-
   }
 
   packaging {
@@ -90,12 +82,6 @@ android {
       pickFirsts += "META-INF/io.netty.versions.properties"
     }
   }
-}
-
-dependencies {
-  androidTestImplementation(project(":parikshan-client"))
-  androidTestImplementation("androidx.compose.ui:ui-test-junit4-android:1.9.0")
-  debugImplementation("androidx.compose.ui:ui-test-manifest:1.9.0")
 }
 
 compose.desktop {
@@ -108,13 +94,6 @@ compose.desktop {
       packageVersion = "1.0.0"
     }
   }
-}
-
-// Parikshan Configuration
-configure<io.github.aryapreetam.parikshan.gradle.ParikshanExtension> {
-    desktopTestTaskName.set("jvmTest")
-    // Use development webpack for faster test feedback loop
-    wasmDistributionTaskName.set("wasmJsBrowserDevelopmentWebpack") 
 }
 
 tasks.withType<Test>().configureEach {

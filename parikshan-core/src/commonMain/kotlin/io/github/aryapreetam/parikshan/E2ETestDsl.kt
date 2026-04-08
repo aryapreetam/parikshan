@@ -13,6 +13,9 @@ interface TestDriver {
   suspend fun send(command: Command): Response
 
   suspend fun close()
+
+  fun resolveArtifactPath(relativePath: String): String =
+    "build/parikshan/${relativePath.trimStart('/', '\\')}"
 }
 
 data class E2ETestConfig(
@@ -180,6 +183,12 @@ class E2ETestScope internal constructor(
     settleAfterCommand()
   }
 
+  fun artifactPath(relativePath: String): String =
+    driver.resolveArtifactPath(relativePath)
+
+  fun screenshotPath(name: String): String =
+    artifactPath("screenshots/${name.trim().ifEmpty { "unnamed" }}.png")
+
   suspend fun pressBack() {
     expectOk(
       action = "pressBack()",
@@ -288,3 +297,9 @@ private fun nextId(): String {
 }
 
 private const val WAIT_POLL_INTERVAL_MS = 50L
+
+@Target(AnnotationTarget.FUNCTION)
+@Retention(AnnotationRetention.SOURCE)
+annotation class ParikshanScenario(
+  val testName: String = ""
+)

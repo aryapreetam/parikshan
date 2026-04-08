@@ -31,6 +31,12 @@ import kotlinx.coroutines.runBlocking
 class AndroidDriver private constructor(
   private val composeUiTest: AndroidComposeTestRule<*, *>
 ) : TestDriver {
+  override fun resolveArtifactPath(relativePath: String): String =
+    File(
+      composeUiTest.activity.cacheDir,
+      "parikshan/${relativePath.trimStart('/', '\\')}"
+    ).absolutePath
+
   override suspend fun send(command: Command): Response {
     return runCatching {
       handleCommand(command)

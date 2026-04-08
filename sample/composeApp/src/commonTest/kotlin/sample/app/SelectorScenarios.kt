@@ -1,6 +1,7 @@
 package sample.app
 
 import io.github.aryapreetam.parikshan.E2ETestScope
+import io.github.aryapreetam.parikshan.ParikshanScenario
 import io.github.aryapreetam.parikshan.Selector
 import io.github.aryapreetam.parikshan.resolveNode
 import io.github.aryapreetam.parikshan.protocol.Bounds
@@ -13,14 +14,16 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.delay
 
-suspend fun E2ETestScope.runTaskListScenario(screenshotPath: String? = null) {
+@ParikshanScenario(testName = "testTaskList")
+suspend fun E2ETestScope.runTaskListScenario() {
   waitFor("nav_task_list")
   click("nav_task_list")
   waitFor("task_list_screen")
   assertVisible("task_item_1")
-  screenshotPath?.let { screenshot(it) }
+  screenshot(screenshotPath("task-list"))
 }
 
+@ParikshanScenario(testName = "testInputForm")
 suspend fun E2ETestScope.runInputFormTagRegressionScenario() {
   openInputForm()
   input("input_name_field", "New Task")
@@ -31,6 +34,7 @@ suspend fun E2ETestScope.runInputFormTagRegressionScenario() {
   assertVisible("form_success_message")
 }
 
+@ParikshanScenario(testName = "testUniqueTextSelector")
 suspend fun E2ETestScope.runUniqueTextScenario() {
   openInputForm()
   click("Unique Text Action")
@@ -38,6 +42,7 @@ suspend fun E2ETestScope.runUniqueTextScenario() {
   assertVisible("Unique text clicked")
 }
 
+@ParikshanScenario(testName = "testTagPrecedenceOverText")
 suspend fun E2ETestScope.runTagPrecedenceScenario() {
   openInputForm()
   click("Submit")
@@ -45,6 +50,7 @@ suspend fun E2ETestScope.runTagPrecedenceScenario() {
   assertText("selector_result_message", "Tag selector won")
 }
 
+@ParikshanScenario(testName = "testAmbiguousTextSelectorFailsClearly")
 suspend fun E2ETestScope.runAmbiguousTextScenario() {
   openInputForm()
 
@@ -59,6 +65,7 @@ suspend fun E2ETestScope.runAmbiguousTextScenario() {
   assertContains(error.message.orEmpty(), "duplicate_action_secondary")
 }
 
+@ParikshanScenario(testName = "testScrollAndTree")
 suspend fun E2ETestScope.runOffScreenVisibilityScenario() {
   waitFor("nav_scroll_demo")
   click("nav_scroll_demo")

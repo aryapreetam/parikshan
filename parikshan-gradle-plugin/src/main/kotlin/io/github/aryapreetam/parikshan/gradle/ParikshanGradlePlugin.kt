@@ -6,6 +6,8 @@ import java.net.Socket
 import java.time.Duration
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
+import org.gradle.api.artifacts.Dependency
+import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -19,7 +21,6 @@ import org.gradle.api.tasks.testing.Test
 import org.gradle.kotlin.dsl.create
 import org.gradle.kotlin.dsl.named
 import org.gradle.kotlin.dsl.register
-import org.gradle.kotlin.dsl.withType
 
 abstract class ParikshanExtension @Inject constructor(
   objects: ObjectFactory
@@ -28,7 +29,7 @@ abstract class ParikshanExtension @Inject constructor(
   val appJarTaskName: Property<String> = objects.property(String::class.java).convention("packageUberJarForCurrentOS")
 
   @get:Input
-  val desktopTestTaskName: Property<String> = objects.property(String::class.java).convention("desktopTest")
+  val desktopTestTaskName: Property<String> = objects.property(String::class.java)
 
   @get:Input
   val appArgs: ListProperty<String> = objects.listProperty(String::class.java).convention(listOf("--test-mode"))
@@ -46,10 +47,13 @@ abstract class ParikshanExtension @Inject constructor(
   val startupPollIntervalMs: Property<Long> = objects.property(Long::class.java).convention(250L)
 
   @get:Input
-  val wasmDistributionTaskName: Property<String> = objects.property(String::class.java).convention("wasmJsBrowserDistribution")
+  val wasmDistributionTaskName: Property<String> = objects.property(String::class.java)
 
   @get:Input
   val wasmServerPort: Property<Int> = objects.property(Int::class.java).convention(8081)
+
+  @get:Input
+  val androidLaunchActivityClassName: Property<String> = objects.property(String::class.java)
 }
 
 class ParikshanGradlePlugin : Plugin<Project> {
@@ -96,55 +100,6 @@ class ParikshanGradlePlugin : Plugin<Project> {
     val prepareWasmAssetsTask = project.tasks.register("prepareParikshanWasmAssets") {
       group = "verification"
       description = "Prepares Wasm assets (JS, Wasm, HTML) for Parikshan serving"
-
-      val distTaskName = extension.wasmDistributionTaskName.get()
-      val isDevelopment = distTaskName.contains("Development", ignoreCase = true)
-      dependsOn(distTaskName)
-      // Ensure processResources runs so index.html is available
-      project.tasks.findByName("wasmJsProcessResources")?.let { dependsOn(it) }
-
-      // Declare inputs/outputs for caching; providers are resolved lazily.
-      val primaryDistDir = if (isDevelopment) wasmDevDir else wasmProdDir
-      inputs.dir(primaryDistDir).optional()
-      inputs.dir(wasmResourcesDir).optional()
-      outputs.dir(wasmOutputDir)
-
-      doLast {
-        val output = wasmOutputDir.get().asFile
-        output.deleteRecursively()
-        output.mkdirs()
-
-        // Resolve distribution directory: primary (based on task name) → fallback to whichever exists.
-        val primary = primaryDistDir.get().asFile
-        val distDir = when {
-          primary.exists() -> primary
-          wasmDevDir.get().asFile.exists() -> wasmDevDir.get().asFile
-          wasmProdDir.get().asFile.exists() -> wasmProdDir.get().asFile
-          else -> throw GradleException(
-            "Parikshan: Could not find Wasm distribution output.\n" +
-              "  Checked: ${primary.absolutePath}\n" +
-              "  Dev:     ${wasmDevDir.get().asFile.absolutePath}\n" +
-              "  Prod:    ${wasmProdDir.get().asFile.absolutePath}\n" +
-              "Ensure '${distTaskName}' has run successfully."
-          )
-        }
-        logger.lifecycle("Parikshan: Copying Wasm distribution from ${distDir.absolutePath}")
-        distDir.copyRecursively(output, overwrite = true)
-
-        // Ensure index.html exists (webpack output doesn't always include it)
-        val indexHtml = File(output, "index.html")
-        if (!indexHtml.exists()) {
-          val srcIndex = File(wasmResourcesDir.get().asFile, "index.html")
-          if (srcIndex.exists()) {
-            srcIndex.copyTo(indexHtml)
-            logger.lifecycle("Parikshan: Copied index.html from processedResources")
-          }
-        }
-
-        if (!indexHtml.exists()) {
-          logger.warn("Parikshan: Warning — index.html not found in ${output.absolutePath}. Wasm app will not load.")
-        }
-      }
     }
 
     // 2. Start Server Task
@@ -182,38 +137,99 @@ class ParikshanGradlePlugin : Plugin<Project> {
         description = "Installs Playwright browsers required for Parikshan Wasm tests"
         mainClass.set("com.microsoft.playwright.CLI")
         args = listOf("install", "chromium")
-
-        // Use the test runtime classpath which should contain the Playwright dependency.
-        // findByName is safe here: this lambda runs during task realization (configuration phase).
-        val jvmTestTask = project.tasks.findByName("jvmTest") as? Test
-            ?: project.tasks.findByName("test") as? Test
-
-        if (jvmTestTask != null) {
-            classpath = jvmTestTask.classpath
-        } else {
-            logger.warn("Parikshan: Could not resolve 'jvmTest' or 'test' task to find Playwright classpath.")
-        }
     }
 
     project.afterEvaluate {
+      project.configureParikshanDependencies()
+      project.configureAndroidInstrumentationDefaults()
+      project.configureGeneratedParikshanRunners(extension)
+
+      val hostTestTaskName = project.resolveHostTestTaskName(extension.desktopTestTaskName.orNull)
+      val hostTestTask = project.tasks.named<Test>(hostTestTaskName)
+      logger.lifecycle("Parikshan: Using host JVM test task '$hostTestTaskName'")
+
+      val wasmDistributionTaskName =
+        project.resolveWasmDistributionTaskName(extension.wasmDistributionTaskName.orNull)
+      logger.lifecycle("Parikshan: Using Wasm distribution task '$wasmDistributionTaskName'")
+
       startDesktopTask.configure {
         dependsOn(extension.appJarTaskName.get())
       }
 
-      val desktopTestTask = project.tasks.named<Test>(extension.desktopTestTaskName.get())
-      desktopTestTask.configure {
+      prepareWasmAssetsTask.configure {
+        val isDevelopment = wasmDistributionTaskName.isDevelopmentWasmTask()
+        val primaryDistDir = if (isDevelopment) wasmDevDir else wasmProdDir
+
+        dependsOn(wasmDistributionTaskName)
+        project.tasks.findByName("wasmJsProcessResources")?.let { dependsOn(it) }
+
+        inputs.dir(primaryDistDir).optional()
+        inputs.dir(wasmResourcesDir).optional()
+        outputs.dir(wasmOutputDir)
+
+        doLast {
+          val output = wasmOutputDir.get().asFile
+          output.deleteRecursively()
+          output.mkdirs()
+
+          val primary = primaryDistDir.get().asFile
+          val distDir = when {
+            primary.exists() -> primary
+            wasmDevDir.get().asFile.exists() -> wasmDevDir.get().asFile
+            wasmProdDir.get().asFile.exists() -> wasmProdDir.get().asFile
+            else -> throw GradleException(
+              "Parikshan: Could not find Wasm distribution output.\n" +
+                "  Checked: ${primary.absolutePath}\n" +
+                "  Dev:     ${wasmDevDir.get().asFile.absolutePath}\n" +
+                "  Prod:    ${wasmProdDir.get().asFile.absolutePath}\n" +
+                "Ensure '$wasmDistributionTaskName' has run successfully."
+            )
+          }
+          logger.lifecycle("Parikshan: Copying Wasm distribution from ${distDir.absolutePath}")
+          distDir.copyRecursively(output, overwrite = true)
+
+          val indexHtml = File(output, "index.html")
+          if (!indexHtml.exists()) {
+            val srcIndex = File(wasmResourcesDir.get().asFile, "index.html")
+            if (srcIndex.exists()) {
+              srcIndex.copyTo(indexHtml)
+              logger.lifecycle("Parikshan: Copied index.html from processedResources")
+            }
+          }
+
+          if (!indexHtml.exists()) {
+            logger.warn("Parikshan: Warning — index.html not found in ${output.absolutePath}. Wasm app will not load.")
+          }
+        }
+      }
+
+      installPlaywrightTask.configure {
+        classpath = hostTestTask.get().classpath
+      }
+
+      project.tasks.register<Test>("e2eDesktopTest") {
+        group = "verification"
+        description = "Runs desktop tests with visible app automation through Parikshan"
         dependsOn(startDesktopTask)
         finalizedBy(stopDesktopTask)
+        outputs.upToDateWhen { false }
+
+        testClassesDirs = hostTestTask.get().testClassesDirs
+        classpath = hostTestTask.get().classpath
 
         systemProperty("parikshan.host", extension.host.get())
         systemProperty("parikshan.port", extension.port.get().toString())
         systemProperty("parikshan.target", "desktop")
-      }
 
-      project.tasks.register("e2eDesktopTest") {
-        group = "verification"
-        description = "Runs desktop tests with visible app automation through Parikshan"
-        dependsOn(desktopTestTask)
+        val testFilter = project.providers.gradleProperty("parikshan.testFilter").orNull
+        filter {
+          isFailOnNoMatchingTests = true
+          if (!testFilter.isNullOrBlank()) {
+            testFilter.split(",").map { it.trim() }.filter { it.isNotBlank() }.forEach { includeTestsMatching(it) }
+          } else {
+            includeTestsMatching("*E2ETest*")
+          }
+        }
       }
 
       // Wasm E2E Test Task
@@ -225,14 +241,8 @@ class ParikshanGradlePlugin : Plugin<Project> {
           finalizedBy(stopWasmTask)
           outputs.upToDateWhen { false } // Always re-run against the live Wasm app
 
-          // Inherit classpath/testClasses from the standard test task or a configured one
-          val jvmTestTask = project.tasks.findByName("jvmTest") as? Test 
-              ?: project.tasks.findByName("test") as? Test
-
-          if (jvmTestTask != null) {
-              testClassesDirs = jvmTestTask.testClassesDirs
-              classpath = jvmTestTask.classpath
-          }
+          testClassesDirs = hostTestTask.get().testClassesDirs
+          classpath = hostTestTask.get().classpath
 
           val port = extension.wasmServerPort.get()
           systemProperty("parikshan.target", "wasm")
@@ -453,13 +463,8 @@ class ParikshanGradlePlugin : Plugin<Project> {
         finalizedBy(stopIosAppTask)
         outputs.upToDateWhen { false } // Always re-run against the live iOS app
 
-        val jvmTestTask = project.tasks.findByName(extension.desktopTestTaskName.get()) as? Test
-          ?: project.tasks.findByName("test") as? Test
-
-        if (jvmTestTask != null) {
-          testClassesDirs = jvmTestTask.testClassesDirs
-          classpath = jvmTestTask.classpath
-        }
+        testClassesDirs = hostTestTask.get().testClassesDirs
+        classpath = hostTestTask.get().classpath
 
         systemProperty("parikshan.target", "ios")
         systemProperty("parikshan.host", extension.host.get())
@@ -1222,3 +1227,130 @@ private object ParikshanDesktopProcess {
 }
 
 private fun Boolean?.orFalse(): Boolean = this == true
+
+private const val PARIKSHAN_LOCAL_RUNTIME_PROJECT = ":lib"
+private const val PARIKSHAN_LOCAL_ANDROID_CLIENT_PROJECT = ":parikshan-client"
+private const val ANDROID_COMPOSE_UI_TEST_DEPENDENCY = "androidx.compose.ui:ui-test-junit4-android:1.9.0"
+private const val ANDROID_COMPOSE_UI_TEST_MANIFEST_DEPENDENCY = "androidx.compose.ui:ui-test-manifest:1.9.0"
+
+private fun Project.configureParikshanDependencies() {
+  addLocalProjectDependencyIfPresent(
+    configurationName = "commonMainImplementation",
+    projectPath = PARIKSHAN_LOCAL_RUNTIME_PROJECT,
+    description = "Parikshan runtime"
+  )
+  addLocalProjectDependencyIfPresent(
+    configurationName = "androidTestImplementation",
+    projectPath = PARIKSHAN_LOCAL_ANDROID_CLIENT_PROJECT,
+    description = "Parikshan Android client"
+  )
+  addDependencyIfAbsent(
+    configurationName = "androidTestImplementation",
+    notation = ANDROID_COMPOSE_UI_TEST_DEPENDENCY,
+    description = "Compose Android UI test runner"
+  )
+  addDependencyIfAbsent(
+    configurationName = "debugImplementation",
+    notation = ANDROID_COMPOSE_UI_TEST_MANIFEST_DEPENDENCY,
+    description = "Compose Android UI test manifest"
+  )
+}
+
+private fun Project.addLocalProjectDependencyIfPresent(
+  configurationName: String,
+  projectPath: String,
+  description: String
+) {
+  val dependencyProject = rootProject.findProject(projectPath)
+  if (dependencyProject == null) {
+    logger.info(
+      "Parikshan: Skipping $description auto-wiring because project '$projectPath' is not part of this build."
+    )
+    return
+  }
+
+  addDependencyIfAbsent(
+    configurationName = configurationName,
+    notation = dependencies.project(mapOf("path" to dependencyProject.path)),
+    description = description
+  )
+}
+
+private fun Project.addDependencyIfAbsent(
+  configurationName: String,
+  notation: Any,
+  description: String
+) {
+  val configuration = configurations.findByName(configurationName) ?: return
+  val candidate = dependencies.create(notation)
+  val alreadyPresent = configuration.dependencies.any { it.matchesParikshanDependency(candidate) }
+  if (alreadyPresent) {
+    return
+  }
+
+  dependencies.add(configurationName, candidate)
+  logger.info("Parikshan: Added $description to ${path}:$configurationName")
+}
+
+private fun Dependency.matchesParikshanDependency(candidate: Dependency): Boolean {
+  return when {
+    this is ProjectDependency && candidate is ProjectDependency ->
+      name == candidate.name
+
+    else -> group == candidate.group && name == candidate.name
+  }
+}
+
+private fun Project.resolveHostTestTaskName(overrideName: String?): String {
+  val requestedName = overrideName?.trim().orEmpty()
+  if (requestedName.isNotEmpty()) {
+    val requestedTask = tasks.findByName(requestedName)
+    require(requestedTask is Test) {
+      "Parikshan: Configured desktopTestTaskName '$requestedName' was not found as a Test task."
+    }
+    return requestedName
+  }
+
+  val preferredNames = listOf("jvmTest", "desktopTest", "test")
+  preferredNames.firstOrNull { tasks.findByName(it) is Test }?.let { return it }
+
+  val availableTasks = tasks.withType(Test::class.java).map { it.name }.sorted()
+  throw GradleException(
+    "Parikshan could not find a host JVM Test task. " +
+      "Checked ${preferredNames.joinToString()}. " +
+      "Available Test tasks: ${availableTasks.ifEmpty { listOf("<none>") }.joinToString()}."
+  )
+}
+
+private fun Project.resolveWasmDistributionTaskName(overrideName: String?): String {
+  val requestedName = overrideName?.trim().orEmpty()
+  if (requestedName.isNotEmpty()) {
+    requireNotNull(tasks.findByName(requestedName)) {
+      "Parikshan: Configured wasmDistributionTaskName '$requestedName' was not found."
+    }
+    return requestedName
+  }
+
+  val preferredNames =
+    listOf(
+      "wasmJsBrowserDevelopmentWebpack",
+      "wasmJsBrowserDevelopmentExecutableDistribution",
+      "wasmJsBrowserDistribution",
+      "wasmJsBrowserProductionWebpack",
+    )
+  preferredNames.firstOrNull { tasks.findByName(it) != null }?.let { return it }
+
+  val availableTasks =
+    tasks
+      .matching { task -> task.name.contains("wasm", ignoreCase = true) }
+      .map { it.name }
+      .sorted()
+
+  throw GradleException(
+    "Parikshan could not find a supported Wasm distribution task. " +
+      "Checked ${preferredNames.joinToString()}. " +
+      "Available Wasm-like tasks: ${availableTasks.ifEmpty { listOf("<none>") }.joinToString()}."
+  )
+}
+
+private fun String.isDevelopmentWasmTask(): Boolean = contains("Development", ignoreCase = true)

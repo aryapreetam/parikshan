@@ -361,7 +361,10 @@ private class WasmPlaywrightSession private constructor(
         }
         Thread.sleep(120)
       }
-      error("Timed out waiting for WASM Parikshan bridge. Ensure parikshanTag is used in the UI.")
+      error(
+        "Timed out waiting for WASM Parikshan bridge. " +
+          "Ensure nodes are tagged with Modifier.testTag(...) and that the current Parikshan compatibility bridge is installed for the UI."
+      )
     }
   }
 }

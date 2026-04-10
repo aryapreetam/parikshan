@@ -5,12 +5,14 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.time.Duration
 import java.util.concurrent.TimeUnit
+import java.util.jar.JarFile
 import javax.inject.Inject
 import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.Task
 import org.gradle.api.logging.Logger
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.ListProperty
@@ -32,7 +34,7 @@ abstract class ParikshanExtension @Inject constructor(
   val desktopTestTaskName: Property<String> = objects.property(String::class.java)
 
   @get:Input
-  val appArgs: ListProperty<String> = objects.listProperty(String::class.java).convention(listOf("--test-mode"))
+  val appArgs: ListProperty<String> = objects.listProperty(String::class.java).convention(emptyList())
 
   @get:Input
   val host: Property<String> = objects.property(String::class.java).convention("127.0.0.1")
@@ -48,6 +50,9 @@ abstract class ParikshanExtension @Inject constructor(
 
   @get:Input
   val wasmDistributionTaskName: Property<String> = objects.property(String::class.java)
+
+  @get:Input
+  val desktopWindowTitle: Property<String> = objects.property(String::class.java)
 
   @get:Input
   val wasmServerPort: Property<Int> = objects.property(Int::class.java).convention(8081)
@@ -70,11 +75,13 @@ class ParikshanGradlePlugin : Plugin<Project> {
         doLast {
           ParikshanDesktopProcess.start(
             project = project,
+            appJarTaskName = extension.appJarTaskName.get(),
             appArgs = extension.appArgs.get(),
             host = extension.host.get(),
             port = extension.port.get(),
             startupTimeoutMs = extension.startupTimeoutMs.get(),
-            startupPollIntervalMs = extension.startupPollIntervalMs.get()
+            startupPollIntervalMs = extension.startupPollIntervalMs.get(),
+            windowTitle = extension.desktopWindowTitle.orNull
           )
         }
       }
@@ -139,9 +146,12 @@ class ParikshanGradlePlugin : Plugin<Project> {
         args = listOf("install", "chromium")
     }
 
+    project.pluginManager.withPlugin("com.android.application") {
+      project.configureAndroidInstrumentationDefaults()
+    }
+
     project.afterEvaluate {
       project.configureParikshanDependencies()
-      project.configureAndroidInstrumentationDefaults()
       project.configureGeneratedParikshanRunners(extension)
 
       val hostTestTaskName = project.resolveHostTestTaskName(extension.desktopTestTaskName.orNull)
@@ -317,6 +327,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
       // Shared mutable state for video process cleanup
       var iosVideoProcess: Process? = null
       var iosVideoFile: String? = null
+      var iosSimulatorUdid: String? = null
 
       val startIosAppTask = project.tasks.register("startIosApp") {
         group = "verification"
@@ -328,12 +339,30 @@ class ParikshanGradlePlugin : Plugin<Project> {
             throw GradleException("Xcode project not found at ${xcodeProjectFile.absolutePath}")
           }
 
+          val simulator =
+            resolveIosSimulatorDevice(
+              requestedDevice = iosDevice,
+              workingDir = project.projectDir
+            )
+          iosSimulatorUdid = simulator.udid
+          logger.lifecycle(
+            "Parikshan iOS: Using simulator '${simulator.name}' (${simulator.runtime}, ${simulator.udid})"
+          )
+
           // 1. Boot simulator
-          logger.lifecycle("Parikshan iOS: Booting simulator '$iosDevice'...")
-          val bootResult = ProcessBuilder("xcrun", "simctl", "boot", iosDevice)
-            .redirectErrorStream(true).start()
-          bootResult.inputStream.bufferedReader().readText()
-          bootResult.waitFor()
+          if (!simulator.isBooted) {
+            logger.lifecycle("Parikshan iOS: Booting simulator '${simulator.name}'...")
+            val bootResult =
+              ProcessBuilder("xcrun", "simctl", "boot", simulator.udid)
+                .redirectErrorStream(true)
+                .start()
+            bootResult.inputStream.bufferedReader().readText()
+            bootResult.waitFor()
+            ProcessBuilder("xcrun", "simctl", "bootstatus", simulator.udid, "-b")
+              .redirectErrorStream(true)
+              .start()
+              .waitFor()
+          }
 
           // 2. Build via xcodebuild
           logger.lifecycle("Parikshan iOS: Building via xcodebuild (scheme: $iosXcodeScheme)...")
@@ -343,7 +372,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
             "-project", xcodeProjectFile.absolutePath,
             "-scheme", iosXcodeScheme,
             "-configuration", "Debug",
-            "-destination", "platform=iOS Simulator,name=$iosDevice",
+            "-destination", "platform=iOS Simulator,id=${simulator.udid}",
             "-derivedDataPath", iosDerivedData.absolutePath,
             "CONFIGURATION_BUILD_DIR=${iosBuildProducts.absolutePath}"
           ).redirectErrorStream(true).start()
@@ -362,9 +391,16 @@ class ParikshanGradlePlugin : Plugin<Project> {
           logger.lifecycle("Parikshan iOS: Built ${appBundle.name}")
 
           // 4. Install on simulator
-          ProcessBuilder("xcrun", "simctl", "uninstall", "booted", iosBundleId)
+          ProcessBuilder("xcrun", "simctl", "uninstall", simulator.udid, iosBundleId)
             .redirectErrorStream(true).start().waitFor()
-          val installProc = ProcessBuilder("xcrun", "simctl", "install", "booted", appBundle.absolutePath)
+          val installProc =
+            ProcessBuilder(
+              "xcrun",
+              "simctl",
+              "install",
+              simulator.udid,
+              appBundle.absolutePath
+            )
             .redirectErrorStream(true).start()
           val installOutput = installProc.inputStream.bufferedReader().readText()
           if (installProc.waitFor() != 0) {
@@ -376,9 +412,16 @@ class ParikshanGradlePlugin : Plugin<Project> {
           if (iosVideoEnabled) {
             val videoDir = File(iosVideoOutputDir).also { it.mkdirs() }
             iosVideoFile = File(videoDir, "ios-e2e-${System.currentTimeMillis()}.mp4").absolutePath
-            iosVideoProcess = ProcessBuilder(
-              "xcrun", "simctl", "io", "booted", "recordVideo", "--codec=h264", iosVideoFile!!
-            ).redirectErrorStream(true).start()
+            iosVideoProcess =
+              ProcessBuilder(
+                "xcrun",
+                "simctl",
+                "io",
+                simulator.udid,
+                "recordVideo",
+                "--codec=h264",
+                iosVideoFile!!
+              ).redirectErrorStream(true).start()
             Thread.sleep(1000)
             logger.lifecycle("Parikshan iOS: Video recording started → $iosVideoFile")
           }
@@ -386,7 +429,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
           // 6. Launch app on simulator
           logger.lifecycle("Parikshan iOS: Launching app on simulator...")
           val launchProc = ProcessBuilder(
-            "xcrun", "simctl", "launch", "booted", iosBundleId
+            "xcrun", "simctl", "launch", simulator.udid, iosBundleId
           ).redirectErrorStream(true).start()
           val launchOutput = launchProc.inputStream.bufferedReader().readText()
           if (launchProc.waitFor() != 0) {
@@ -449,9 +492,11 @@ class ParikshanGradlePlugin : Plugin<Project> {
             }
           }
           // Terminate the app
-          ProcessBuilder("xcrun", "simctl", "terminate", "booted", iosBundleId)
-            .redirectErrorStream(true).start().waitFor()
-          logger.lifecycle("Parikshan iOS: App terminated")
+          iosSimulatorUdid?.let { simulatorUdid ->
+            ProcessBuilder("xcrun", "simctl", "terminate", simulatorUdid, iosBundleId)
+              .redirectErrorStream(true).start().waitFor()
+            logger.lifecycle("Parikshan iOS: App terminated")
+          }
         }
       }
 
@@ -679,6 +724,73 @@ private object ParikshanWasmServer {
         server = null
     }
 }
+
+private data class IosSimulatorDevice(
+  val name: String,
+  val udid: String,
+  val runtime: String,
+  val isBooted: Boolean
+)
+
+private fun resolveIosSimulatorDevice(
+  requestedDevice: String,
+  workingDir: File
+): IosSimulatorDevice {
+  val output =
+    ProcessBuilder("xcrun", "simctl", "list", "devices", "available")
+      .directory(workingDir)
+      .redirectErrorStream(true)
+      .start()
+      .let { process ->
+        val text = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+        if (exitCode != 0) {
+          throw GradleException("Failed to list available iOS simulators: $text")
+        }
+        text
+      }
+
+  var currentRuntime = ""
+  val matchingDevices = mutableListOf<IosSimulatorDevice>()
+  output.lineSequence().forEach { rawLine ->
+    val line = rawLine.trimEnd()
+    val runtimeMatch = IOS_SIMULATOR_RUNTIME_REGEX.matchEntire(line)
+    if (runtimeMatch != null) {
+      currentRuntime = runtimeMatch.groupValues[1]
+      return@forEach
+    }
+
+    val deviceMatch = IOS_SIMULATOR_DEVICE_REGEX.matchEntire(line) ?: return@forEach
+    val name = deviceMatch.groupValues[1]
+    val udid = deviceMatch.groupValues[2]
+    val state = deviceMatch.groupValues[3]
+    val matchesRequestedDevice =
+      requestedDevice.equals("booted", ignoreCase = true) && state == "Booted" ||
+        requestedDevice.equals(name, ignoreCase = true) ||
+        requestedDevice.equals(udid, ignoreCase = true)
+    if (!matchesRequestedDevice) {
+      return@forEach
+    }
+
+    matchingDevices +=
+      IosSimulatorDevice(
+        name = name,
+        udid = udid,
+        runtime = currentRuntime,
+        isBooted = state == "Booted"
+      )
+  }
+
+  return matchingDevices.firstOrNull { it.isBooted }
+    ?: matchingDevices.lastOrNull()
+    ?: throw GradleException(
+      "Parikshan could not find an available iOS simulator matching '$requestedDevice'."
+    )
+}
+
+private val IOS_SIMULATOR_RUNTIME_REGEX = Regex("""-- (.+) --""")
+private val IOS_SIMULATOR_DEVICE_REGEX =
+  Regex("""\s+(.+?) \(([0-9A-F-]+)\) \((Booted|Shutdown)\)\s*""")
 
 private object ParikshanAndroidRecorder {
   @Volatile
@@ -1137,20 +1249,39 @@ private object ParikshanDesktopProcess {
 
   fun start(
     project: Project,
+    appJarTaskName: String,
     appArgs: List<String>,
     host: String,
     port: Int,
     startupTimeoutMs: Long,
-    startupPollIntervalMs: Long
+    startupPollIntervalMs: Long,
+    windowTitle: String?
   ) {
     stop()
 
-    val jar = resolveDesktopJar(project)
+    val jar = resolveDesktopJar(project, appJarTaskName)
+    val appMainClassName = resolveDesktopAppMainClass(jar)
     val javaExecutable = resolveJavaExecutable()
     val logFile = project.layout.buildDirectory.file("parikshan/app-process.log").get().asFile
     logFile.parentFile.mkdirs()
+    logFile.writeText("")
 
-    val command = mutableListOf(javaExecutable.absolutePath, "-jar", jar.absolutePath).apply { addAll(appArgs) }
+    val command =
+      mutableListOf(
+        javaExecutable.absolutePath,
+        "-Dparikshan.host=$host",
+        "-Dparikshan.port=$port",
+        "-Dparikshan.desktop.appMainClass=$appMainClassName",
+        "-cp",
+        jar.absolutePath,
+        PARIKSHAN_DESKTOP_LAUNCHER_MAIN_CLASS
+      ).apply {
+        windowTitle
+          ?.trim()
+          ?.takeIf { it.isNotEmpty() }
+          ?.let { add("-D$PARIKSHAN_DESKTOP_WINDOW_TITLE_PROPERTY=$it") }
+        addAll(appArgs)
+      }
     project.logger.lifecycle("Parikshan launching desktop app: ${command.joinToString(" ")}")
 
     val started =
@@ -1161,12 +1292,19 @@ private object ParikshanDesktopProcess {
         .start()
 
     process = started
-    waitForPort(
-      host = host,
-      port = port,
-      timeout = Duration.ofMillis(startupTimeoutMs),
-      poll = Duration.ofMillis(startupPollIntervalMs)
-    )
+    runCatching {
+      waitForPort(
+        host = host,
+        port = port,
+        timeout = Duration.ofMillis(startupTimeoutMs),
+        poll = Duration.ofMillis(startupPollIntervalMs),
+        process = started,
+        logFile = logFile
+      )
+    }.getOrElse { failure ->
+      stop()
+      throw failure
+    }
   }
 
   fun stop() {
@@ -1182,16 +1320,29 @@ private object ParikshanDesktopProcess {
     process = null
   }
 
-  private fun resolveDesktopJar(project: Project): File {
-    val jarsDir = project.layout.buildDirectory.dir("compose/jars").get().asFile
-    val jar =
-      jarsDir
-        .listFiles()
-        ?.filter { it.isFile && it.extension == "jar" }
-        ?.maxByOrNull { it.lastModified() }
+  private fun resolveDesktopJar(
+    project: Project,
+    appJarTaskName: String
+  ): File {
+    val task =
+      project.tasks.findByName(appJarTaskName)
+        ?: throw GradleException(
+          "Parikshan could not find the configured desktop packaging task '$appJarTaskName'."
+        )
 
-    return requireNotNull(jar) {
-      "Parikshan could not find a desktop executable jar in ${jarsDir.absolutePath}."
+    val jarOutputs = task.collectJarOutputs()
+    return when (jarOutputs.size) {
+      1 -> jarOutputs.single()
+      0 ->
+        throw GradleException(
+          "Parikshan could not find a desktop executable jar in the outputs of task '$appJarTaskName'."
+        )
+      else ->
+        throw GradleException(
+          "Parikshan found multiple desktop jars in the outputs of '$appJarTaskName':\n" +
+            jarOutputs.joinToString(separator = "\n") { "  - ${it.absolutePath}" } +
+            "\nConfigure Parikshan so the selected desktop packaging task produces a single launch jar."
+        )
     }
   }
 
@@ -1200,14 +1351,37 @@ private object ParikshanDesktopProcess {
     return File(javaHome, "bin/java")
   }
 
+  private fun resolveDesktopAppMainClass(jar: File): String =
+    JarFile(jar).use { jarFile ->
+      jarFile.manifest
+        ?.mainAttributes
+        ?.getValue("Main-Class")
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+    }
+      ?: throw GradleException(
+        "Parikshan could not resolve the desktop app main class from ${jar.absolutePath}. " +
+          "Ensure the packaged desktop jar has a Main-Class manifest entry."
+      )
+
   private fun waitForPort(
     host: String,
     port: Int,
     timeout: Duration,
-    poll: Duration
+    poll: Duration,
+    process: Process,
+    logFile: File
   ) {
     val deadline = System.currentTimeMillis() + timeout.toMillis()
     while (System.currentTimeMillis() <= deadline) {
+      if (!process.isAlive) {
+        throw GradleException(
+          "Parikshan desktop app exited before its server became ready at $host:$port " +
+            "(exit code ${process.exitCodeOrUnknown()})." +
+            formatProcessLogTail(logFile)
+        )
+      }
+
       val ready =
         runCatching {
           Socket().use { socket ->
@@ -1222,11 +1396,61 @@ private object ParikshanDesktopProcess {
       Thread.sleep(poll.toMillis())
     }
 
-    throw GradleException("Parikshan timed out waiting for app server at $host:$port")
+    val processStatus =
+      if (process.isAlive) {
+        "The desktop process is still running."
+      } else {
+        "The desktop process exited with code ${process.exitCodeOrUnknown()}."
+      }
+    throw GradleException(
+      "Parikshan timed out waiting for app server at $host:$port. $processStatus" +
+        formatProcessLogTail(logFile)
+    )
   }
 }
 
+private fun Task.collectJarOutputs(): List<File> =
+  outputs.files.files
+    .asSequence()
+    .flatMap { output ->
+      when {
+        output.isFile && output.extension == "jar" -> sequenceOf(output)
+        output.isDirectory ->
+          output
+            .walkTopDown()
+            .filter { candidate -> candidate.isFile && candidate.extension == "jar" }
+        else -> emptySequence()
+      }
+    }
+    .distinctBy { it.absoluteFile.normalize().path }
+    .sortedBy { it.absolutePath }
+    .toList()
+
+private fun Process.exitCodeOrUnknown(): String =
+  runCatching { exitValue().toString() }.getOrElse { "unknown" }
+
+private fun formatProcessLogTail(
+  logFile: File,
+  maxLines: Int = 60
+): String {
+  if (!logFile.exists()) {
+    return "\nDesktop launcher log: <missing>"
+  }
+
+  val lines = runCatching { logFile.readLines() }.getOrDefault(emptyList())
+  if (lines.isEmpty()) {
+    return "\nDesktop launcher log: <empty>"
+  }
+
+  val tail = lines.takeLast(maxLines).joinToString(separator = "\n")
+  return "\nDesktop launcher log tail:\n$tail"
+}
+
 private fun Boolean?.orFalse(): Boolean = this == true
+
+private const val PARIKSHAN_DESKTOP_LAUNCHER_MAIN_CLASS =
+  "io.github.aryapreetam.parikshan.server.ParikshanDesktopLauncher"
+private const val PARIKSHAN_DESKTOP_WINDOW_TITLE_PROPERTY = "parikshan.desktop.windowTitle"
 
 private const val PARIKSHAN_LOCAL_RUNTIME_PROJECT = ":lib"
 private const val PARIKSHAN_LOCAL_ANDROID_CLIENT_PROJECT = ":parikshan-client"

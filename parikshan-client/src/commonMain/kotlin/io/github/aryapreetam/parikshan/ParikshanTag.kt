@@ -11,9 +11,10 @@ import androidx.compose.ui.platform.testTag
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 
 /**
- * Tracks node geometry/text for Parikshan web automation while preserving Compose testTag semantics.
+ * Compatibility bridge for targets that still need app-side Parikshan metadata/actions
+ * alongside the stable selector contract provided by [Modifier.testTag].
  */
-fun Modifier.parikshanTag(
+fun Modifier.parikshanBridge(
   tag: String,
   text: String? = null,
   visible: Boolean = true,
@@ -42,19 +43,49 @@ fun Modifier.parikshanTag(
         ParikshanTagBridgeHooks.onTagRemoved(tag)
       }
     }
-    this
-      .testTag(tag)
-      .onGloballyPositioned { coordinates ->
-        val bounds = coordinates.boundsInWindow()
-        ParikshanTagBridgeHooks.onTagBounds(
-          tag = tag,
-          left = bounds.left.toDouble(),
-          top = bounds.top.toDouble(),
-          right = bounds.right.toDouble(),
-          bottom = bounds.bottom.toDouble()
-        )
-      }
+    this.onGloballyPositioned { coordinates ->
+      val bounds = coordinates.boundsInWindow()
+      ParikshanTagBridgeHooks.onTagBounds(
+        tag = tag,
+        left = bounds.left.toDouble(),
+        top = bounds.top.toDouble(),
+        right = bounds.right.toDouble(),
+        bottom = bounds.bottom.toDouble()
+      )
+    }
   }
+
+@Deprecated(
+  message =
+    "Use Modifier.testTag(...) for stable selector identity. " +
+      "parikshanTag is now a compatibility wrapper around testTag + parikshanBridge.",
+  replaceWith =
+    ReplaceWith(
+      expression = "this.testTag(tag).parikshanBridge(tag, text, visible, onClick, onInput, onScroll, scrollState)",
+      imports = [
+        "androidx.compose.ui.platform.testTag",
+        "io.github.aryapreetam.parikshan.parikshanBridge"
+      ]
+    )
+)
+fun Modifier.parikshanTag(
+  tag: String,
+  text: String? = null,
+  visible: Boolean = true,
+  onClick: (() -> Unit)? = null,
+  onInput: ((String) -> Unit)? = null,
+  onScroll: ((ScrollDirection) -> Unit)? = null,
+  scrollState: ScrollState? = null
+): Modifier =
+  testTag(tag).parikshanBridge(
+    tag = tag,
+    text = text,
+    visible = visible,
+    onClick = onClick,
+    onInput = onInput,
+    onScroll = onScroll,
+    scrollState = scrollState
+  )
 
 internal expect object ParikshanTagBridgeHooks {
   fun onTagMetadata(

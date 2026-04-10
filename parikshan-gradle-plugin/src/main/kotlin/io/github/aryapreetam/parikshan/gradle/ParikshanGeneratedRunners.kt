@@ -105,11 +105,11 @@ internal fun Project.configureAndroidInstrumentationDefaults() {
     runCatching {
       defaultConfig.javaClass.methods.firstOrNull { it.name == "getTestInstrumentationRunner" }?.invoke(defaultConfig) as? String
     }.getOrNull()
-  if (currentRunner.isNullOrBlank()) {
+  if (currentRunner.isNullOrBlank() || currentRunner == LEGACY_ANDROID_TEST_RUNNER) {
     runCatching {
       defaultConfig.javaClass.methods
         .firstOrNull { it.name == "setTestInstrumentationRunner" && it.parameterCount == 1 }
-        ?.invoke(defaultConfig, "androidx.test.runner.AndroidJUnitRunner")
+        ?.invoke(defaultConfig, MODERN_ANDROID_TEST_RUNNER)
     }
   }
 
@@ -482,3 +482,5 @@ private val PARIKSHAN_SCENARIO_REGEX =
   )
 
 private const val ANDROID_XML_NAMESPACE = "http://schemas.android.com/apk/res/android"
+private const val LEGACY_ANDROID_TEST_RUNNER = "android.test.InstrumentationTestRunner"
+private const val MODERN_ANDROID_TEST_RUNNER = "androidx.test.runner.AndroidJUnitRunner"

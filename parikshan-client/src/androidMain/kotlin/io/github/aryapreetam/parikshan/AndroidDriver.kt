@@ -95,14 +95,14 @@ class AndroidDriver private constructor(
           id = command.id,
           bounds = boundsOf(node),
           visible = true,
-          text = textOf(node)
+          text = snapshotTextOf(node)
         )
       }
 
       is Command.AssertText -> {
         val node = findFirstNode(command.tag)
           ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
-        val actual = textOf(node).orEmpty()
+        val actual = snapshotTextOf(node).orEmpty()
         if (actual != command.expected) {
           return Response.Error(
             id = command.id,
@@ -133,12 +133,12 @@ class AndroidDriver private constructor(
           id = command.id,
           bounds = boundsOf(node),
           visible = isVisible(node),
-          text = textOf(node)
+          text = snapshotTextOf(node)
         )
       }
 
       is Command.Screenshot -> {
-        val bitmap = composeUiTest.onRoot(useUnmergedTree = true).captureToImage().asAndroidBitmap()
+        val bitmap = captureRootBitmapWithRetry()
         writeBitmap(bitmap = bitmap, path = command.path)
         Response.Ok(command.id)
       }
@@ -198,7 +198,7 @@ class AndroidDriver private constructor(
           tag = tag,
           bounds = boundsOf(node),
           visible = isVisible(node),
-          text = textOf(node)
+          text = snapshotTextOf(node)
         )
     }
     node.children.forEach { child ->
@@ -246,12 +246,36 @@ class AndroidDriver private constructor(
     device.swipe(startX, startY, endX, endY, 18)
   }
 
-  private fun textOf(node: SemanticsNode): String? {
+  private fun snapshotTextOf(node: SemanticsNode): String? =
+    directTextOf(node) ?: descendantTextsOf(node).takeIf { it.isNotEmpty() }?.joinToString(separator = "")
+
+  private fun directTextOf(node: SemanticsNode): String? {
+    node.config.getOrNull(SemanticsProperties.EditableText)?.text
+      ?.takeIf { it.isNotBlank() }
+      ?.let { return it }
+
     val values = node.config.getOrNull(SemanticsProperties.Text).orEmpty()
     if (values.isNotEmpty()) {
-      return values.joinToString(separator = "") { it.text }
+      return values.joinToString(separator = "") { it.text }.takeIf { it.isNotBlank() }
     }
     return null
+  }
+
+  private fun descendantTextsOf(node: SemanticsNode): List<String> =
+    buildList {
+      node.children.forEach { child ->
+        appendDescendantText(child, this)
+      }
+    }
+
+  private fun appendDescendantText(
+    node: SemanticsNode,
+    texts: MutableList<String>
+  ) {
+    directTextOf(node)?.let { texts += it }
+    node.children.forEach { child ->
+      appendDescendantText(child, texts)
+    }
   }
 
   private fun writeBitmap(
@@ -263,6 +287,29 @@ class AndroidDriver private constructor(
     FileOutputStream(file).use { output ->
       bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
     }
+  }
+
+  private fun captureRootBitmapWithRetry(
+    maxAttempts: Int = 4,
+    retryDelayMs: Long = 250L
+  ): Bitmap {
+    var lastFailure: Throwable? = null
+    repeat(maxAttempts) { attempt ->
+      composeUiTest.waitForIdle()
+      try {
+        return composeUiTest
+          .onRoot(useUnmergedTree = true)
+          .captureToImage()
+          .asAndroidBitmap()
+      } catch (throwable: Throwable) {
+        lastFailure = throwable
+        if (attempt == maxAttempts - 1) {
+          throw throwable
+        }
+        Thread.sleep(retryDelayMs)
+      }
+    }
+    throw IllegalStateException("Android screenshot capture failed", lastFailure)
   }
 
   companion object {

@@ -41,10 +41,11 @@ fun e2eTest(
     val driver =
       when (target) {
         ParikshanTarget.Desktop -> {
-          val desktopDriver = DesktopDriver.connect(config = clientConfig)
+          val effectiveClientConfig = clientConfig.withDesktopSystemPropertyOverrides()
+          val desktopDriver = DesktopDriver.connect(config = effectiveClientConfig)
           ParikshanVideoSessionManager.beforeScenario(
             driver = desktopDriver,
-            clientConfig = clientConfig,
+            clientConfig = effectiveClientConfig,
             config = videoConfig,
             className = callerClassName
           )
@@ -70,6 +71,25 @@ fun e2eTest(
       }
     e2eTest(driver = driver, config = effectiveConfig, block = block)
   }
+}
+
+private fun ParikshanClientConfig.withDesktopSystemPropertyOverrides(): ParikshanClientConfig {
+  val defaults = ParikshanClientConfig()
+  val hostOverride =
+    System.getProperty("parikshan.host")
+      ?.trim()
+      ?.takeIf { it.isNotEmpty() }
+  val portOverride = System.getProperty("parikshan.port")?.toIntOrNull()
+  val pathOverride =
+    System.getProperty("parikshan.path")
+      ?.trim()
+      ?.takeIf { it.isNotEmpty() }
+
+  return copy(
+    host = if (host == defaults.host) hostOverride ?: host else host,
+    port = if (port == defaults.port) portOverride ?: port else port,
+    path = if (path == defaults.path) pathOverride ?: path else path
+  )
 }
 
 private fun inferCallerClassName(): String {

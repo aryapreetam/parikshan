@@ -1,6 +1,8 @@
 rootProject.name = "parikshan"
 
 pluginManagement {
+  includeBuild("parikshan-gradle-plugin")
+
   repositories {
     google {
       content {
@@ -32,8 +34,6 @@ dependencyResolutionManagement {
 plugins {
   id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
-
-includeBuild("parikshan-gradle-plugin")
 
 include(":lib")
 include(":parikshan-core")

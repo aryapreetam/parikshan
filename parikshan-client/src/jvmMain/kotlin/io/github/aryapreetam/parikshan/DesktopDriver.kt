@@ -28,9 +28,16 @@ class DesktopDriver private constructor(
   }
 }
 
+actual fun e2eTest(
+  config: E2ETestConfig,
+  block: suspend E2ETestScope.() -> Unit
+) {
+  e2eTest(config = config, clientConfig = ParikshanClientConfig(), block = block)
+}
+
 fun e2eTest(
   config: E2ETestConfig = E2ETestConfig(),
-  clientConfig: ParikshanClientConfig = ParikshanClientConfig(),
+  clientConfig: ParikshanClientConfig,
   block: suspend E2ETestScope.() -> Unit
 ) {
   runBlocking {

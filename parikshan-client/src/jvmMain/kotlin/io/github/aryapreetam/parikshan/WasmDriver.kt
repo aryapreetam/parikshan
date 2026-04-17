@@ -105,7 +105,9 @@ private class WasmPlaywrightSession private constructor(
         val node = getNode(command.tag)
           ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
         if (!invokeBridgeClick(command.tag)) {
-          page.mouse().click(node.bounds.centerX, node.bounds.centerY)
+          if (!invokeDomClick(command.tag)) {
+            page.mouse().click(node.bounds.centerX, node.bounds.centerY)
+          }
         }
         Response.Ok(command.id)
       }
@@ -239,21 +241,186 @@ private class WasmPlaywrightSession private constructor(
   }
 
   private fun getNode(tag: String): NodeSnapshot? {
+    return readBridgeNode(tag) ?: readDomNode(tag)
+  }
+
+  private fun getTree(): List<NodeSnapshot> {
+    val bridgeNodes = readBridgeTree()
+    return if (bridgeNodes.isNotEmpty()) bridgeNodes else readDomTree()
+  }
+
+  private fun readBridgeNode(tag: String): NodeSnapshot? {
     val payload =
       page.evaluate(
         "tag => (window.__parikshan_getNodeJson ? window.__parikshan_getNodeJson(tag) : null)",
         tag
-      ) as? String
-        ?: return null
+      ) as? String ?: return null
     return ProtocolJson.instance.decodeFromString(NodeSnapshot.serializer(), payload)
   }
 
-  private fun getTree(): List<NodeSnapshot> {
+  private fun readBridgeTree(): List<NodeSnapshot> {
     val payload =
       page.evaluate(
         "() => (window.__parikshan_getTreeJson ? window.__parikshan_getTreeJson() : '[]')"
-      ) as? String
-        ?: "[]"
+      ) as? String ?: "[]"
+    return ProtocolJson.instance.decodeFromString(
+      ListSerializer(NodeSnapshot.serializer()),
+      payload
+    )
+  }
+
+  private fun readDomNode(tag: String): NodeSnapshot? {
+    val payload =
+      page.evaluate(
+        """
+        tag => {
+          const extractText = (element) => {
+            if (!element) return null;
+
+            const candidates = [
+              element.innerText,
+              element.textContent,
+              element.getAttribute?.('aria-label'),
+              element.getAttribute?.('title'),
+              element.getAttribute?.('value'),
+              element.value,
+              element.placeholder
+            ];
+
+            for (const candidate of candidates) {
+              const normalized = candidate?.trim?.();
+              if (normalized) return normalized;
+            }
+
+            const labeledDescendant = element.querySelector?.('[aria-label]');
+            const labeledText = labeledDescendant?.getAttribute?.('aria-label')?.trim?.();
+            if (labeledText) return labeledText;
+
+            return null;
+          };
+
+          const queue = [document.documentElement, document.body].filter(Boolean);
+          const visited = new Set();
+          let element = null;
+
+          while (queue.length > 0 && element == null) {
+            const current = queue.shift();
+            if (!current || visited.has(current)) continue;
+            visited.add(current);
+
+            if (current.id === tag) {
+              element = current;
+              break;
+            }
+
+            const descendants = current.querySelectorAll?.(`[id="${tag}"]`) ?? [];
+            if (descendants.length > 0) {
+              element = descendants[0];
+              break;
+            }
+
+            if (current.shadowRoot) {
+              queue.push(current.shadowRoot);
+            }
+
+            const children = current.children ?? current.childNodes ?? [];
+            for (const child of children) {
+              queue.push(child);
+            }
+          }
+
+          if (!element) return null;
+          const rect = element.getBoundingClientRect();
+          const style = window.getComputedStyle(element);
+          const text = extractText(element);
+          const visible = style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+          return JSON.stringify({
+            tag,
+            bounds: {
+              left: rect.left,
+              top: rect.top,
+              right: rect.right,
+              bottom: rect.bottom
+            },
+            visible,
+            text
+          });
+        }
+        """.trimIndent(),
+        tag
+      ) as? String ?: return null
+    return ProtocolJson.instance.decodeFromString(NodeSnapshot.serializer(), payload)
+  }
+
+  private fun readDomTree(): List<NodeSnapshot> {
+    val payload =
+      page.evaluate(
+        """
+        () => {
+          const extractText = (element) => {
+            if (!element) return null;
+
+            const candidates = [
+              element.innerText,
+              element.textContent,
+              element.getAttribute?.('aria-label'),
+              element.getAttribute?.('title'),
+              element.getAttribute?.('value'),
+              element.value,
+              element.placeholder
+            ];
+
+            for (const candidate of candidates) {
+              const normalized = candidate?.trim?.();
+              if (normalized) return normalized;
+            }
+
+            const labeledDescendant = element.querySelector?.('[aria-label]');
+            const labeledText = labeledDescendant?.getAttribute?.('aria-label')?.trim?.();
+            if (labeledText) return labeledText;
+
+            return null;
+          };
+
+          const nodes = [];
+          const queue = [document.documentElement, document.body].filter(Boolean);
+          const visited = new Set();
+
+          while (queue.length > 0) {
+            const current = queue.shift();
+            if (!current || visited.has(current)) continue;
+            visited.add(current);
+
+            if (current.id) {
+              const rect = current.getBoundingClientRect();
+              const style = window.getComputedStyle(current);
+              const text = extractText(current);
+              nodes.push({
+                tag: current.id,
+                bounds: {
+                  left: rect.left,
+                  top: rect.top,
+                  right: rect.right,
+                  bottom: rect.bottom
+                },
+                visible: style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0,
+                text
+              });
+            }
+
+            if (current.shadowRoot) {
+              queue.push(current.shadowRoot);
+            }
+
+            const children = current.children ?? current.childNodes ?? [];
+            for (const child of children) {
+              queue.push(child);
+            }
+          }
+          return JSON.stringify(nodes);
+        }
+        """.trimIndent()
+      ) as? String ?: "[]"
     return ProtocolJson.instance.decodeFromString(
       ListSerializer(NodeSnapshot.serializer()),
       payload
@@ -264,6 +431,42 @@ private class WasmPlaywrightSession private constructor(
     runCatching {
       page.evaluate(
         "tag => (window.__parikshan_click ? window.__parikshan_click(tag) : false)",
+        tag
+      ) as? Boolean ?: false
+    }.getOrDefault(false)
+
+  private fun invokeDomClick(tag: String): Boolean =
+    runCatching {
+      page.evaluate(
+        """
+        tag => {
+          const queue = [document.documentElement, document.body].filter(Boolean);
+          const visited = new Set();
+
+          while (queue.length > 0) {
+            const current = queue.shift();
+            if (!current || visited.has(current)) continue;
+            visited.add(current);
+
+            if (current.id === tag) {
+              current.click?.();
+              current.dispatchEvent?.(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }));
+              return true;
+            }
+
+            if (current.shadowRoot) {
+              queue.push(current.shadowRoot);
+            }
+
+            const children = current.children ?? current.childNodes ?? [];
+            for (const child of children) {
+              queue.push(child);
+            }
+          }
+
+          return false;
+        }
+        """.trimIndent(),
         tag
       ) as? Boolean ?: false
     }.getOrDefault(false)
@@ -333,7 +536,7 @@ private class WasmPlaywrightSession private constructor(
       
       page.navigate(wasmConfig.appUrl)
 
-      waitForBridge(page = page, timeoutMs = wasmConfig.bridgeReadyTimeoutMs)
+      waitForPageReady(page = page, timeoutMs = wasmConfig.bridgeReadyTimeoutMs)
 
       return WasmPlaywrightSession(
         page = page,
@@ -344,7 +547,7 @@ private class WasmPlaywrightSession private constructor(
       )
     }
 
-    private fun waitForBridge(
+    private fun waitForPageReady(
       page: Page,
       timeoutMs: Long
     ) {
@@ -353,7 +556,17 @@ private class WasmPlaywrightSession private constructor(
         val ready =
           runCatching {
             page.evaluate(
-              "() => (typeof window.__parikshan_getNodeJson === 'function' && typeof window.__parikshan_getTreeJson === 'function')"
+              """
+              () => {
+                if (
+                  typeof window.__parikshan_getNodeJson === 'function' &&
+                  typeof window.__parikshan_getTreeJson === 'function'
+                ) {
+                  return true;
+                }
+                return document.readyState === 'interactive' || document.readyState === 'complete';
+              }
+              """.trimIndent()
             ) as Boolean
           }.getOrDefault(false)
         if (ready) {
@@ -362,8 +575,8 @@ private class WasmPlaywrightSession private constructor(
         Thread.sleep(120)
       }
       error(
-        "Timed out waiting for WASM Parikshan bridge. " +
-          "Ensure nodes are tagged with Modifier.testTag(...) and that the current Parikshan compatibility bridge is installed for the UI."
+        "Timed out waiting for the WASM page to become ready. " +
+          "Ensure the app finished loading at ${'$'}{page.url()}."
       )
     }
   }

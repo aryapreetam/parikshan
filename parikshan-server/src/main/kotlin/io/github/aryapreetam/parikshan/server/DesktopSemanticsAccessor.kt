@@ -104,7 +104,7 @@ internal class DesktopSemanticsAccessor(
   }
 
   private fun SemanticsNode.toDesktopNode(): DesktopNode? {
-    val tag = config.getOrNull(SemanticsProperties.TestTag) ?: return null
+    val tag = config.getOrNull(SemanticsProperties.TestTag) ?: ""
     val location = window.locationOnScreen
     val nodeBounds = boundsInWindow
     val editableText = config.getOrNull(SemanticsProperties.EditableText)?.text
@@ -113,6 +113,10 @@ internal class DesktopSemanticsAccessor(
         ?.joinToString(separator = "") { it.text }
         .orEmpty()
     val invisible = config.getOrNull(SemanticsProperties.InvisibleToUser) != null
+    val textValue = editableText?.takeIf { it.isNotBlank() } ?: spokenText.ifBlank { null }
+
+    // Include nodes that have either a testTag or text content
+    if (tag.isBlank() && textValue == null) return null
 
     return DesktopNode(
       tag = tag,
@@ -124,7 +128,7 @@ internal class DesktopSemanticsAccessor(
           bottom = location.y + nodeBounds.bottom.toDouble()
         ),
       visible = !invisible,
-      text = editableText?.takeIf { it.isNotBlank() } ?: spokenText.ifBlank { null }
+      text = textValue
     )
   }
 

@@ -99,7 +99,7 @@ private fun matchingTextNodes(
 ): List<NodeSnapshot> {
   val normalized = raw.trim()
   return nodes.filter { node ->
-    (!requireVisible || node.visible) && node.normalizedText() == normalized
+    (!requireVisible || node.visible) && node.normalizedText()?.contains(normalized) == true
   }
 }
 

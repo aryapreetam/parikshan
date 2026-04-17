@@ -1,92 +1,96 @@
 package sample.app
 
 import io.github.aryapreetam.parikshan.E2ETestScope
-import io.github.aryapreetam.parikshan.ParikshanScenario
 import io.github.aryapreetam.parikshan.Selector
+import io.github.aryapreetam.parikshan.e2eTest
 import io.github.aryapreetam.parikshan.resolveNode
 import io.github.aryapreetam.parikshan.protocol.Bounds
 import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.TimeSource
+import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
 
-@ParikshanScenario(testName = "testTaskList")
-suspend fun E2ETestScope.runTaskListScenario() {
-  waitFor("nav_task_list")
-  click("nav_task_list")
-  waitFor("task_list_screen")
-  assertVisible("task_item_1")
-  screenshot(screenshotPath("task-list"))
-}
+class SelectorScenarios {
 
-@ParikshanScenario(testName = "testInputForm")
-suspend fun E2ETestScope.runInputFormTagRegressionScenario() {
-  openInputForm()
-  input("input_name_field", "New Task")
-  waitForVisibleText(selector = "input_name_preview", expected = "New Task")
-  assertText("input_name_preview", "New Task")
-  click("form_submit_button")
-  waitFor("form_success_message")
-  assertVisible("form_success_message")
-}
+  @Test
+  fun testTaskList() = e2eTest {
+    waitFor("nav_task_list")
+    click("nav_task_list")
+    waitFor("task_list_screen")
+    assertVisible("task_item_1")
+    screenshot(screenshotPath("task-list"))
+  }
 
-@ParikshanScenario(testName = "testUniqueTextSelector")
-suspend fun E2ETestScope.runUniqueTextScenario() {
-  openInputForm()
-  click("Unique Text Action")
-  waitFor("Unique text clicked")
-  assertVisible("Unique text clicked")
-}
+  @Test
+  fun testInputForm() = e2eTest {
+    openInputForm()
+    input("input_name_field", "New Task")
+    waitForVisibleText(selector = "input_name_preview", expected = "New Task")
+    assertText("input_name_preview", "New Task")
+    click("form_submit_button")
+    waitFor("form_success_message")
+    assertVisible("form_success_message")
+  }
 
-@ParikshanScenario(testName = "testTagPrecedenceOverText")
-suspend fun E2ETestScope.runTagPrecedenceScenario() {
-  openInputForm()
-  click("Submit")
-  waitFor("Tag selector won")
-  assertText("selector_result_message", "Tag selector won")
-}
+  @Test
+  fun testUniqueTextSelector() = e2eTest {
+    openInputForm()
+    click("Unique Text Action")
+    waitFor("Unique text clicked")
+    assertVisible("Unique text clicked")
+  }
 
-@ParikshanScenario(testName = "testAmbiguousTextSelectorFailsClearly")
-suspend fun E2ETestScope.runAmbiguousTextScenario() {
-  openInputForm()
+  @Test
+  fun testTagPrecedenceOverText() = e2eTest {
+    openInputForm()
+    click("Submit")
+    waitFor("Tag selector won")
+    assertText("selector_result_message", "Tag selector won")
+  }
 
-  val error =
-    kotlin.runCatching {
-      click("Duplicate Action")
-    }.exceptionOrNull() as? AssertionError
-      ?: throw AssertionError("Expected click(\"Duplicate Action\") to fail because the text is ambiguous")
+  @Test
+  fun testAmbiguousTextSelectorFailsClearly() = e2eTest {
+    openInputForm()
 
-  assertContains(error.message.orEmpty(), "multiple visible text nodes")
-  assertContains(error.message.orEmpty(), "duplicate_action_primary")
-  assertContains(error.message.orEmpty(), "duplicate_action_secondary")
-}
+    val error =
+      kotlin.runCatching {
+        click("Duplicate Action")
+      }.exceptionOrNull() as? AssertionError
+        ?: throw AssertionError("Expected click(\"Duplicate Action\") to fail because the text is ambiguous")
 
-@ParikshanScenario(testName = "testScrollAndTree")
-suspend fun E2ETestScope.runOffScreenVisibilityScenario() {
-  waitFor("nav_scroll_demo")
-  click("nav_scroll_demo")
-  waitFor("scroll_demo_screen")
+    assertContains(error.message.orEmpty(), "multiple visible text nodes")
+    assertContains(error.message.orEmpty(), "duplicate_action_primary")
+    assertContains(error.message.orEmpty(), "duplicate_action_secondary")
+  }
 
-  val initialNodes = getTree()
-  assertFalse(
-    initialNodes.isVisibleWithin(
+  @Test
+  fun testScrollAndTree() = e2eTest {
+    waitFor("nav_scroll_demo")
+    click("nav_scroll_demo")
+    waitFor("scroll_demo_screen")
+
+    val initialNodes = getTree()
+    assertFalse(
+      initialNodes.isVisibleWithin(
+        containerSelector = Selector.Tag("scroll_demo_screen"),
+        targetSelector = Selector.Auto("Trigger Bottom Action")
+      ),
+      "Bottom action should not be interactable before scrolling"
+    )
+
+    scrollUntilVisible(
       containerSelector = Selector.Tag("scroll_demo_screen"),
       targetSelector = Selector.Auto("Trigger Bottom Action")
-    ),
-    "Bottom action should not be interactable before scrolling"
-  )
-
-  scrollUntilVisible(
-    containerSelector = Selector.Tag("scroll_demo_screen"),
-    targetSelector = Selector.Auto("Trigger Bottom Action")
-  )
-  click("Trigger Bottom Action")
-  waitFor("done")
-  assertTrue(getTree().isVisibleWithin("scroll_demo_screen", "Trigger Bottom Action"))
+    )
+    click("Trigger Bottom Action")
+    waitFor("done")
+    assertTrue(getTree().isVisibleWithin("scroll_demo_screen", "Trigger Bottom Action"))
+  }
 }
 
 private suspend fun E2ETestScope.openInputForm() {

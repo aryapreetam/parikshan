@@ -152,7 +152,15 @@ class ParikshanGradlePlugin : Plugin<Project> {
 
     project.afterEvaluate {
       project.configureParikshanDependencies()
-      project.configureGeneratedParikshanRunners(extension)
+
+      // Enable zip64 on the uber jar task to support large apps (>65535 entries)
+      val appJarName = extension.appJarTaskName.get()
+      project.tasks.matching { it.name == appJarName }.configureEach {
+        if (this is org.gradle.api.tasks.bundling.Zip) {
+          isZip64 = true
+          logger.lifecycle("Parikshan: Enabled zip64 on task '$appJarName'")
+        }
+      }
 
       val hostTestTaskName = project.resolveHostTestTaskName(extension.desktopTestTaskName.orNull)
       val hostTestTask = project.tasks.named<Test>(hostTestTaskName)
@@ -231,13 +239,32 @@ class ParikshanGradlePlugin : Plugin<Project> {
         systemProperty("parikshan.port", extension.port.get().toString())
         systemProperty("parikshan.target", "desktop")
 
+        // Pass through video properties, preferring Gradle properties (-P)
+        val videoEnabled = project.providers.gradleProperty("parikshan.video.enabled").orNull
+            ?: System.getProperty("parikshan.video.enabled")
+            ?: "false"
+
+        val videoOutputDir = project.providers.gradleProperty("parikshan.video.outputDir").orNull
+            ?: System.getProperty("parikshan.video.outputDir")
+            ?: project.layout.buildDirectory.dir("parikshan/videos/desktop").get().asFile.absolutePath
+
+        systemProperty("parikshan.video.enabled", videoEnabled)
+        systemProperty("parikshan.video.outputDir", videoOutputDir)
+
+        val videoFps = project.providers.gradleProperty("parikshan.video.fps").orNull
+        if (videoFps != null) systemProperty("parikshan.video.fps", videoFps)
+
+        val videoShowCursor = project.providers.gradleProperty("parikshan.video.showCursor").orNull
+        if (videoShowCursor != null) systemProperty("parikshan.video.showCursor", videoShowCursor)
+
+        val videoStepDelayMs = project.providers.gradleProperty("parikshan.video.stepDelayMs").orNull
+        if (videoStepDelayMs != null) systemProperty("parikshan.video.stepDelayMs", videoStepDelayMs)
+
         val testFilter = project.providers.gradleProperty("parikshan.testFilter").orNull
         filter {
           isFailOnNoMatchingTests = true
           if (!testFilter.isNullOrBlank()) {
             testFilter.split(",").map { it.trim() }.filter { it.isNotBlank() }.forEach { includeTestsMatching(it) }
-          } else {
-            includeTestsMatching("*E2ETest*")
           }
         }
       }
@@ -292,15 +319,12 @@ class ParikshanGradlePlugin : Plugin<Project> {
           val bridgeTimeout = project.providers.gradleProperty("parikshan.wasm.bridgeReadyTimeoutMs").orNull
           if (bridgeTimeout != null) systemProperty("parikshan.wasm.bridgeReadyTimeoutMs", bridgeTimeout)
           
-          // Default filter: only run E2E test classes (convention: *E2ETest*)
-          // This can be overridden via -Pparikshan.testFilter=<pattern>
+          // Test filter: optionally restrict via -Pparikshan.testFilter=<pattern>
           val testFilter = project.providers.gradleProperty("parikshan.testFilter").orNull
           filter {
               isFailOnNoMatchingTests = true
               if (!testFilter.isNullOrBlank()) {
                   testFilter.split(",").map { it.trim() }.filter { it.isNotBlank() }.forEach { includeTestsMatching(it) }
-              } else {
-                  includeTestsMatching("*E2ETest*")
               }
           }
       }
@@ -523,14 +547,12 @@ class ParikshanGradlePlugin : Plugin<Project> {
         val videoStepDelayMs = resolveIosRuntimeProperty("parikshan.video.stepDelayMs")
         if (videoStepDelayMs != null) systemProperty("parikshan.video.stepDelayMs", videoStepDelayMs)
 
-        // Test filter
+        // Test filter: optionally restrict via -Pparikshan.testFilter=<pattern>
         val testFilter = project.providers.gradleProperty("parikshan.testFilter").orNull
         filter {
           isFailOnNoMatchingTests = true
           if (!testFilter.isNullOrBlank()) {
             testFilter.split(",").map { it.trim() }.filter { it.isNotBlank() }.forEach { includeTestsMatching(it) }
-          } else {
-            includeTestsMatching("*E2ETest*")
           }
         }
       }
@@ -1454,18 +1476,24 @@ private const val PARIKSHAN_DESKTOP_WINDOW_TITLE_PROPERTY = "parikshan.desktop.w
 
 private const val PARIKSHAN_LOCAL_RUNTIME_PROJECT = ":lib"
 private const val PARIKSHAN_LOCAL_ANDROID_CLIENT_PROJECT = ":parikshan-client"
+private const val PARIKSHAN_MAVEN_GROUP = "io.github.aryapreetam"
+private const val PARIKSHAN_MAVEN_RUNTIME_ARTIFACT = "parikshan"
+private const val PARIKSHAN_MAVEN_ANDROID_CLIENT_ARTIFACT = "parikshan-client"
+private const val PARIKSHAN_MAVEN_VERSION = "0.0.1"
 private const val ANDROID_COMPOSE_UI_TEST_DEPENDENCY = "androidx.compose.ui:ui-test-junit4-android:1.9.0"
 private const val ANDROID_COMPOSE_UI_TEST_MANIFEST_DEPENDENCY = "androidx.compose.ui:ui-test-manifest:1.9.0"
 
 private fun Project.configureParikshanDependencies() {
-  addLocalProjectDependencyIfPresent(
+  addParikshanDependency(
     configurationName = "commonMainImplementation",
-    projectPath = PARIKSHAN_LOCAL_RUNTIME_PROJECT,
+    localProjectPath = PARIKSHAN_LOCAL_RUNTIME_PROJECT,
+    mavenNotation = "$PARIKSHAN_MAVEN_GROUP:$PARIKSHAN_MAVEN_RUNTIME_ARTIFACT:$PARIKSHAN_MAVEN_VERSION",
     description = "Parikshan runtime"
   )
-  addLocalProjectDependencyIfPresent(
+  addParikshanDependency(
     configurationName = "androidTestImplementation",
-    projectPath = PARIKSHAN_LOCAL_ANDROID_CLIENT_PROJECT,
+    localProjectPath = PARIKSHAN_LOCAL_ANDROID_CLIENT_PROJECT,
+    mavenNotation = "$PARIKSHAN_MAVEN_GROUP:$PARIKSHAN_MAVEN_ANDROID_CLIENT_ARTIFACT:$PARIKSHAN_MAVEN_VERSION",
     description = "Parikshan Android client"
   )
   addDependencyIfAbsent(
@@ -1480,24 +1508,26 @@ private fun Project.configureParikshanDependencies() {
   )
 }
 
-private fun Project.addLocalProjectDependencyIfPresent(
+private fun Project.addParikshanDependency(
   configurationName: String,
-  projectPath: String,
+  localProjectPath: String,
+  mavenNotation: String,
   description: String
 ) {
-  val dependencyProject = rootProject.findProject(projectPath)
-  if (dependencyProject == null) {
-    logger.info(
-      "Parikshan: Skipping $description auto-wiring because project '$projectPath' is not part of this build."
+  val dependencyProject = rootProject.findProject(localProjectPath)
+  if (dependencyProject != null) {
+    addDependencyIfAbsent(
+      configurationName = configurationName,
+      notation = dependencies.project(mapOf("path" to dependencyProject.path)),
+      description = "$description (local project)"
     )
-    return
+  } else {
+    addDependencyIfAbsent(
+      configurationName = configurationName,
+      notation = mavenNotation,
+      description = "$description (Maven)"
+    )
   }
-
-  addDependencyIfAbsent(
-    configurationName = configurationName,
-    notation = dependencies.project(mapOf("path" to dependencyProject.path)),
-    description = description
-  )
 }
 
 private fun Project.addDependencyIfAbsent(

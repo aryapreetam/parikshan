@@ -611,6 +611,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
         project.tasks.register("stopParikshanAndroidApp") {
           group = "verification"
           description = "Stops Android instrumentation and screen recording"
+          outputs.upToDateWhen { false } // Always clean up
           
           doLast {
             val serial = ParikshanAndroidRecorder.resolveDeviceSerial(
@@ -638,6 +639,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
       val startAndroidAppTask = project.tasks.register("startParikshanAndroidApp") {
         group = "verification"
         description = "Starts Android instrumentation and screen recording"
+        outputs.upToDateWhen { false } // Never skip starting the app
         
         // Depend on installation tasks
         dependsOn("installDebug", "installDebugAndroidTest")
@@ -691,6 +693,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
         
         dependsOn(startAndroidAppTask)
         finalizedBy(stopAndroidAppTask)
+        outputs.upToDateWhen { false } // Always re-run against the live Android app
         
         if (hostTestTask.isPresent) {
           testClassesDirs = hostTestTask.get().testClassesDirs
@@ -895,41 +898,61 @@ private object ParikshanAndroidRecorder {
     workingDir: File,
     explicitSerial: String?
   ): String {
-    if (!explicitSerial.isNullOrBlank()) {
-      return explicitSerial
+    val selectedSerial = if (!explicitSerial.isNullOrBlank()) {
+      explicitSerial
+    } else {
+      val output =
+        runAdbCommand(
+          workingDir = workingDir,
+          serial = null,
+          args = listOf("devices"),
+          ignoreExitCode = false
+        )
+      val devices =
+        output
+          .lineSequence()
+          .map { it.trim() }
+          .filter { it.isNotEmpty() && !it.startsWith("List of devices attached") }
+          .mapNotNull { line ->
+            val parts = line.split(Regex("\\s+"))
+            if (parts.size >= 2 && parts[1] == "device") parts[0] else null
+          }
+          .toList()
+
+      if (devices.isEmpty()) {
+        throw GradleException(
+          "Parikshan could not find a connected Android device. " +
+            "Connect a device/emulator or pass -Pparikshan.android.deviceSerial=<serial>."
+        )
+      }
+      if (devices.size > 1) {
+        logger.lifecycle(
+          "Parikshan: Multiple Android devices detected (${devices.joinToString()}). Using '${devices.first()}'. " +
+            "Set -Pparikshan.android.deviceSerial to override."
+        )
+      }
+      devices.first()
     }
 
-    val output =
-      runAdbCommand(
+    // Health check the selected device
+    try {
+      val result = runAdbCommand(
         workingDir = workingDir,
-        serial = null,
-        args = listOf("devices"),
+        serial = selectedSerial,
+        args = listOf("shell", "echo", "ready"),
         ignoreExitCode = false
       )
-    val devices =
-      output
-        .lineSequence()
-        .map { it.trim() }
-        .filter { it.isNotEmpty() && !it.startsWith("List of devices attached") }
-        .mapNotNull { line ->
-          val parts = line.split(Regex("\\s+"))
-          if (parts.size >= 2 && parts[1] == "device") parts[0] else null
-        }
-        .toList()
-
-    if (devices.isEmpty()) {
+      if (!result.trim().contains("ready")) {
+        throw IllegalStateException("Unexpected response: $result")
+      }
+    } catch (e: Exception) {
       throw GradleException(
-        "Parikshan could not find a connected Android device. " +
-          "Connect a device/emulator or pass -Pparikshan.android.deviceSerial=<serial>."
+        "Android device/emulator '$selectedSerial' is unresponsive or offline. " +
+        "Please restart your emulator or reconnect your device.\nDetails: ${e.message}"
       )
     }
-    if (devices.size > 1) {
-      logger.lifecycle(
-        "Parikshan: Multiple Android devices detected (${devices.joinToString()}). Using '${devices.first()}'. " +
-          "Set -Pparikshan.android.deviceSerial to override."
-      )
-    }
-    return devices.first()
+
+    return selectedSerial
   }
 
   fun start(

@@ -189,7 +189,7 @@ object ParikshanIosServer {
     // This runs on the main thread
     return when (command) {
       is Command.Click -> {
-        if (!IosBridgeState.performClick(command.tag)) {
+        if (!IosSemanticsAccessor.performClick(command.tag)) {
           return Response.Error(command.id, "No clickable node for '${command.tag}'")
         }
         pumpRunLoop(iterations = 5, intervalSeconds = 0.05)
@@ -197,7 +197,7 @@ object ParikshanIosServer {
       }
 
       is Command.Input -> {
-        if (!IosBridgeState.performInput(command.tag, command.text)) {
+        if (!IosSemanticsAccessor.performInput(command.tag, command.text)) {
           return Response.Error(command.id, "No input node for '${command.tag}'")
         }
         pumpRunLoop(iterations = 5, intervalSeconds = 0.05)
@@ -205,7 +205,7 @@ object ParikshanIosServer {
       }
 
       is Command.Scroll -> {
-        if (!IosBridgeState.performScroll(command.tag, command.direction)) {
+        if (!IosSemanticsAccessor.performScroll(command.tag, command.direction)) {
           return Response.Error(command.id, "No scroll node for '${command.tag}'")
         }
         pumpRunLoop(iterations = 2, intervalSeconds = 0.02)
@@ -214,7 +214,7 @@ object ParikshanIosServer {
 
       is Command.AssertVisible -> {
         pumpRunLoop(iterations = 3, intervalSeconds = 0.05)
-        val node = IosBridgeState.snapshotNode(command.tag)
+        val node = IosSemanticsAccessor.snapshotNode(command.tag)
           ?: return Response.Error(command.id, "No node for '${command.tag}'")
         if (!node.visible) {
           return Response.Error(command.id, "Node '${command.tag}' not visible")
@@ -224,7 +224,7 @@ object ParikshanIosServer {
 
       is Command.AssertText -> {
         pumpRunLoop(iterations = 3, intervalSeconds = 0.05)
-        val node = IosBridgeState.snapshotNode(command.tag)
+        val node = IosSemanticsAccessor.snapshotNode(command.tag)
           ?: return Response.Error(command.id, "No node for '${command.tag}'")
         val actual = node.text.orEmpty()
         if (actual != command.expected) {
@@ -237,20 +237,20 @@ object ParikshanIosServer {
         val timeoutMs = command.timeoutMs
         val pollIntervalMs = 50L
         val startNs = kotlin.time.TimeSource.Monotonic.markNow()
-        var node = IosBridgeState.snapshotNode(command.tag)
+        var node = IosSemanticsAccessor.snapshotNode(command.tag)
         while (node?.visible != true) {
           if (startNs.elapsedNow().inWholeMilliseconds >= timeoutMs) {
             return Response.Error(command.id, "Timed out waiting for '${command.tag}' after ${timeoutMs}ms")
           }
           pumpRunLoop(iterations = 1, intervalSeconds = pollIntervalMs.toDouble() / 1000.0)
-          node = IosBridgeState.snapshotNode(command.tag)
+          node = IosSemanticsAccessor.snapshotNode(command.tag)
         }
         Response.NodeInfo(id = command.id, bounds = node.bounds, visible = node.visible, text = node.text)
       }
 
       is Command.GetTree -> {
         pumpRunLoop(iterations = 3, intervalSeconds = 0.05)
-        Response.Tree(id = command.id, nodes = IosBridgeState.snapshotTree())
+        Response.Tree(id = command.id, nodes = IosSemanticsAccessor.snapshotTree())
       }
 
       is Command.Screenshot -> Response.Ok(command.id)

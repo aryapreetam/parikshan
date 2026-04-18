@@ -121,10 +121,6 @@ private fun SidebarNavigation(
         Modifier
           .fillMaxWidth()
           .testTag("nav_task_list")
-          .parikshanCompatBridge(
-            tag = "nav_task_list",
-            onClick = onTaskListSelected
-          )
     ) {
       Text("Task List")
     }
@@ -134,10 +130,6 @@ private fun SidebarNavigation(
         Modifier
           .fillMaxWidth()
           .testTag("nav_input_form")
-          .parikshanCompatBridge(
-            tag = "nav_input_form",
-            onClick = onInputFormSelected
-          )
     ) {
       Text("Input Form")
     }
@@ -147,10 +139,6 @@ private fun SidebarNavigation(
         Modifier
           .fillMaxWidth()
           .testTag("nav_scroll_demo")
-          .parikshanCompatBridge(
-            tag = "nav_scroll_demo",
-            onClick = onScrollDemoSelected
-          )
     ) {
       Text("Scroll Demo")
     }
@@ -182,10 +170,6 @@ private fun CompactNavigation(
           Modifier
             .weight(1f)
             .testTag("nav_task_list")
-            .parikshanCompatBridge(
-              tag = "nav_task_list",
-              onClick = onTaskListSelected
-            )
       ) {
         Text("Task List")
       }
@@ -195,10 +179,6 @@ private fun CompactNavigation(
           Modifier
             .weight(1f)
             .testTag("nav_input_form")
-            .parikshanCompatBridge(
-              tag = "nav_input_form",
-              onClick = onInputFormSelected
-            )
       ) {
         Text("Input Form")
       }
@@ -208,10 +188,6 @@ private fun CompactNavigation(
           Modifier
             .weight(1f)
             .testTag("nav_scroll_demo")
-            .parikshanCompatBridge(
-              tag = "nav_scroll_demo",
-              onClick = onScrollDemoSelected
-            )
       ) {
         Text("Scroll Demo")
       }
@@ -269,8 +245,7 @@ private fun TaskListScreen() {
     modifier =
       Modifier
         .fillMaxSize()
-        .testTag("task_list_screen")
-        .parikshanCompatBridge(tag = "task_list_screen"),
+        .testTag("task_list_screen"),
     verticalArrangement = Arrangement.spacedBy(8.dp)
   ) {
     Text("Task List", style = MaterialTheme.typography.headlineSmall)
@@ -280,7 +255,6 @@ private fun TaskListScreen() {
         Modifier
           .fillMaxWidth()
           .testTag("task_item_1")
-          .parikshanCompatBridge(tag = "task_item_1", text = "Task 1")
     )
     Text(
       "Task 2",
@@ -288,7 +262,6 @@ private fun TaskListScreen() {
         Modifier
           .fillMaxWidth()
           .testTag("task_item_2")
-          .parikshanCompatBridge(tag = "task_item_2", text = "Task 2")
     )
   }
 }
@@ -307,8 +280,7 @@ private fun InputFormScreen(
     modifier =
       Modifier
         .fillMaxSize()
-        .testTag("input_form_screen")
-        .parikshanCompatBridge(tag = "input_form_screen"),
+        .testTag("input_form_screen"),
     verticalArrangement = Arrangement.spacedBy(12.dp)
   ) {
     Text("Input Demo", style = MaterialTheme.typography.headlineSmall)
@@ -320,11 +292,6 @@ private fun InputFormScreen(
         Modifier
           .fillMaxWidth()
           .testTag("input_name_field")
-          .parikshanCompatBridge(
-            tag = "input_name_field",
-            text = value,
-            onInput = onValueChange
-          )
     )
     Text(
       text = value,
@@ -332,7 +299,6 @@ private fun InputFormScreen(
         Modifier
           .fillMaxWidth()
           .testTag("input_name_preview")
-          .parikshanCompatBridge(tag = "input_name_preview", text = value)
     )
     selectorResultMessage?.let { message ->
       Text(
@@ -340,7 +306,6 @@ private fun InputFormScreen(
         modifier =
           Modifier
             .testTag("selector_result_message")
-            .parikshanCompatBridge(tag = "selector_result_message", text = message)
       )
     }
     if (showSuccess) {
@@ -349,7 +314,6 @@ private fun InputFormScreen(
         modifier =
           Modifier
             .testTag("form_success_message")
-            .parikshanCompatBridge(tag = "form_success_message", text = "Submit Successful")
       )
     }
     Button(
@@ -357,11 +321,6 @@ private fun InputFormScreen(
       modifier =
         Modifier
           .testTag("Submit")
-          .parikshanCompatBridge(
-            tag = "Submit",
-            text = "Tag Selector Wins",
-            onClick = onTagPriorityAction
-          )
     ) {
       Text("Tag Selector Wins")
     }
@@ -370,11 +329,6 @@ private fun InputFormScreen(
       modifier =
         Modifier
           .testTag("form_submit_button")
-          .parikshanCompatBridge(
-            tag = "form_submit_button",
-            text = "Submit",
-            onClick = onSubmit
-          )
     ) {
       Text("Submit")
     }
@@ -383,11 +337,6 @@ private fun InputFormScreen(
       modifier =
         Modifier
           .testTag("unique_text_button")
-          .parikshanCompatBridge(
-            tag = "unique_text_button",
-            text = "Unique Text Action",
-            onClick = onUniqueTextAction
-          )
     ) {
       Text("Unique Text Action")
     }
@@ -396,11 +345,6 @@ private fun InputFormScreen(
       modifier =
         Modifier
           .testTag("duplicate_action_primary")
-          .parikshanCompatBridge(
-            tag = "duplicate_action_primary",
-            text = "Duplicate Action",
-            onClick = {}
-          )
     ) {
       Text("Duplicate Action")
     }
@@ -409,11 +353,6 @@ private fun InputFormScreen(
       modifier =
         Modifier
           .testTag("duplicate_action_secondary")
-          .parikshanCompatBridge(
-            tag = "duplicate_action_secondary",
-            text = "Duplicate Action",
-            onClick = {}
-          )
     ) {
       Text("Duplicate Action")
     }
@@ -432,11 +371,7 @@ private fun ScrollDemoScreen(
       Modifier
         .fillMaxSize()
         .verticalScroll(scrollState)
-        .testTag("scroll_demo_screen")
-        .parikshanCompatBridge(
-          tag = "scroll_demo_screen",
-          scrollState = scrollState
-        ),
+        .testTag("scroll_demo_screen"),
     verticalArrangement = Arrangement.spacedBy(12.dp)
   ) {
     Text("Scroll Demo", style = MaterialTheme.typography.headlineSmall)
@@ -448,7 +383,6 @@ private fun ScrollDemoScreen(
           Modifier
             .fillMaxWidth()
             .testTag("scroll_item_$index")
-            .parikshanCompatBridge(tag = "scroll_item_$index", text = itemText)
       )
     }
 
@@ -458,11 +392,6 @@ private fun ScrollDemoScreen(
         Modifier
           .align(Alignment.Start)
           .testTag("scroll_target_button")
-          .parikshanCompatBridge(
-            tag = "scroll_target_button",
-            text = "Trigger Bottom Action",
-            onClick = onBottomAction
-          )
     ) {
       Text("Trigger Bottom Action")
     }
@@ -473,7 +402,6 @@ private fun ScrollDemoScreen(
         modifier =
           Modifier
             .testTag("scrolled_action_done")
-            .parikshanCompatBridge(tag = "scrolled_action_done", text = "done")
       )
     }
 

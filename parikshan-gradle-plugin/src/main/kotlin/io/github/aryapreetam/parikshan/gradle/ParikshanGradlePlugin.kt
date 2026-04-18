@@ -153,6 +153,11 @@ class ParikshanGradlePlugin : Plugin<Project> {
     project.afterEvaluate {
       project.configureParikshanDependencies()
 
+      val e2eTestClasses = project.discoverE2eTestClasses()
+      if (e2eTestClasses.isNotEmpty()) {
+        project.logger.lifecycle("Parikshan: Discovered E2E test classes: ${e2eTestClasses.joinToString()}")
+      }
+
       // Enable zip64 on the uber jar task to support large apps (>65535 entries)
       val appJarName = extension.appJarTaskName.get()
       project.tasks.matching { it.name == appJarName }.configureEach {
@@ -265,6 +270,8 @@ class ParikshanGradlePlugin : Plugin<Project> {
           isFailOnNoMatchingTests = true
           if (!testFilter.isNullOrBlank()) {
             testFilter.split(",").map { it.trim() }.filter { it.isNotBlank() }.forEach { includeTestsMatching(it) }
+          } else {
+            e2eTestClasses.forEach { includeTestsMatching(it) }
           }
         }
       }
@@ -325,6 +332,8 @@ class ParikshanGradlePlugin : Plugin<Project> {
               isFailOnNoMatchingTests = true
               if (!testFilter.isNullOrBlank()) {
                   testFilter.split(",").map { it.trim() }.filter { it.isNotBlank() }.forEach { includeTestsMatching(it) }
+              } else {
+                  e2eTestClasses.forEach { includeTestsMatching(it) }
               }
           }
       }
@@ -553,6 +562,8 @@ class ParikshanGradlePlugin : Plugin<Project> {
           isFailOnNoMatchingTests = true
           if (!testFilter.isNullOrBlank()) {
             testFilter.split(",").map { it.trim() }.filter { it.isNotBlank() }.forEach { includeTestsMatching(it) }
+          } else {
+            e2eTestClasses.forEach { includeTestsMatching(it) }
           }
         }
       }
@@ -596,80 +607,123 @@ class ParikshanGradlePlugin : Plugin<Project> {
         resolveAndroidRuntimeProperty("parikshan.android.deviceSerial") ?: System.getenv("ANDROID_SERIAL")
       val androidApplicationId = ParikshanAndroidRecorder.resolveAndroidApplicationId(project)
 
-      val stopAndroidVideoTask =
-        project.tasks.register("stopParikshanAndroidVideo") {
+      val stopAndroidAppTask =
+        project.tasks.register("stopParikshanAndroidApp") {
           group = "verification"
-          description = "Stops Android screen recording and pulls video artifact for Parikshan E2E tests"
-
+          description = "Stops Android instrumentation and screen recording"
+          
           doLast {
-            if (!androidVideoEnabledValue.toBooleanStrictOrNull().orFalse()) {
-              return@doLast
-            }
-
-            ParikshanAndroidRecorder.stopAndPull(
-              logger = logger,
-              workingDir = androidProjectDir,
-              postRollMs = androidVideoPostRollMsValue
+            val serial = ParikshanAndroidRecorder.resolveDeviceSerial(
+              logger = logger, workingDir = androidProjectDir, explicitSerial = androidDeviceSerialValue
             )
-          }
-          notCompatibleWithConfigurationCache(
-            "Parikshan Android video stop/pull uses runtime adb process management."
-          )
-        }
+            // Stop port forward
+            ProcessBuilder("adb", "-s", serial, "forward", "--remove", "tcp:9879")
+              .redirectErrorStream(true).start().waitFor()
+            
+            // Stop instrumentation (force stop app to be safe)
+            ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", androidApplicationId)
+              .redirectErrorStream(true).start().waitFor()
 
-      project.tasks.register("e2eAndroidTest") {
-        group = "verification"
-        description = "Runs Android emulator instrumentation tests for Parikshan E2E"
-
-        val connectedTask = project.tasks.findByName("connectedDebugAndroidTest")
-        if (connectedTask != null) {
-          connectedTask.doFirst {
-            if (!androidVideoEnabledValue.toBooleanStrictOrNull().orFalse()) {
-              return@doFirst
-            }
-
-            val serial =
-              ParikshanAndroidRecorder.resolveDeviceSerial(
+            if (androidVideoEnabledValue.toBooleanStrictOrNull() == true) {
+              ParikshanAndroidRecorder.stopAndPull(
                 logger = logger,
                 workingDir = androidProjectDir,
-                explicitSerial = androidDeviceSerialValue
+                postRollMs = androidVideoPostRollMsValue
               )
+            }
+          }
+          notCompatibleWithConfigurationCache("Parikshan Android teardown uses adb.")
+        }
 
+      val startAndroidAppTask = project.tasks.register("startParikshanAndroidApp") {
+        group = "verification"
+        description = "Starts Android instrumentation and screen recording"
+        
+        // Depend on installation tasks
+        dependsOn("installDebug", "installDebugAndroidTest")
+        
+        doLast {
+          val serial = ParikshanAndroidRecorder.resolveDeviceSerial(
+            logger = logger, workingDir = androidProjectDir, explicitSerial = androidDeviceSerialValue
+          )
+          
+          // Setup port forward
+          val forwardResult = ProcessBuilder("adb", "-s", serial, "forward", "tcp:9879", "tcp:9879")
+            .redirectErrorStream(true).start()
+          forwardResult.waitFor()
+          
+          if (forwardResult.exitValue() != 0) {
+            throw GradleException("Failed to forward adb port: ${String(forwardResult.inputStream.readAllBytes())}")
+          }
+          
+          // Start Video if enabled
+          if (androidVideoEnabledValue.toBooleanStrictOrNull() == true) {
             val outputDirectoryFile = File(androidVideoOutputDirValue).also { it.mkdirs() }
             val timestamp = System.currentTimeMillis()
             val localOutputPath = File(outputDirectoryFile, "android-e2e-$timestamp.mp4").absolutePath
 
             ParikshanAndroidRecorder.start(
-              logger = logger,
-              workingDir = androidProjectDir,
-              buildDir = androidBuildDir,
-              serial = serial,
-              remoteOutputPath = androidVideoRemotePathValue,
-              localOutputPath = localOutputPath,
-              maxDurationSec = androidVideoMaxDurationSecValue,
-              watchPackage = androidWatchPackageValue,
-              testFilter = androidTestFilterValue,
-              applicationId = androidApplicationId,
-              startTimeoutMs = androidVideoStartTimeoutMsValue,
-              startDelayMs = androidVideoStartDelayMsValue
+              logger = logger, workingDir = androidProjectDir, buildDir = androidBuildDir, serial = serial,
+              remoteOutputPath = androidVideoRemotePathValue, localOutputPath = localOutputPath,
+              maxDurationSec = androidVideoMaxDurationSecValue, watchPackage = androidWatchPackageValue,
+              testFilter = androidTestFilterValue, applicationId = androidApplicationId,
+              startTimeoutMs = androidVideoStartTimeoutMsValue, startDelayMs = androidVideoStartDelayMsValue
             )
           }
-          connectedTask.notCompatibleWithConfigurationCache(
-            "Parikshan Android video orchestration attaches runtime adb process management to connected tests."
+
+          // Start instrumentation in background
+          val testPackage = "$androidApplicationId.test"
+          val instrumentCmd = listOf(
+            "adb", "-s", serial, "shell", "am", "instrument", "-w", "-e", "class", 
+            "io.github.aryapreetam.parikshan.ParikshanAndroidRunner",
+            "$testPackage/androidx.test.runner.AndroidJUnitRunner"
           )
-          connectedTask.finalizedBy(stopAndroidVideoTask)
-          dependsOn(connectedTask)
-        } else {
-          doFirst {
-            throw GradleException(
-              "Parikshan could not find 'connectedDebugAndroidTest'. " +
-                "Ensure the Android target is configured and an emulator/device is available."
-            )
+          
+          logger.lifecycle("Parikshan Android: Starting instrumentation runner...")
+          ProcessBuilder(instrumentCmd).redirectErrorStream(true).start()
+        }
+        notCompatibleWithConfigurationCache("Parikshan Android startup uses adb.")
+      }
+
+      project.tasks.register<Test>("e2eAndroidTest") {
+        group = "verification"
+        description = "Runs JVM tests against the Android app via Parikshan E2E protocol"
+        
+        dependsOn(startAndroidAppTask)
+        finalizedBy(stopAndroidAppTask)
+        
+        if (hostTestTask.isPresent) {
+          testClassesDirs = hostTestTask.get().testClassesDirs
+          classpath = hostTestTask.get().classpath
+          
+          systemProperty("parikshan.target", "android")
+          systemProperty("parikshan.host", "127.0.0.1")
+          systemProperty("parikshan.port", "9879")
+          
+          androidTestFilterValue?.let { filter ->
+            systemProperty("parikshan.testFilter", filter)
+          }
+          
+          filter {
+            isFailOnNoMatchingTests = true
+            if (!androidTestFilterValue.isNullOrBlank()) {
+              androidTestFilterValue.split(",").map { it.trim() }.filter { it.isNotBlank() }.forEach { includeTestsMatching(it) }
+            } else {
+              e2eTestClasses.forEach { includeTestsMatching(it) }
+            }
           }
         }
-        notCompatibleWithConfigurationCache(
-          "Parikshan Android e2e task orchestrates external adb screen recording processes."
-        )
+        
+        notCompatibleWithConfigurationCache("Parikshan Android E2E orchestrates adb processes.")
+      }
+
+      project.tasks.withType(Test::class.java).configureEach {
+        val isE2ETask = name in setOf("e2eDesktopTest", "e2eWasmTest", "e2eIosTest", "e2eAndroidTest")
+        if (!isE2ETask) {
+          filter {
+            e2eTestClasses.forEach { excludeTestsMatching(it) }
+          }
+        }
       }
     }
   }
@@ -1608,3 +1662,32 @@ private fun Project.resolveWasmDistributionTaskName(overrideName: String?): Stri
 }
 
 private fun String.isDevelopmentWasmTask(): Boolean = contains("Development", ignoreCase = true)
+
+private fun Project.discoverE2eTestClasses(): List<String> {
+  val e2eClasses = mutableSetOf<String>()
+  val srcDir = layout.projectDirectory.dir("src").asFile
+  if (!srcDir.exists()) return emptyList()
+
+  fileTree(srcDir).matching {
+    include("**/*Test*/**/*.kt")
+  }.forEach { file ->
+    val text = file.readText()
+    if (text.contains("e2eTest")) {
+      val pkgMatch = Regex("""package\s+([a-zA-Z0-9_.]+)""").find(text)
+      val pkg = pkgMatch?.groupValues?.get(1) ?: ""
+      
+      val classMatches = Regex("""(?:class|object)\s+([a-zA-Z0-9_]+)""").findAll(text)
+      val classes = classMatches.map { it.groupValues[1] }.toList()
+      
+      if (classes.isEmpty()) {
+        val ktClassName = file.nameWithoutExtension + "Kt"
+        e2eClasses.add(if (pkg.isNotEmpty()) "$pkg.$ktClassName" else ktClassName)
+      } else {
+        classes.forEach { cls ->
+          e2eClasses.add(if (pkg.isNotEmpty()) "$pkg.$cls" else cls)
+        }
+      }
+    }
+  }
+  return e2eClasses.toList()
+}

@@ -68,6 +68,9 @@ fun e2eTest(
 
         ParikshanTarget.Ios ->
           IosRemoteDriver.connect() // Reads host/port from system properties
+
+        ParikshanTarget.Android ->
+          AndroidRemoteDriver.connect() // Reads host/port from system properties
       }
 
     val effectiveConfig =
@@ -121,7 +124,8 @@ private fun inferCallerClassName(): String {
 private enum class ParikshanTarget {
   Desktop,
   Wasm,
-  Ios;
+  Ios,
+  Android;
 
   companion object {
     fun fromSystemProperty(): ParikshanTarget {
@@ -129,7 +133,8 @@ private enum class ParikshanTarget {
         null, "", "desktop" -> Desktop
         "wasm", "web" -> Wasm
         "ios" -> Ios
-        else -> error("Unsupported parikshan.target value. Expected 'desktop', 'wasm', or 'ios'.")
+        "android" -> Android
+        else -> error("Unsupported parikshan.target value. Expected 'desktop', 'wasm', 'ios', or 'android'.")
       }
     }
   }

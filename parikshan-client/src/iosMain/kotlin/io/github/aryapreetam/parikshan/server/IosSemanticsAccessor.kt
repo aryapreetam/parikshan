@@ -23,7 +23,10 @@ internal object IosSemanticsAccessor {
 
   fun findAllNodes(): List<SemanticsNode> {
     val owner = globalSemanticsOwner ?: return emptyList()
-    return owner.getAllSemanticsNodes(mergingEnabled = true)
+    // Try both merging modes to be safe
+    val nodes = owner.getAllSemanticsNodes(mergingEnabled = true)
+    if (nodes.isNotEmpty()) return nodes
+    return owner.getAllSemanticsNodes(mergingEnabled = false)
   }
 
   fun findNodeByTag(tag: String): SemanticsNode? {
@@ -51,7 +54,7 @@ internal object IosSemanticsAccessor {
     return NodeSnapshot(
       tag = tag,
       text = text,
-      visible = true, // We assume visible if it's in the semantics tree, bounds check could be added
+      visible = true,
       bounds = Bounds(
         left = bounds.left.toDouble(),
         top = bounds.top.toDouble(),

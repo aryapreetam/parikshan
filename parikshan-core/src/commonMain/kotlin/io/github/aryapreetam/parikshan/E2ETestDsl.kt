@@ -100,18 +100,24 @@ class E2ETestScope internal constructor(
     selector: Selector,
     expected: String
   ) {
-    val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
-    expectOk(
-      action = "assertText(${selector.raw})",
-      response =
-        driver.send(
-          Command.AssertText(
-            id = nextId(),
-            tag = resolved.tag,
-            expected = expected
-          )
-        )
+    // Try native assertion first to avoid getTree
+    val tagValue = if (selector is Selector.Tag) selector.value else (selector as Selector.Auto).raw
+    val response = driver.send(
+      Command.AssertText(
+        id = nextId(),
+        tag = tagValue,
+        expected = expected
+      )
     )
+    if (response is Response.Ok) {
+      settleAfterCommand()
+      return
+    }
+    // Fallback
+    val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
+    if (resolved.node.text != expected) {
+      throw AssertionError("assertText(${selector.raw}) failed: expected '$expected', got '${resolved.node.text}'")
+    }
     settleAfterCommand()
   }
 
@@ -119,6 +125,8 @@ class E2ETestScope internal constructor(
     tag: String,
     timeoutMs: Long = config.defaultWaitTimeoutMs
   ) {
+    // Rely on local polling loop to handle both text and exact tag matching seamlessly
+    // instead of sending Command.WaitFor which can block the server thread incorrectly on text selectors
     waitFor(selector = tag.asAutoSelector(), timeoutMs = timeoutMs)
   }
 
@@ -139,9 +147,64 @@ class E2ETestScope internal constructor(
       if (startMark.elapsedNow() >= timeoutMs.milliseconds) {
         break
       }
-      delay(WAIT_POLL_INTERVAL_MS)
+      delay(200) // Poll interval
     } while (true)
-    throw AssertionError("waitFor(${selector.raw}) failed after ${timeoutMs}ms: ${lastError ?: "selector did not resolve"}")
+
+    // Capture failure screenshot before throwing
+    if (config.captureScreenshotOnFailure) {
+      runCatching {
+        driver.send(Command.Screenshot(id = nextId(), path = config.failureScreenshotPath))
+      }
+    }
+    throw AssertionError(
+      "Timeout (${timeoutMs}ms) waiting for selector ${selector.raw}. Last error: $lastError"
+    )
+  }
+
+  suspend fun waitForVisibleText(
+    tag: String,
+    expected: String,
+    timeoutMs: Long = config.defaultWaitTimeoutMs
+  ) {
+    waitForVisibleText(selector = tag.asAutoSelector(), expected = expected, timeoutMs = timeoutMs)
+  }
+
+  suspend fun waitForVisibleText(
+    selector: Selector,
+    expected: String,
+    timeoutMs: Long = config.defaultWaitTimeoutMs
+  ) {
+    val startMark = TimeSource.Monotonic.markNow()
+    var lastError: String? = null
+    val tagValue = if (selector is Selector.Tag) selector.value else (selector as Selector.Auto).raw
+    do {
+      try {
+        val response = driver.send(Command.AssertText(id = nextId(), tag = tagValue, expected = expected))
+        if (response is Response.Ok) {
+          settleAfterCommand()
+          return
+        }
+        if (response is Response.Error) {
+          lastError = response.message
+        }
+      } catch (error: IllegalArgumentException) {
+        lastError = error.message
+      }
+      if (startMark.elapsedNow() >= timeoutMs.milliseconds) {
+        break
+      }
+      delay(200) // Poll interval
+    } while (true)
+
+    // Capture failure screenshot before throwing
+    if (config.captureScreenshotOnFailure) {
+      runCatching {
+        driver.send(Command.Screenshot(id = nextId(), path = config.failureScreenshotPath))
+      }
+    }
+    throw AssertionError(
+      "Timed out waiting for '${selector.raw}' to expose text '$expected'. Last error='$lastError'."
+    )
   }
 
   suspend fun resolveNode(
@@ -262,6 +325,24 @@ class E2ETestScope internal constructor(
     selector: Selector,
     requireVisible: Boolean
   ): ResolvedSelector {
+    // Optimization: For Tag selectors only, skip fetching the entire tree.
+    // The native driver's puppet can find elements by accessibilityIdentifier directly.
+    // Auto selectors must NOT use this shortcut because they may resolve by text,
+    // and text-based resolution requires the full tree for ambiguity detection
+    // (e.g. multiple buttons with the same label).
+    if (selector is Selector.Tag) {
+      return ResolvedSelector(
+        selector = selector,
+        matchType = ResolvedSelector.MatchType.Tag,
+        node = NodeSnapshot(
+          tag = selector.value,
+          text = null,
+          visible = requireVisible,
+          bounds = io.github.aryapreetam.parikshan.protocol.Bounds(0.0, 0.0, 0.0, 0.0)
+        )
+      )
+    }
+
     return try {
       lookupSelector(selector = selector, requireVisible = requireVisible)
     } catch (error: IllegalArgumentException) {

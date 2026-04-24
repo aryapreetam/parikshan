@@ -208,7 +208,7 @@ object ParikshanIosServer {
         if (!IosSemanticsAccessor.performScroll(command.tag, command.direction)) {
           return Response.Error(command.id, "No scroll node for '${command.tag}'")
         }
-        pumpRunLoop(iterations = 2, intervalSeconds = 0.02)
+        pumpRunLoop(iterations = 3, intervalSeconds = 0.05)
         Response.Ok(command.id)
       }
 

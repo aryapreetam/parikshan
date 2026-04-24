@@ -43,7 +43,13 @@ sealed interface Response {
   ) : Response
 
   @Serializable
-  @SerialName("nodeInfo")
+  @SerialName("shutdown")
+  data class Shutdown(
+    override val id: String
+  ) : Response
+
+  @Serializable
+  @SerialName("nodeinfo")
   data class NodeInfo(
     override val id: String,
     val bounds: Bounds,

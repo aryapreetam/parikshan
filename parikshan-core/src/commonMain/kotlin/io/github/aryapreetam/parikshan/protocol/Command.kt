@@ -46,14 +46,14 @@ sealed interface Command {
   ) : Command
 
   @Serializable
-  @SerialName("assertVisible")
+  @SerialName("assertvisible")
   data class AssertVisible(
     override val id: String,
     val tag: String
   ) : Command
 
   @Serializable
-  @SerialName("assertText")
+  @SerialName("asserttext")
   data class AssertText(
     override val id: String,
     val tag: String,
@@ -61,7 +61,7 @@ sealed interface Command {
   ) : Command
 
   @Serializable
-  @SerialName("waitFor")
+  @SerialName("waitfor")
   data class WaitFor(
     override val id: String,
     val tag: String,
@@ -76,7 +76,7 @@ sealed interface Command {
   ) : Command
 
   @Serializable
-  @SerialName("getTree")
+  @SerialName("gettree")
   data class GetTree(
     override val id: String
   ) : Command
@@ -88,7 +88,7 @@ sealed interface Command {
   ) : Command
 
   @Serializable
-  @SerialName("startRecording")
+  @SerialName("startrecording")
   data class StartRecording(
     override val id: String,
     val sessionName: String,
@@ -98,20 +98,20 @@ sealed interface Command {
   ) : Command
 
   @Serializable
-  @SerialName("stopRecording")
+  @SerialName("stoprecording")
   data class StopRecording(
     override val id: String,
     val sessionName: String
   ) : Command
 
   @Serializable
-  @SerialName("pressBack")
+  @SerialName("pressback")
   data class PressBack(
     override val id: String
   ) : Command
 
   @Serializable
-  @SerialName("pressHome")
+  @SerialName("presshome")
   data class PressHome(
     override val id: String
   ) : Command

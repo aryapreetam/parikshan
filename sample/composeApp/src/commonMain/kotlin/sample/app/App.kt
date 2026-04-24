@@ -280,6 +280,7 @@ private fun InputFormScreen(
     modifier =
       Modifier
         .fillMaxSize()
+        .verticalScroll(rememberScrollState())
         .testTag("input_form_screen"),
     verticalArrangement = Arrangement.spacedBy(12.dp)
   ) {
@@ -340,21 +341,23 @@ private fun InputFormScreen(
     ) {
       Text("Unique Text Action")
     }
-    Button(
-      onClick = {},
-      modifier =
-        Modifier
-          .testTag("duplicate_action_primary")
-    ) {
-      Text("Duplicate Action")
-    }
-    Button(
-      onClick = {},
-      modifier =
-        Modifier
-          .testTag("duplicate_action_secondary")
-    ) {
-      Text("Duplicate Action")
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Button(
+        onClick = {},
+        modifier =
+          Modifier
+            .testTag("duplicate_action_primary")
+      ) {
+        Text("Duplicate Action")
+      }
+      Button(
+        onClick = {},
+        modifier =
+          Modifier
+            .testTag("duplicate_action_secondary")
+      ) {
+        Text("Duplicate Action")
+      }
     }
   }
 }

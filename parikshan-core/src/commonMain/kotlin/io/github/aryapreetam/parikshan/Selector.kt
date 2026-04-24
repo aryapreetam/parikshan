@@ -98,9 +98,18 @@ private fun matchingTextNodes(
   requireVisible: Boolean
 ): List<NodeSnapshot> {
   val normalized = raw.trim()
-  return nodes.filter { node ->
+  val allMatches = nodes.filter { node ->
     (!requireVisible || node.visible) && node.normalizedText()?.contains(normalized) == true
   }
+
+  // Compose Multiplatform iOS emits both a container (e.g. Button) and its
+  // inner Text child as separate accessibility nodes with the same label.
+  // Without deduplication we would report false ambiguity for a single
+  // conceptual UI element. Strategy: if some matches carry a non-empty tag
+  // (the container) and others don't (the inner Text), keep only the tagged
+  // ones so the framework can route click/assert commands by testTag.
+  val tagged = allMatches.filter { it.tag.isNotEmpty() }
+  return if (tagged.isNotEmpty() && tagged.size < allMatches.size) tagged else allMatches
 }
 
 private fun resolveByText(
@@ -183,6 +192,6 @@ private fun Selector.normalizedRaw(): String = raw.trim()
 
 private fun NodeSnapshot.normalizedText(): String? = text?.trim()
 
-internal class SelectorResolutionException(
+class SelectorResolutionException(
   message: String
 ) : IllegalArgumentException(message)

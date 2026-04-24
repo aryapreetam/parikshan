@@ -30,7 +30,7 @@ class SelectorScenarios {
   fun testInputForm() = e2eTest {
     openInputForm()
     input("input_name_field", "New Task")
-    waitForVisibleText(selector = "input_name_preview", expected = "New Task")
+    waitForVisibleText("input_name_preview", expected = "New Task")
     assertText("input_name_preview", "New Task")
     click("form_submit_button")
     waitFor("form_success_message")
@@ -118,25 +118,6 @@ private suspend fun E2ETestScope.scrollUntilVisible(
   }
 }
 
-private suspend fun E2ETestScope.waitForVisibleText(
-  selector: String,
-  expected: String,
-  timeoutMs: Long = 2_000L
-) {
-  val startMark = TimeSource.Monotonic.markNow()
-  do {
-    val node = runCatching { resolveVisibleNode(selector) }.getOrNull()
-    if (node?.text == expected) {
-      return
-    }
-    if (startMark.elapsedNow() >= timeoutMs.milliseconds) {
-      throw AssertionError(
-        "Timed out waiting for '$selector' to expose text '$expected'. Last seen='${node?.text ?: "<missing>"}'."
-      )
-    }
-    delay(50)
-  } while (true)
-}
 
 private fun List<NodeSnapshot>.isVisibleWithin(
   containerTag: String,
@@ -155,8 +136,17 @@ private fun List<NodeSnapshot>.isVisibleWithin(
   edgePadding: Double = 24.0
 ): Boolean {
   val containerBounds =
-    containerSelector.resolveNode(this, requireVisible = false).node.bounds
-  val target = targetSelector.resolveNode(this, requireVisible = false).node
+    try {
+      containerSelector.resolveNode(this, requireVisible = false).node.bounds
+    } catch (e: io.github.aryapreetam.parikshan.SelectorResolutionException) {
+      return false
+    }
+  val target = 
+    try {
+      targetSelector.resolveNode(this, requireVisible = false).node
+    } catch (e: io.github.aryapreetam.parikshan.SelectorResolutionException) {
+      return false
+    }
   if (!target.visible) return false
   return containerBounds.canSafelyInteractWith(target.bounds, edgePadding)
 }

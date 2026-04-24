@@ -176,16 +176,37 @@ class E2ETestScope internal constructor(
   ) {
     val startMark = TimeSource.Monotonic.markNow()
     var lastError: String? = null
-    val tagValue = if (selector is Selector.Tag) selector.value else (selector as Selector.Auto).raw
+    
+    // Resolve the tag safely without brittle casts
+    val tagValue = when (selector) {
+      is Selector.Tag -> selector.value
+      is Selector.Auto -> selector.raw
+      is Selector.Text -> "" // Text selectors don't have tags; the server will find by tag if provided
+    }
+    
     do {
       try {
-        val response = driver.send(Command.AssertText(id = nextId(), tag = tagValue, expected = expected))
-        if (response is Response.Ok) {
-          settleAfterCommand()
-          return
-        }
-        if (response is Response.Error) {
-          lastError = response.message
+        // If we have a tag, we can use the high-speed server-side AssertText
+        if (tagValue.isNotEmpty()) {
+          val response = driver.send(Command.AssertText(id = nextId(), tag = tagValue, expected = expected))
+          if (response is Response.Ok) {
+            settleAfterCommand()
+            return
+          }
+          if (response is Response.Error) {
+            lastError = response.message
+          }
+        } else {
+          // Fallback to full tree matching for pure text selectors
+          val nodes = fetchTree()
+          selector.resolveNode(nodes, requireVisible = true)
+          // node resolution succeeded, now check text
+          val resolved = selector.resolveNode(nodes, requireVisible = true)
+          if (resolved.node.text == expected) {
+             settleAfterCommand()
+             return
+          }
+          lastError = "Text mismatch: expected '$expected' actual '${resolved.node.text}'"
         }
       } catch (error: IllegalArgumentException) {
         lastError = error.message
@@ -193,7 +214,7 @@ class E2ETestScope internal constructor(
       if (startMark.elapsedNow() >= timeoutMs.milliseconds) {
         break
       }
-      delay(200) // Poll interval
+      delay(WAIT_POLL_INTERVAL_MS)
     } while (true)
 
     // Capture failure screenshot before throwing
@@ -325,24 +346,6 @@ class E2ETestScope internal constructor(
     selector: Selector,
     requireVisible: Boolean
   ): ResolvedSelector {
-    // Optimization: For Tag selectors only, skip fetching the entire tree.
-    // The native driver's puppet can find elements by accessibilityIdentifier directly.
-    // Auto selectors must NOT use this shortcut because they may resolve by text,
-    // and text-based resolution requires the full tree for ambiguity detection
-    // (e.g. multiple buttons with the same label).
-    if (selector is Selector.Tag) {
-      return ResolvedSelector(
-        selector = selector,
-        matchType = ResolvedSelector.MatchType.Tag,
-        node = NodeSnapshot(
-          tag = selector.value,
-          text = null,
-          visible = requireVisible,
-          bounds = io.github.aryapreetam.parikshan.protocol.Bounds(0.0, 0.0, 0.0, 0.0)
-        )
-      )
-    }
-
     return try {
       lookupSelector(selector = selector, requireVisible = requireVisible)
     } catch (error: IllegalArgumentException) {

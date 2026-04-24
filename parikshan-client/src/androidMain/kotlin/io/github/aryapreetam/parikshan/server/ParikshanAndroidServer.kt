@@ -252,7 +252,13 @@ object ParikshanAndroidServer {
         Response.Tree(id = command.id, nodes = nodes)
       }
 
-      is Command.Screenshot -> Response.Ok(command.id)
+      is Command.Screenshot -> {
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        val file = java.io.File(command.path)
+        file.parentFile?.mkdirs()
+        device.takeScreenshot(file)
+        Response.Ok(command.id)
+      }
       is Command.PressBack -> {
         UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
         Response.Ok(command.id)

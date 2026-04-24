@@ -134,7 +134,13 @@ class ParikshanGradlePlugin : Plugin<Project> {
     }
 
     project.afterEvaluate {
-      project.configureParikshanDependencies()
+      val flagFile = File(project.rootDir, "parikshan-e2e.flag")
+      val isE2ETaskActive = project.gradle.startParameter.taskNames.any { it.contains("e2e", ignoreCase = true) } ||
+                            flagFile.exists()
+
+      if (isE2ETaskActive) {
+          project.configureParikshanDependencies()
+      }
 
       val e2eTestClasses = project.discoverE2eTestClasses()
       val hostTestTaskName = project.resolveHostTestTaskName(extension.desktopTestTaskName.orNull)
@@ -206,6 +212,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
       val iosProjectDir = project.projectDir
       val iosLayout = project.layout
       val iosLogger = project.logger
+      val iosRootDir = project.rootDir
 
       var iosSimulatorUdid: String? = null
 
@@ -223,10 +230,12 @@ class ParikshanGradlePlugin : Plugin<Project> {
             ProcessBuilder("xcrun", "simctl", "bootstatus", simulator.udid, "-b").start().waitFor()
           }
 
+          val transactionFlag = File(iosRootDir, "parikshan-e2e.flag")
           try {
-            val iosMainDir = File(iosProjectDir, "src/iosMain/kotlin")
-            iosLogger.lifecycle("Parikshan iOS: Searching for entry point in ${iosMainDir.absolutePath}...")
+            transactionFlag.writeText("true")
             
+            // TRANSACTIONAL SURGICAL INJECTION: Back up and modify main.kt for the duration of the build
+            val iosMainDir = File(iosProjectDir, "src/iosMain/kotlin")
             val mainFile = if (iosMainDir.exists()) {
                 iosMainDir.walkTopDown().filter { it.extension == "kt" }.firstOrNull { it.readText().contains("ComposeUIViewController") }
             } else null
@@ -234,8 +243,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
             val backupFile = mainFile?.let { File(it.absolutePath + ".bak") }
 
             if (mainFile != null && backupFile != null) {
-              iosLogger.lifecycle("Parikshan iOS: Found entry point at ${mainFile.absolutePath}")
-              iosLogger.lifecycle("Parikshan iOS: Injecting test server into ${mainFile.name}...")
+              iosLogger.lifecycle("Parikshan iOS: [TRANSACTION START] Injecting test server into ${mainFile.name}...")
               mainFile.copyTo(backupFile, overwrite = true)
               var text = mainFile.readText()
               if (text.contains("ComposeUIViewController")) {
@@ -247,10 +255,8 @@ class ParikshanGradlePlugin : Plugin<Project> {
               }
             }
 
-            // Build app - DEEPLY CLEAN build to ensure injection is picked up
-            iosLogger.lifecycle("Parikshan iOS: Cleaning and building via xcodebuild...")
-            iosDerivedData.deleteRecursively()
-            iosDerivedData.mkdirs()
+            // Build app via xcodebuild
+            iosLogger.lifecycle("Parikshan iOS: Building via xcodebuild...")
             val appBuildProducts = File(iosDerivedData, "Build/Products/Debug-iphonesimulator")
             appBuildProducts.mkdirs()
             
@@ -266,28 +272,30 @@ class ParikshanGradlePlugin : Plugin<Project> {
               throw GradleException("xcodebuild failed with exit code $buildResult")
             }
             
-            val appBundle = appBuildProducts.listFiles()?.firstOrNull { it.name.endsWith(".app") } ?: throw GradleException("No .app bundle found in ${appBuildProducts.absolutePath}")
+            val appBundle = appBuildProducts.listFiles()?.firstOrNull { it.name.endsWith(".app") } ?: throw GradleException("No .app bundle found")
 
             // Install and launch
             iosLogger.lifecycle("Parikshan iOS: Installing ${appBundle.name}...")
             val installResult = ProcessBuilder("xcrun", "simctl", "install", simulator.udid, appBundle.absolutePath).start().waitFor()
-            if (installResult != 0) throw GradleException("simctl install failed with exit code $installResult")
+            if (installResult != 0) throw GradleException("simctl install failed")
 
             iosLogger.lifecycle("Parikshan iOS: Launching app...")
             val launchResult = ProcessBuilder("xcrun", "simctl", "launch", simulator.udid, iosBundleId).start().waitFor()
-            if (launchResult != 0) throw GradleException("simctl launch failed with exit code $launchResult")
+            if (launchResult != 0) throw GradleException("simctl launch failed")
 
           } finally {
+            // TRANSACTION ROLLBACK: Restore original main.kt and remove flag
             val iosMainDir = File(iosProjectDir, "src/iosMain/kotlin")
             val mainFile = if (iosMainDir.exists()) {
                iosMainDir.walkTopDown().filter { it.extension == "kt" }.firstOrNull { it.readText().contains("ParikshanUIViewController") }
             } else null
             val backupFile = mainFile?.let { File(it.absolutePath + ".bak") }
             if (mainFile != null && backupFile?.exists() == true) {
-              iosLogger.lifecycle("Parikshan iOS: Reverting injection in ${mainFile.name}...")
+              iosLogger.lifecycle("Parikshan iOS: [TRANSACTION END] Reverting injection in ${mainFile.name}...")
               backupFile.copyTo(mainFile, overwrite = true)
               backupFile.delete()
             }
+            if (transactionFlag.exists()) transactionFlag.delete()
           }
 
           // Wait for server
@@ -386,14 +394,28 @@ private object ParikshanWasmServer {
             val path = if (ex.requestURI.path == "/") "/index.html" else ex.requestURI.path
             val file = File(root, path.removePrefix("/"))
             if (file.exists() && file.isFile) {
+                // Hardened headers for Wasm threading support
+                ex.responseHeaders.add("Cross-Origin-Opener-Policy", "same-origin")
+                ex.responseHeaders.add("Cross-Origin-Embedder-Policy", "require-corp")
+                
+                val contentType = when (file.extension.lowercase()) {
+                    "wasm" -> "application/wasm"
+                    "js" -> "application/javascript"
+                    "html" -> "text/html"
+                    else -> "application/octet-stream"
+                }
+                ex.responseHeaders.add("Content-Type", contentType)
+                
                 ex.sendResponseHeaders(200, file.length())
                 file.inputStream().use { it.copyTo(ex.responseBody) }
-            } else ex.sendResponseHeaders(404, 0)
+            } else {
+                ex.sendResponseHeaders(404, 0)
+            }
             ex.close()
         }
         s.start()
         server = s
-        }
+    }
     fun stop() { server?.stop(0); server = null }
 }
 

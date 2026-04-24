@@ -90,16 +90,22 @@ object ParikshanIosServer {
 
       val addr = alloc<sockaddr_in>()
       addr.sin_family = AF_INET.convert()
-      // Manual big-endian conversion (htons not available as top-level on Darwin)
+      // Manual big-endian conversion for port (htons)
       val p = port.toUShort()
       addr.sin_port = ((p.toInt() shr 8) or ((p.toInt() and 0xFF) shl 8)).toUShort()
-      addr.sin_addr.s_addr = INADDR_ANY.toUInt()
+      // 127.0.0.1 in network byte order (Big Endian)
+      // On Little Endian host, this is 0x0100007Fu
+      addr.sin_addr.s_addr = 0x0100007Fu 
 
       if (bind(fd, addr.ptr.reinterpret(), sizeOf<sockaddr_in>().convert()) < 0) {
-        println("[ParikshanIosServer] Failed to bind to port $port")
-        close(fd)
-        running.value = 0
-        return
+        println("[ParikshanIosServer] Failed to bind to 127.0.0.1, falling back to ANY")
+        addr.sin_addr.s_addr = 0u // INADDR_ANY (0.0.0.0) is 0 in all byte orders
+        if (bind(fd, addr.ptr.reinterpret(), sizeOf<sockaddr_in>().convert()) < 0) {
+            println("[ParikshanIosServer] Failed to bind to port $port")
+            close(fd)
+            running.value = 0
+            return
+        }
       }
 
       if (listen(fd, 5) < 0) {

@@ -24,3 +24,4 @@ Pods/
 .junie/memory/memory.version
 .junie/memory/tasks.md
 .junie/memory/backups/language_v1.0.json
+.gemini/settings.json

@@ -12,7 +12,7 @@ class ProtocolSerializationTest {
         val resp = ProtocolJson.decodeResponse(json)
         assertTrue(resp is Response.Error)
         assertEquals("123", resp.id)
-        assertEquals("test error", (resp as Response.Error).message)
+        assertEquals("test error", resp.message)
 
         val okJson = """{"type": "ok", "id": "456"}"""
         val okResp = ProtocolJson.decodeResponse(okJson)
@@ -36,5 +36,15 @@ class ProtocolSerializationTest {
         val getTreeCmd = ProtocolJson.decodeCommand(getTreeJson)
         assertTrue(getTreeCmd is Command.GetTree)
         assertEquals("t1", getTreeCmd.id)
+    }
+
+    @Test
+    fun testCommandTokenRoundTrip() {
+        val command = Command.Ping(id = "p1", token = "token-123")
+        val json = ProtocolJson.encodeCommand(command)
+        val decoded = ProtocolJson.decodeCommand(json)
+
+        assertTrue(decoded is Command.Ping)
+        assertEquals("token-123", decoded.token)
     }
 }

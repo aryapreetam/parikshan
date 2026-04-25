@@ -1,6 +1,5 @@
 package io.github.aryapreetam.parikshan
 
-import io.github.aryapreetam.parikshan.client.ParikshanClientConfig
 import io.github.aryapreetam.parikshan.protocol.Command
 import io.github.aryapreetam.parikshan.protocol.ProtocolJson
 import io.github.aryapreetam.parikshan.protocol.Response
@@ -12,13 +11,31 @@ import java.net.URI
  * JVM-side driver that talks to the Parikshan server running inside the iOS app.
  */
 class IosRemoteDriver private constructor(
-  private val baseUrl: String
+  private val baseUrl: String,
+  private val sessionToken: String = System.getProperty("parikshan.token") ?: ""
 ) : TestDriver {
 
   override suspend fun send(command: Command): Response {
+    // SECURITY: Sign the command with the global session token
+    command.token = sessionToken
+    
     val json = ProtocolJson.encodeCommand(command)
     val responseJson = httpPost(json)
-    return ProtocolJson.decodeResponse(responseJson)
+    val response = ProtocolJson.decodeResponse(responseJson)
+    
+    // ARTIFACT HANDSHAKE: If this was a screenshot, save the returned bytes to the host path
+    if (command is Command.Screenshot && response is Response.NodeInfo) {
+        val base64 = response.text ?: ""
+        if (base64.isNotEmpty()) {
+            val bytes = java.util.Base64.getDecoder().decode(base64)
+            val hostFile = java.io.File(command.hostPath)
+            hostFile.parentFile?.mkdirs()
+            hostFile.writeBytes(bytes)
+            return Response.Ok(command.id)
+        }
+    }
+    
+    return response
   }
 
   override suspend fun close() {
@@ -33,39 +50,32 @@ class IosRemoteDriver private constructor(
     conn.doOutput = true
     conn.connectTimeout = 5000
     conn.readTimeout = 30000
-
-    conn.outputStream.use { os ->
-      os.write(body.toByteArray())
-      os.flush()
+    
+    conn.outputStream.use { it.write(body.toByteArray()) }
+    
+    if (conn.responseCode != 200) {
+        val error = conn.errorStream?.bufferedReader()?.readText() ?: "HTTP ${conn.responseCode}"
+        error("iOS server returned error: $error")
     }
-
-    val responseCode = conn.responseCode
-    val responseBody = if (responseCode in 200..299) {
-      conn.inputStream.use { it.readBytes().decodeToString() }
-    } else {
-      val error = conn.errorStream?.use { it.readBytes().decodeToString() } ?: "HTTP $responseCode"
-      throw RuntimeException("iOS server returned HTTP $responseCode: $error")
-    }
-    return responseBody
+    
+    return conn.inputStream.bufferedReader().readText()
   }
 
   companion object {
-    private fun configFromSystemProperties(): ParikshanClientConfig {
-      val host = System.getProperty("parikshan.host") ?: "127.0.0.1"
-      val port = System.getProperty("parikshan.port")?.toIntOrNull() ?: 9878
-      return ParikshanClientConfig(host = host, port = port)
-    }
-
+    /**
+     * Create and connect to the iOS driver, waiting for the server to be ready.
+     */
     suspend fun connect(
-      config: ParikshanClientConfig = configFromSystemProperties()
+      config: IosDriverConfig = IosDriverConfig()
     ): IosRemoteDriver {
       val baseUrl = "http://${config.host}:${config.port}/"
       val driver = IosRemoteDriver(baseUrl)
       
       // Wait for the iOS server to become available
-      val retries = 60
+      val retries = 300
       repeat(retries) { attempt ->
         try {
+          // send() is already token-aware, ensuring secure handshake
           val resp = driver.send(Command.Ping(id = "ping-connect"))
           if (resp is Response.Ok) return driver
         } catch (_: Throwable) {
@@ -79,3 +89,8 @@ class IosRemoteDriver private constructor(
     }
   }
 }
+
+data class IosDriverConfig(
+  val host: String = "127.0.0.1",
+  val port: Int = 9878
+)

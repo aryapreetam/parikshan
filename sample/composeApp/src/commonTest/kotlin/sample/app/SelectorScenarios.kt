@@ -3,17 +3,14 @@ package sample.app
 import io.github.aryapreetam.parikshan.E2ETestScope
 import io.github.aryapreetam.parikshan.Selector
 import io.github.aryapreetam.parikshan.e2eTest
-import io.github.aryapreetam.parikshan.resolveNode
 import io.github.aryapreetam.parikshan.protocol.Bounds
 import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
+import io.github.aryapreetam.parikshan.resolveNode
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.TimeSource
-import kotlinx.coroutines.delay
 
 class SelectorScenarios {
 
@@ -118,7 +115,6 @@ private suspend fun E2ETestScope.scrollUntilVisible(
   }
 }
 
-
 private fun List<NodeSnapshot>.isVisibleWithin(
   containerTag: String,
   targetTag: String,
@@ -141,7 +137,7 @@ private fun List<NodeSnapshot>.isVisibleWithin(
     } catch (e: io.github.aryapreetam.parikshan.SelectorResolutionException) {
       return false
     }
-  val target = 
+  val target =
     try {
       targetSelector.resolveNode(this, requireVisible = false).node
     } catch (e: io.github.aryapreetam.parikshan.SelectorResolutionException) {

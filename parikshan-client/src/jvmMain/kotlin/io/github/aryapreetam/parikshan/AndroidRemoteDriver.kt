@@ -14,10 +14,12 @@ import java.net.URI
  * Uses HTTP POST over an adb forwarded port (e.g. 9879).
  */
 class AndroidRemoteDriver private constructor(
-  private val baseUrl: String
+  private val baseUrl: String,
+  private val sessionToken: String = System.getProperty("parikshan.token") ?: ""
 ) : TestDriver {
 
   override suspend fun send(command: Command): Response {
+    command.token = sessionToken
     val json = ProtocolJson.encodeCommand(command)
     val responseJson = httpPost(json)
     return ProtocolJson.decodeResponse(responseJson)

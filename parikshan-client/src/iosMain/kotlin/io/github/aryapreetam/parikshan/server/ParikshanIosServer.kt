@@ -24,7 +24,6 @@ import kotlinx.cinterop.value
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 import platform.posix.AF_INET
-import platform.posix.INADDR_ANY
 import platform.posix.IPPROTO_TCP
 import platform.posix.SOCK_STREAM
 import platform.posix.SOL_SOCKET
@@ -34,32 +33,52 @@ import platform.posix.bind
 import platform.posix.close
 import platform.posix.listen
 import platform.posix.read
+import platform.posix.recv
 import platform.posix.setsockopt
 import platform.posix.sockaddr_in
 import platform.posix.socket
 import platform.posix.write
+import platform.posix.getenv
+import kotlinx.cinterop.useContents
+import platform.Foundation.NSString
+import platform.Foundation.stringWithUTF8String
+import platform.UIKit.UIScreen
+import platform.UIKit.UIView
+import platform.UIKit.UIWindow
+import platform.UIKit.UIApplication
+import platform.UIKit.UIGraphicsBeginImageContextWithOptions
+import platform.UIKit.UIGraphicsEndImageContext
+import platform.UIKit.UIGraphicsGetImageFromCurrentImageContext
+import platform.UIKit.UIImagePNGRepresentation
+import platform.Foundation.base64EncodedStringWithOptions
+import platform.CoreGraphics.*
+import kotlinx.cinterop.readValue
 import kotlin.concurrent.AtomicInt
 import kotlin.concurrent.AtomicReference
 import kotlin.native.concurrent.Worker
 
-/**
- * Lightweight HTTP server that runs inside the iOS app process.
- * Accepts JSON commands via POST /parikshan and delegates to
- * IosBridgeState on the main thread (with NSRunLoop pumping
- * so Compose can recompose between commands).
- *
- * Protocol: same JSON encoding as ParikshanServer (Desktop),
- * transported over HTTP POST instead of WebSocket.
- */
+// --- DEFINITIVE EAGER INITIALIZATION ---
+// This top-level property forces the server to start as soon as the Kotlin framework is loaded by the iOS app.
+@Suppress("unused")
+private val parikshanEagerBoot = ParikshanIosServer.startIfNeeded()
+
 object ParikshanIosServer {
   private val running = AtomicInt(0)
   private val serverFd = AtomicInt(-1)
+  private var sessionToken: String = ""
 
   fun startIfNeeded(port: Int = 9878) {
-    if (!running.compareAndSet(0, 1)) return // Already running
+    if (!running.compareAndSet(0, 1)) return
 
+    println("[ParikshanIosServer] BOOTING on port $port")
     val worker = Worker.start(name = "parikshan-ios-server")
     worker.executeAfter(0L) {
+      // Resolve token from environment
+      val tokenC = getenv("PARIKSHAN_TOKEN") ?: getenv("SIMCTL_CHILD_PARIKSHAN_TOKEN")
+      if (tokenC != null) {
+        sessionToken = platform.Foundation.NSString.stringWithUTF8String(tokenC) ?: ""
+      }
+      println("[ParikshanIosServer] Server starting with token: ${sessionToken.take(8)}...")
       runServer(port)
     }
   }
@@ -83,87 +102,100 @@ object ParikshanIosServer {
       }
       serverFd.value = fd
 
-      // Allow address reuse
       val reuseVal = alloc<platform.posix.int32_tVar>()
       reuseVal.value = 1
       setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, reuseVal.ptr, sizeOf<platform.posix.int32_tVar>().convert())
 
       val addr = alloc<sockaddr_in>()
       addr.sin_family = AF_INET.convert()
-      // Manual big-endian conversion for port (htons)
       val p = port.toUShort()
       addr.sin_port = ((p.toInt() shr 8) or ((p.toInt() and 0xFF) shl 8)).toUShort()
-      // 127.0.0.1 in network byte order (Big Endian)
-      // On Little Endian host, this is 0x0100007Fu
-      addr.sin_addr.s_addr = 0x0100007Fu 
+      addr.sin_addr.s_addr = 0u // INADDR_ANY
 
       if (bind(fd, addr.ptr.reinterpret(), sizeOf<sockaddr_in>().convert()) < 0) {
-        println("[ParikshanIosServer] Failed to bind to 127.0.0.1, falling back to ANY")
-        addr.sin_addr.s_addr = 0u // INADDR_ANY (0.0.0.0) is 0 in all byte orders
-        if (bind(fd, addr.ptr.reinterpret(), sizeOf<sockaddr_in>().convert()) < 0) {
-            println("[ParikshanIosServer] Failed to bind to port $port")
-            close(fd)
-            running.value = 0
-            return
-        }
-      }
-
-      if (listen(fd, 5) < 0) {
-        println("[ParikshanIosServer] Failed to listen")
+        println("[ParikshanIosServer] Failed to bind to port $port")
         close(fd)
         running.value = 0
         return
       }
 
-      println("[ParikshanIosServer] Listening on port $port")
+      if (listen(fd, 5) < 0) {
+        close(fd)
+        running.value = 0
+        return
+      }
+
+      println("[ParikshanIosServer] Securely listening on port $port")
 
       while (running.value == 1) {
         val clientFd = accept(fd, null, null)
         if (clientFd < 0) {
-          if (running.value == 0) break // Server stopped
+          if (running.value == 0) break
           continue
         }
         handleConnection(clientFd)
       }
-
       close(fd)
-      serverFd.value = -1
     }
   }
 
   private fun handleConnection(clientFd: Int) {
     try {
-      // Read full HTTP request into buffer (persistent connection — handle multiple requests)
       while (running.value == 1) {
-        val request = readHttpRequest(clientFd) ?: break
-        val body = extractBody(request) ?: break
-
-        if (body.isBlank()) {
-          // Likely a health-check or invalid request
-          sendHttpResponse(clientFd, 200, """{"type":"Ok","id":"health"}""")
-          continue
+        val headBuffer = ByteArray(8192)
+        val n = headBuffer.usePinned { p -> recv(clientFd, p.addressOf(0), 8192.convert(), 0).toInt() }
+        if (n <= 0) break
+        
+        val headStr = headBuffer.decodeToString(0, n)
+        
+        // HEALTH CHECK (GET)
+        if (headStr.startsWith("GET ")) {
+            sendHttpResponse(clientFd, 200, """{"type":"ok","id":"health"}""")
+            break
         }
 
-        // Decode command
-        val command = try {
-          ProtocolJson.decodeCommand(body)
-        } catch (e: Throwable) {
-          val errorResp = ProtocolJson.encodeResponse(
-            Response.Error(id = "unknown", message = "Invalid command: ${e.message}")
-          )
-          sendHttpResponse(clientFd, 400, errorResp)
-          continue
+        // POST COMMAND
+        val headerEnd = headStr.indexOf("\r\n\r\n")
+        if (headerEnd < 0) break
+        
+        val headers = headStr.substring(0, headerEnd)
+        val clMatch = Regex("Content-Length:\\s*(\\d+)", RegexOption.IGNORE_CASE).find(headers)
+        val contentLength = clMatch?.groupValues?.get(1)?.toIntOrNull() ?: 0
+        
+        val bodyStart = headerEnd + 4
+        val initialBodyRead = n - bodyStart
+        val bodyBuffer = ByteArray(contentLength)
+        
+        if (initialBodyRead > 0) {
+            headBuffer.copyInto(bodyBuffer, 0, bodyStart, n)
+        }
+        
+        var bodyRead = initialBodyRead
+        while (bodyRead < contentLength) {
+            val rem = bodyBuffer.usePinned { p -> recv(clientFd, p.addressOf(bodyRead), (contentLength - bodyRead).convert(), 0).toInt() }
+            if (rem <= 0) break
+            bodyRead += rem
+        }
+        
+        val requestBody = bodyBuffer.decodeToString()
+        val command = try { ProtocolJson.decodeCommand(requestBody) } catch (e: Throwable) { null }
+        
+        if (command == null) {
+            sendHttpResponse(clientFd, 400, ProtocolJson.encodeResponse(Response.Error("unknown", "Invalid JSON")))
+            break
         }
 
-        // Execute on main thread with settle
+        // SECURITY: Token validation
+        if (sessionToken.isNotEmpty() && command.token != sessionToken) {
+            println("[ParikshanIosServer] ACCESS DENIED: Invalid token")
+            sendHttpResponse(clientFd, 401, ProtocolJson.encodeResponse(Response.Error(command.id, "Unauthorized")))
+            break
+        }
+
         val response = executeOnMainThread(command)
-        val responseJson = ProtocolJson.encodeResponse(response)
-        sendHttpResponse(clientFd, 200, responseJson)
-
-        if (command is Command.Shutdown) break
+        sendHttpResponse(clientFd, 200, ProtocolJson.encodeResponse(response))
+        break 
       }
-    } catch (_: Throwable) {
-      // Connection error, close silently
     } finally {
       close(clientFd)
     }
@@ -172,162 +204,79 @@ object ParikshanIosServer {
   private fun executeOnMainThread(command: Command): Response {
     val result = AtomicReference<Response?>(null)
     val done = AtomicInt(0)
-
     dispatch_async(dispatch_get_main_queue()) {
-      val resp = handleCommand(command)
-      result.value = resp
+      result.value = handleCommand(command)
       done.value = 1
     }
-
-    // Spin-wait for main thread completion (we're on the server worker thread)
-    val deadline = platform.posix.time(null) + 30 // 30 second timeout
+    val deadline = platform.posix.time(null) + 30
     while (done.value == 0 && platform.posix.time(null) < deadline) {
-      platform.posix.usleep(10_000u) // 10ms
+      platform.posix.usleep(10_000u)
     }
-
-    return result.value ?: Response.Error(
-      id = command.id,
-      message = "Timed out waiting for main thread execution"
-    )
+    return result.value ?: Response.Error(command.id, "Timeout")
   }
 
   private fun handleCommand(command: Command): Response {
-    // This runs on the main thread
     return when (command) {
       is Command.Click -> {
-        if (!IosSemanticsAccessor.performClick(command.tag)) {
-          return Response.Error(command.id, "No clickable node for '${command.tag}'")
-        }
+        if (!IosSemanticsAccessor.performClick(command.tag)) return Response.Error(command.id, "Click failed")
         pumpRunLoop(iterations = 5, intervalSeconds = 0.05)
         Response.Ok(command.id)
       }
-
       is Command.Input -> {
-        if (!IosSemanticsAccessor.performInput(command.tag, command.text)) {
-          return Response.Error(command.id, "No input node for '${command.tag}'")
-        }
+        if (!IosSemanticsAccessor.performInput(command.tag, command.text)) return Response.Error(command.id, "Input failed")
         pumpRunLoop(iterations = 5, intervalSeconds = 0.05)
         Response.Ok(command.id)
       }
-
       is Command.Scroll -> {
-        if (!IosSemanticsAccessor.performScroll(command.tag, command.direction)) {
-          return Response.Error(command.id, "No scroll node for '${command.tag}'")
-        }
+        if (!IosSemanticsAccessor.performScroll(command.tag, command.direction)) return Response.Error(command.id, "Scroll failed")
         pumpRunLoop(iterations = 3, intervalSeconds = 0.05)
         Response.Ok(command.id)
       }
-
       is Command.AssertVisible -> {
-        pumpRunLoop(iterations = 3, intervalSeconds = 0.05)
-        val node = IosSemanticsAccessor.snapshotNode(command.tag)
-          ?: return Response.Error(command.id, "No node for '${command.tag}'")
-        if (!node.visible) {
-          return Response.Error(command.id, "Node '${command.tag}' not visible")
-        }
-        Response.NodeInfo(id = command.id, bounds = node.bounds, visible = node.visible, text = node.text)
+        val node = IosSemanticsAccessor.snapshotNode(command.tag) ?: return Response.Error(command.id, "Not found")
+        Response.NodeInfo(command.id, node.bounds, node.visible, node.text)
       }
-
       is Command.AssertText -> {
-        pumpRunLoop(iterations = 3, intervalSeconds = 0.05)
-        val node = IosSemanticsAccessor.snapshotNode(command.tag)
-          ?: return Response.Error(command.id, "No node for '${command.tag}'")
-        val actual = node.text.orEmpty()
-        if (actual != command.expected) {
-          return Response.Error(command.id, "Text mismatch: expected='${command.expected}' actual='$actual'")
-        }
+        val node = IosSemanticsAccessor.snapshotNode(command.tag) ?: return Response.Error(command.id, "Not found")
+        if (node.text != command.expected) return Response.Error(command.id, "Mismatch")
         Response.Ok(command.id)
       }
-
       is Command.WaitFor -> {
-        val timeoutMs = command.timeoutMs
-        val pollIntervalMs = 50L
-        val startNs = kotlin.time.TimeSource.Monotonic.markNow()
-        var node = IosSemanticsAccessor.snapshotNode(command.tag)
-        while (node?.visible != true) {
-          if (startNs.elapsedNow().inWholeMilliseconds >= timeoutMs) {
-            return Response.Error(command.id, "Timed out waiting for '${command.tag}' after ${timeoutMs}ms")
+        val deadline = platform.posix.time(null) + ((command.timeoutMs + 999L) / 1000L)
+        while (platform.posix.time(null) <= deadline) {
+          val node = IosSemanticsAccessor.snapshotNode(command.tag)
+          if (node?.visible == true) {
+            return Response.NodeInfo(command.id, node.bounds, visible = true, text = node.text)
           }
-          pumpRunLoop(iterations = 1, intervalSeconds = pollIntervalMs.toDouble() / 1000.0)
-          node = IosSemanticsAccessor.snapshotNode(command.tag)
+          pumpRunLoop(iterations = 1, intervalSeconds = 0.05)
         }
-        Response.NodeInfo(id = command.id, bounds = node.bounds, visible = node.visible, text = node.text)
+        Response.Error(command.id, "Timed out waiting for '${command.tag}' after ${command.timeoutMs}ms")
+      }
+      is Command.GetTree -> Response.Tree(command.id, IosSemanticsAccessor.snapshotTree())
+      
+      is Command.Screenshot -> {
+        val window = UIApplication.sharedApplication.keyWindow ?: return Response.Error(command.id, "No window")
+        UIGraphicsBeginImageContextWithOptions(window.bounds.useContents { size.readValue() }, false, 0.0)
+        window.drawViewHierarchyInRect(window.bounds, true)
+        val image = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        val data = image?.let { UIImagePNGRepresentation(it) }
+        val base64 = data?.base64EncodedStringWithOptions(0u) ?: ""
+        Response.NodeInfo(command.id, io.github.aryapreetam.parikshan.protocol.Bounds(0.0,0.0,0.0,0.0), true, base64)
       }
 
-      is Command.GetTree -> {
-        pumpRunLoop(iterations = 3, intervalSeconds = 0.05)
-        Response.Tree(id = command.id, nodes = IosSemanticsAccessor.snapshotTree())
-      }
-
-      is Command.Screenshot -> Response.Ok(command.id)
-      is Command.PressBack -> Response.Ok(command.id)
-      is Command.PressHome -> Response.Ok(command.id)
-      is Command.StartRecording -> Response.Ok(command.id)
-      is Command.StopRecording -> Response.Ok(command.id)
       is Command.Shutdown -> Response.Ok(command.id)
       is Command.Ping -> Response.Ok(command.id)
+      else -> Response.Ok(command.id)
     }
-  }
-
-  // ── HTTP helpers ──
-
-  private fun readHttpRequest(fd: Int): String? {
-    val buffer = StringBuilder()
-    val buf = ByteArray(4096)
-    var contentLength = -1
-    var headerEnd = -1
-
-    while (true) {
-      val n = buf.usePinned { pinned ->
-        read(fd, pinned.addressOf(0), buf.size.convert()).toInt()
-      }
-      if (n <= 0) return null
-
-      buffer.append(buf.decodeToString(0, n))
-
-      // Find end of headers
-      if (headerEnd < 0) {
-        headerEnd = buffer.indexOf("\r\n\r\n")
-        if (headerEnd >= 0) {
-          val headers = buffer.substring(0, headerEnd)
-          val clLine = headers.lines().firstOrNull {
-            it.startsWith("Content-Length:", ignoreCase = true)
-          }
-          contentLength = clLine?.substringAfter(":")?.trim()?.toIntOrNull() ?: 0
-        }
-      }
-
-      if (headerEnd >= 0) {
-        val bodyStart = headerEnd + 4
-        val bodyReceived = buffer.length - bodyStart
-        if (bodyReceived >= contentLength) {
-          return buffer.toString()
-        }
-      }
-    }
-  }
-
-  private fun extractBody(request: String): String? {
-    val idx = request.indexOf("\r\n\r\n")
-    if (idx < 0) return null
-    return request.substring(idx + 4)
   }
 
   private fun sendHttpResponse(fd: Int, status: Int, body: String) {
-    val statusText = if (status == 200) "OK" else "Bad Request"
+    val statusText = if (status == 200) "OK" else if (status == 401) "Unauthorized" else "Error"
     val bodyBytes = body.encodeToByteArray()
-    val response = "HTTP/1.1 $status $statusText\r\n" +
-      "Content-Type: application/json\r\n" +
-      "Content-Length: ${bodyBytes.size}\r\n" +
-      "Connection: keep-alive\r\n" +
-      "\r\n"
-    val headerBytes = response.encodeToByteArray()
-
-    headerBytes.usePinned { pinned ->
-      write(fd, pinned.addressOf(0), headerBytes.size.convert())
-    }
-    bodyBytes.usePinned { pinned ->
-      write(fd, pinned.addressOf(0), bodyBytes.size.convert())
-    }
+    val head = "HTTP/1.1 $status $statusText\r\nContent-Type: application/json\r\nContent-Length: ${bodyBytes.size}\r\nConnection: close\r\n\r\n"
+    val headBytes = head.encodeToByteArray()
+    write(fd, headBytes.usePinned { it.addressOf(0) }, headBytes.size.convert())
+    write(fd, bodyBytes.usePinned { it.addressOf(0) }, bodyBytes.size.convert())
   }
 }

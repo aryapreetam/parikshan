@@ -19,11 +19,11 @@ kotlin {
   sourceSets {
     commonMain.dependencies {
       api(project(":parikshan-core"))
-      api(project(":parikshan-client"))
     }
 
     commonTest.dependencies {
       implementation(kotlin("test"))
+      implementation(project(":parikshan-client"))
     }
 
     jvmMain.dependencies {

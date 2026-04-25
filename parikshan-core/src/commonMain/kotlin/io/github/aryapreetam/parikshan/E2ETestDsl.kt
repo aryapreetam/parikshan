@@ -100,20 +100,28 @@ class E2ETestScope internal constructor(
     selector: Selector,
     expected: String
   ) {
-    // Try native assertion first to avoid getTree
-    val tagValue = if (selector is Selector.Tag) selector.value else (selector as Selector.Auto).raw
-    val response = driver.send(
-      Command.AssertText(
-        id = nextId(),
-        tag = tagValue,
-        expected = expected
-      )
-    )
-    if (response is Response.Ok) {
-      settleAfterCommand()
-      return
+    val nativeTag =
+      when (selector) {
+        is Selector.Auto -> selector.raw
+        is Selector.Tag -> selector.value
+        is Selector.Text -> null
+      }
+
+    if (nativeTag != null) {
+      val response =
+        driver.send(
+          Command.AssertText(
+            id = nextId(),
+            tag = nativeTag,
+            expected = expected
+          )
+        )
+      if (response is Response.Ok) {
+        settleAfterCommand()
+        return
+      }
     }
-    // Fallback
+
     val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
     if (resolved.node.text != expected) {
       throw AssertionError("assertText(${selector.raw}) failed: expected '$expected', got '${resolved.node.text}'")
@@ -125,8 +133,6 @@ class E2ETestScope internal constructor(
     tag: String,
     timeoutMs: Long = config.defaultWaitTimeoutMs
   ) {
-    // Rely on local polling loop to handle both text and exact tag matching seamlessly
-    // instead of sending Command.WaitFor which can block the server thread incorrectly on text selectors
     waitFor(selector = tag.asAutoSelector(), timeoutMs = timeoutMs)
   }
 
@@ -147,13 +153,12 @@ class E2ETestScope internal constructor(
       if (startMark.elapsedNow() >= timeoutMs.milliseconds) {
         break
       }
-      delay(200) // Poll interval
+      delay(WAIT_POLL_INTERVAL_MS)
     } while (true)
 
-    // Capture failure screenshot before throwing
     if (config.captureScreenshotOnFailure) {
       runCatching {
-        driver.send(Command.Screenshot(id = nextId(), path = config.failureScreenshotPath))
+        screenshot(config.failureScreenshotPath)
       }
     }
     throw AssertionError(
@@ -176,19 +181,18 @@ class E2ETestScope internal constructor(
   ) {
     val startMark = TimeSource.Monotonic.markNow()
     var lastError: String? = null
-    
-    // Resolve the tag safely without brittle casts
-    val tagValue = when (selector) {
-      is Selector.Tag -> selector.value
-      is Selector.Auto -> selector.raw
-      is Selector.Text -> "" // Text selectors don't have tags; the server will find by tag if provided
-    }
-    
+
+    val nativeTag =
+      when (selector) {
+        is Selector.Auto -> selector.raw
+        is Selector.Tag -> selector.value
+        is Selector.Text -> null
+      }
+
     do {
       try {
-        // If we have a tag, we can use the high-speed server-side AssertText
-        if (tagValue.isNotEmpty()) {
-          val response = driver.send(Command.AssertText(id = nextId(), tag = tagValue, expected = expected))
+        if (nativeTag != null) {
+          val response = driver.send(Command.AssertText(id = nextId(), tag = nativeTag, expected = expected))
           if (response is Response.Ok) {
             settleAfterCommand()
             return
@@ -196,18 +200,14 @@ class E2ETestScope internal constructor(
           if (response is Response.Error) {
             lastError = response.message
           }
-        } else {
-          // Fallback to full tree matching for pure text selectors
-          val nodes = fetchTree()
-          selector.resolveNode(nodes, requireVisible = true)
-          // node resolution succeeded, now check text
-          val resolved = selector.resolveNode(nodes, requireVisible = true)
-          if (resolved.node.text == expected) {
-             settleAfterCommand()
-             return
-          }
-          lastError = "Text mismatch: expected '$expected' actual '${resolved.node.text}'"
         }
+
+        val resolved = selector.resolveNode(fetchTree(), requireVisible = true)
+        if (resolved.node.text == expected) {
+          settleAfterCommand()
+          return
+        }
+        lastError = "Text mismatch: expected '$expected' actual '${resolved.node.text}'"
       } catch (error: IllegalArgumentException) {
         lastError = error.message
       }
@@ -217,10 +217,9 @@ class E2ETestScope internal constructor(
       delay(WAIT_POLL_INTERVAL_MS)
     } while (true)
 
-    // Capture failure screenshot before throwing
     if (config.captureScreenshotOnFailure) {
       runCatching {
-        driver.send(Command.Screenshot(id = nextId(), path = config.failureScreenshotPath))
+        screenshot(config.failureScreenshotPath)
       }
     }
     throw AssertionError(
@@ -262,9 +261,20 @@ class E2ETestScope internal constructor(
   suspend fun screenshot(path: String) {
     expectOk(
       action = "screenshot($path)",
-      response = driver.send(Command.Screenshot(id = nextId(), path = path))
+      response =
+        driver.send(
+          Command.Screenshot(
+            id = nextId(),
+            devicePath = path,
+            hostPath = path
+          )
+        )
     )
     settleAfterCommand()
+  }
+
+  suspend fun takeScreenshot(hostPath: String) {
+    screenshot(hostPath)
   }
 
   fun artifactPath(relativePath: String): String =
@@ -307,22 +317,6 @@ class E2ETestScope internal constructor(
     }
   }
 
-  private fun expectNode(
-    action: String,
-    response: Response
-  ) {
-    when (response) {
-      is Response.NodeInfo -> {
-        if (!response.visible) {
-          throw AssertionError("$action failed: node is not visible")
-        }
-      }
-
-      is Response.Error -> throw AssertionError("$action failed: ${response.message}")
-      else -> throw AssertionError("$action returned unexpected response: $response")
-    }
-  }
-
   private suspend fun fetchTree(): List<NodeSnapshot> =
     when (
       val response = driver.send(Command.GetTree(id = nextId()))
@@ -335,23 +329,21 @@ class E2ETestScope internal constructor(
   private suspend fun lookupSelector(
     selector: Selector,
     requireVisible: Boolean
-  ): ResolvedSelector {
-    return selector.resolveNode(
+  ): ResolvedSelector =
+    selector.resolveNode(
       nodes = fetchTree(),
       requireVisible = requireVisible
     )
-  }
 
   private suspend fun resolveSelectorOrThrow(
     selector: Selector,
     requireVisible: Boolean
-  ): ResolvedSelector {
-    return try {
+  ): ResolvedSelector =
+    try {
       lookupSelector(selector = selector, requireVisible = requireVisible)
     } catch (error: IllegalArgumentException) {
       throw AssertionError(error.message ?: "Could not resolve selector ${selector.raw}")
     }
-  }
 }
 
 suspend fun e2eTest(
@@ -361,6 +353,10 @@ suspend fun e2eTest(
 ) {
   val scope = E2ETestScope(driver = driver, config = config)
   try {
+    val pingResponse = driver.send(Command.Ping(id = nextId()))
+    if (pingResponse is Response.Error) {
+      throw IllegalStateException("Failed to connect to Parikshan server: ${pingResponse.message}")
+    }
     scope.block()
   } catch (throwable: Throwable) {
     if (config.captureScreenshotOnFailure) {

@@ -219,7 +219,7 @@ private class RunningParikshanServer(
       is Command.Screenshot -> {
         val captureBounds = semantics.windowBoundsOnScreen()
         val image = injector.createScreenCapture(captureBounds)
-        injector.screenshot(image = image, path = command.path)
+        injector.screenshot(image = image, path = command.devicePath)
         videoRecorder.captureNow()
         Response.Ok(command.id)
       }

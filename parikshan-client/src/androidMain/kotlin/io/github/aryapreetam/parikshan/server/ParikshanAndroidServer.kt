@@ -1,7 +1,6 @@
 package io.github.aryapreetam.parikshan.server
 
-import android.os.Handler
-import android.os.Looper
+import android.os.Bundle
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.ComposeTestRule
@@ -19,9 +18,8 @@ import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.ProtocolJson
 import io.github.aryapreetam.parikshan.protocol.Response
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.io.OutputStreamWriter
+import java.io.InputStream
+import java.io.OutputStream
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.CountDownLatch
@@ -44,9 +42,16 @@ object ParikshanAndroidServer {
   private var serverThread: Thread? = null
   private val shutdownLatch = CountDownLatch(1)
   private lateinit var composeRule: ComposeTestRule
+  private var sessionToken: String = ""
 
-  fun start(rule: ComposeTestRule, port: Int = 9879) {
+  fun start(rule: ComposeTestRule, port: Int = 9879, sessionToken: String? = null) {
     if (!running.compareAndSet(false, true)) return
+    
+    // Resolve session token from instrumentation args
+    val args = InstrumentationRegistry.getArguments()
+    this.sessionToken = sessionToken ?: args.getString("parikshan_token") ?: ""
+    println("[ParikshanAndroidServer] Starting with token: ${this.sessionToken.take(8)}...")
+    
     composeRule = rule
     serverThread = Thread {
       runServer(port)
@@ -62,8 +67,8 @@ object ParikshanAndroidServer {
 
   private fun runServer(port: Int) {
     try {
-      java.net.ServerSocket(port, 50, java.net.InetAddress.getByName("127.0.0.1")).use { serverSocket ->
-        println("[ParikshanAndroidServer] Listening on port $port")
+      ServerSocket(port, 50, java.net.InetAddress.getByName("127.0.0.1")).use { serverSocket ->
+        println("[ParikshanAndroidServer] Securely listening on loopback:$port")
         while (running.get()) {
           try {
             val client = serverSocket.accept()
@@ -84,58 +89,57 @@ object ParikshanAndroidServer {
   private fun handleConnection(client: Socket) {
     try {
       client.use { socket ->
-        val reader = BufferedReader(InputStreamReader(socket.inputStream))
-        val writer = OutputStreamWriter(socket.outputStream)
+        val input = socket.getInputStream()
+        val output = socket.getOutputStream()
 
-        // Read HTTP Request
-        val requestLines = mutableListOf<String>()
-        var line = reader.readLine()
-        while (line != null && line.isNotEmpty()) {
-          requestLines.add(line)
-          line = reader.readLine()
-        }
-
+        // Byte-accurate HTTP Header Parsing
+        val headerLines = readHeaders(input)
         var contentLength = 0
-        for (header in requestLines) {
+        for (header in headerLines) {
           if (header.lowercase().startsWith("content-length:")) {
             contentLength = header.substringAfter(":").trim().toIntOrNull() ?: 0
           }
         }
 
         if (contentLength > 0) {
-          val bodyChars = CharArray(contentLength)
-          var read = 0
-          while (read < contentLength) {
-            val r = reader.read(bodyChars, read, contentLength - read)
-            if (r == -1) break
-            read += r
+          // Accurate byte reading to avoid UTF-8 truncation
+          val bodyBytes = ByteArray(contentLength)
+          var totalRead = 0
+          while (totalRead < contentLength) {
+            val read = input.read(bodyBytes, totalRead, contentLength - totalRead)
+            if (read == -1) break
+            totalRead += read
           }
-          val body = String(bodyChars)
-
-          val command = try {
-            ProtocolJson.decodeCommand(body)
-          } catch (e: Exception) {
-            null
-          }
+          
+          val body = String(bodyBytes, Charsets.UTF_8)
+          val command = try { ProtocolJson.decodeCommand(body) } catch (e: Exception) { null }
 
           if (command != null) {
-            println("[ParikshanAndroidServer] Received command: ${command::class.simpleName}")
+            // SECURITY: Validate Token
+            if (sessionToken.isNotEmpty() && command.token != sessionToken) {
+                println("[ParikshanAndroidServer] BLOCKED: Invalid session token")
+                sendHttpResponse(output, 401, ProtocolJson.encodeResponse(Response.Error(command.id, "Unauthorized: Invalid Session Token")))
+                return
+            }
+
+            println("[ParikshanAndroidServer] Executing: ${command::class.simpleName}")
             val response = try {
               handleCommand(command)
             } catch (e: Throwable) {
               Response.Error(command.id, e.message ?: "Unknown error executing command")
             }
-            sendHttpResponse(writer, 200, ProtocolJson.encodeResponse(response))
+            sendHttpResponse(output, 200, ProtocolJson.encodeResponse(response))
+            
             if (command is Command.Shutdown) {
               running.set(false)
               shutdownLatch.countDown()
             }
           } else {
-            sendHttpResponse(writer, 400, ProtocolJson.encodeResponse(Response.Error("unknown", "Invalid command")))
+            sendHttpResponse(output, 400, ProtocolJson.encodeResponse(Response.Error("unknown", "Invalid command format")))
           }
         } else {
           // Health check
-          sendHttpResponse(writer, 200, """{"type":"Ok","id":"health"}""")
+          sendHttpResponse(output, 200, """{"type":"ok","id":"health"}""")
         }
       }
     } catch (e: Exception) {
@@ -143,10 +147,26 @@ object ParikshanAndroidServer {
     }
   }
 
+  private fun readHeaders(input: InputStream): List<String> {
+    val headers = mutableListOf<String>()
+    var currentLine = StringBuilder()
+    while (true) {
+      val b = input.read()
+      if (b == -1) break
+      val c = b.toChar()
+      if (c == '\n') {
+        val line = currentLine.toString().trim()
+        if (line.isEmpty()) break
+        headers.add(line)
+        currentLine = StringBuilder()
+      } else if (c != '\r') {
+        currentLine.append(c)
+      }
+    }
+    return headers
+  }
+
   private fun handleCommand(command: Command): Response {
-    // Because composeRule handles synchronization internally (it pumps the UI thread),
-    // we don't need to wrap this in a mainHandler.post {}. 
-    // The ComposeTestRule is designed to be called from the test thread.
     return when (command) {
       is Command.Click -> {
         val node = composeRule.onNodeWithTag(command.tag)
@@ -168,8 +188,8 @@ object ParikshanAndroidServer {
         try {
           node.performTouchInput {
             when (command.direction) {
-              ScrollDirection.Up -> swipeDown() // Swiping down reveals content above
-              ScrollDirection.Down -> swipeUp() // Swiping up reveals content below
+              ScrollDirection.Up -> swipeDown()
+              ScrollDirection.Down -> swipeUp()
               ScrollDirection.Left -> swipeRight()
               ScrollDirection.Right -> swipeLeft()
             }
@@ -218,12 +238,7 @@ object ParikshanAndroidServer {
 
       is Command.GetTree -> {
         val nodes = mutableListOf<NodeSnapshot>()
-        val root = try {
-          composeRule.onRoot()
-        } catch (e: Throwable) {
-          e.printStackTrace()
-          null
-        }
+        val root = try { composeRule.onRoot() } catch (e: Throwable) { null }
         
         if (root != null) {
           fun traverse(node: androidx.compose.ui.semantics.SemanticsNode) {
@@ -241,24 +256,19 @@ object ParikshanAndroidServer {
             ))
             node.children.forEach { traverse(it) }
           }
-          
-          try {
-            traverse(root.fetchSemanticsNode())
-          } catch (e: Throwable) {
-            e.printStackTrace()
-            // Ignore if semantics node is not fully initialized
-          }
+          try { traverse(root.fetchSemanticsNode()) } catch (e: Throwable) { }
         }
         Response.Tree(id = command.id, nodes = nodes)
       }
 
       is Command.Screenshot -> {
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-        val file = java.io.File(command.path)
-        file.parentFile?.mkdirs()
-        device.takeScreenshot(file)
+        // Save to internal storage; the host driver will pull it via ADB
+        val deviceFile = java.io.File("/sdcard/parikshan-screenshot.png")
+        device.takeScreenshot(deviceFile)
         Response.Ok(command.id)
       }
+      
       is Command.PressBack -> {
         UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressBack()
         Response.Ok(command.id)
@@ -274,16 +284,15 @@ object ParikshanAndroidServer {
     }
   }
 
-  private fun sendHttpResponse(writer: OutputStreamWriter, status: Int, body: String) {
-    val statusText = if (status == 200) "OK" else "Bad Request"
-    val bodyBytes = body.encodeToByteArray()
-    writer.write("HTTP/1.1 $status $statusText\r\n")
-    writer.write("Content-Type: application/json\r\n")
-    writer.write("Content-Length: ${bodyBytes.size}\r\n")
-    writer.write("Connection: close\r\n")
-    writer.write("\r\n")
-    writer.flush()
-    writer.write(body)
-    writer.flush()
+  private fun sendHttpResponse(output: OutputStream, status: Int, body: String) {
+    val statusText = if (status == 200) "OK" else if (status == 401) "Unauthorized" else "Bad Request"
+    val bodyBytes = body.toByteArray(Charsets.UTF_8)
+    val header = "HTTP/1.1 $status $statusText\r\n" +
+                 "Content-Type: application/json; charset=utf-8\r\n" +
+                 "Content-Length: ${bodyBytes.size}\r\n" +
+                 "Connection: close\r\n\r\n"
+    output.write(header.toByteArray(Charsets.UTF_8))
+    output.write(bodyBytes)
+    output.flush()
   }
 }

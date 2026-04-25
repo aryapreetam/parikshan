@@ -139,7 +139,7 @@ class AndroidDriver private constructor(
 
       is Command.Screenshot -> {
         val bitmap = captureRootBitmapWithRetry()
-        writeBitmap(bitmap = bitmap, path = command.path)
+        writeBitmap(bitmap = bitmap, path = command.devicePath)
         Response.Ok(command.id)
       }
 

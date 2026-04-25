@@ -19,73 +19,84 @@ enum class ScrollDirection {
 }
 
 @Serializable
-sealed interface Command {
-  val id: String
+sealed class Command {
+  abstract val id: String
+  abstract var token: String
 
   @Serializable
   @SerialName("click")
   data class Click(
     override val id: String,
-    val tag: String
-  ) : Command
+    val tag: String,
+    override var token: String = ""
+  ) : Command()
 
   @Serializable
   @SerialName("input")
   data class Input(
     override val id: String,
     val tag: String,
-    val text: String
-  ) : Command
+    val text: String,
+    override var token: String = ""
+  ) : Command()
 
   @Serializable
   @SerialName("scroll")
   data class Scroll(
     override val id: String,
     val tag: String,
-    val direction: ScrollDirection
-  ) : Command
+    val direction: ScrollDirection,
+    override var token: String = ""
+  ) : Command()
 
   @Serializable
   @SerialName("assertvisible")
   data class AssertVisible(
     override val id: String,
-    val tag: String
-  ) : Command
+    val tag: String,
+    override var token: String = ""
+  ) : Command()
 
   @Serializable
   @SerialName("asserttext")
   data class AssertText(
     override val id: String,
     val tag: String,
-    val expected: String
-  ) : Command
+    val expected: String,
+    override var token: String = ""
+  ) : Command()
 
   @Serializable
   @SerialName("waitfor")
   data class WaitFor(
     override val id: String,
     val tag: String,
-    val timeoutMs: Long
-  ) : Command
+    val timeoutMs: Long,
+    override var token: String = ""
+  ) : Command()
 
   @Serializable
   @SerialName("screenshot")
   data class Screenshot(
     override val id: String,
-    val path: String
-  ) : Command
+    val devicePath: String,
+    val hostPath: String,
+    override var token: String = ""
+  ) : Command()
 
   @Serializable
   @SerialName("gettree")
   data class GetTree(
-    override val id: String
-  ) : Command
+    override val id: String,
+    override var token: String = ""
+  ) : Command()
 
   @Serializable
   @SerialName("shutdown")
   data class Shutdown(
-    override val id: String
-  ) : Command
+    override val id: String,
+    override var token: String = ""
+  ) : Command()
 
   @Serializable
   @SerialName("startrecording")
@@ -94,32 +105,36 @@ sealed interface Command {
     val sessionName: String,
     val path: String,
     val fps: Int = 1,
-    val showCursor: Boolean = true
-  ) : Command
+    val showCursor: Boolean = true,
+    override var token: String = ""
+  ) : Command()
 
   @Serializable
   @SerialName("stoprecording")
   data class StopRecording(
     override val id: String,
-    val sessionName: String
-  ) : Command
+    val sessionName: String,
+    override var token: String = ""
+  ) : Command()
 
   @Serializable
   @SerialName("pressback")
   data class PressBack(
-    override val id: String
-  ) : Command
+    override val id: String,
+    override var token: String = ""
+  ) : Command()
 
   @Serializable
   @SerialName("presshome")
   data class PressHome(
-    override val id: String
-  ) : Command
+    override val id: String,
+    override var token: String = ""
+  ) : Command()
 
-  // Used by orchestrators to check liveness before test execution.
   @Serializable
   @SerialName("ping")
   data class Ping(
-    override val id: String
-  ) : Command
+    override val id: String,
+    override var token: String = ""
+  ) : Command()
 }

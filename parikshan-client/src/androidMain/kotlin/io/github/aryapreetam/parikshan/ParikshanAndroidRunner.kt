@@ -34,8 +34,12 @@ class ParikshanAndroidRunner {
     
     context.startActivity(intent)
 
+    // Resolve token from instrumentation arguments
+    val args = InstrumentationRegistry.getArguments()
+    val sessionToken = args.getString("parikshan_token") ?: ""
+
     // Start the Parikshan server and pass the compose rule
-    ParikshanAndroidServer.start(composeRule, port = 9879)
+    ParikshanAndroidServer.start(composeRule, port = 9879, sessionToken = sessionToken)
 
     // Block forever until the server receives a Shutdown command
     ParikshanAndroidServer.awaitShutdown()

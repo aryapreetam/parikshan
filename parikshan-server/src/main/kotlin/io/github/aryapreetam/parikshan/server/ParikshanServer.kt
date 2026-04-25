@@ -13,6 +13,10 @@ import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.Frame
 import io.ktor.websocket.readText
+import io.ktor.server.routing.post
+import io.ktor.server.request.receiveText
+import io.ktor.server.response.respondText
+import io.ktor.http.HttpStatusCode
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
@@ -75,6 +79,38 @@ private class RunningParikshanServer(
     install(WebSockets)
 
     routing {
+      post("/") {
+        val raw = call.receiveText()
+        val command = runCatching { ProtocolJson.decodeCommand(raw) }.getOrNull()
+          ?: return@post call.respondText(
+            ProtocolJson.encodeResponse(Response.Error("unknown", "Invalid JSON")),
+            status = HttpStatusCode.BadRequest
+          )
+
+        // Security check
+        val expectedToken = System.getProperty("parikshan.token")
+        if (!expectedToken.isNullOrEmpty() && command.token != expectedToken) {
+          return@post call.respondText(
+            ProtocolJson.encodeResponse(Response.Error(command.id, "Unauthorized: Token mismatch")),
+            status = HttpStatusCode.Unauthorized
+          )
+        }
+
+        val response = runCatching { handleCommand(command) }.getOrElse { throwable ->
+          if (throwable is CancellationException) throw throwable
+          Response.Error(command.id, throwable.message ?: "Unknown error")
+        }
+
+        call.respondText(ProtocolJson.encodeResponse(response))
+
+        if (command is Command.Shutdown) {
+          scope.launch {
+            delay(100)
+            stop()
+          }
+        }
+      }
+
       webSocket(config.path) {
         for (frame in incoming) {
           if (frame !is Frame.Text) {

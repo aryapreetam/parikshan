@@ -20,14 +20,29 @@ class DesktopDriver(
     command.token = sessionToken
     
     val json = ProtocolJson.encodeCommand(command)
-    val responseJson = httpPost(json)
-    return ProtocolJson.decodeResponse(responseJson)
+    
+    var lastError: Exception? = null
+    repeat(30) { attempt ->
+      try {
+        val responseJson = httpPost(json)
+        return ProtocolJson.decodeResponse(responseJson)
+      } catch (e: Exception) {
+        lastError = e
+        if (attempt < 29) kotlinx.coroutines.delay(1000)
+      }
+    }
+    throw lastError ?: RuntimeException("Failed to send command after 30 attempts")
   }
 
   override suspend fun close() {
+    // In Gradle-managed Desktop E2E, the app process is managed by the plugin.
+    // Sending Shutdown here would kill the app after the first test finishes,
+    // causing subsequent tests to fail with ConnectException.
+    /*
     try {
         send(Command.Shutdown(id = "shutdown-desktop"))
-    } catch (e: Exception) { /* ignore */ }
+    } catch (e: Exception) { // ignore // }
+    */
   }
 
   private fun httpPost(body: String): String {

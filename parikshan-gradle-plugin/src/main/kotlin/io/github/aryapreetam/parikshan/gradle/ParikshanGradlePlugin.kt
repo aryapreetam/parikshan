@@ -480,7 +480,14 @@ private object ParikshanDesktopProcess {
     stop()
     val jar = project.tasks.findByName(appJarTaskName)?.outputs?.files?.firstOrNull { it.extension == "jar" } ?: throw GradleException("No jar")
     val mainClass = JarFile(jar).manifest.mainAttributes.getValue("Main-Class")
-    process = ProcessBuilder(listOf(System.getProperty("java.home") + "/bin/java", "-Dparikshan.host=$host", "-Dparikshan.port=$port", "-Dparikshan.desktop.appMainClass=$mainClass", "-cp", jar.absolutePath, "io.github.aryapreetam.parikshan.server.ParikshanDesktopLauncher")).start()
+    val token = project.providers.gradleProperty("parikshan.token").getOrNull() ?: ""
+    val logFile = File(project.layout.buildDirectory.get().asFile, "parikshan/desktop-app.log")
+    logFile.parentFile.mkdirs()
+    val windowTitleProp = if (title != null) "-Dparikshan.desktop.windowTitle=$title" else ""
+    process = ProcessBuilder(listOfNotNull(System.getProperty("java.home") + "/bin/java", "-Dparikshan.host=$host", "-Dparikshan.port=$port", "-Dparikshan.token=$token", "-Dparikshan.desktop.appMainClass=$mainClass", windowTitleProp.takeIf { it.isNotEmpty() }, "-cp", jar.absolutePath, "io.github.aryapreetam.parikshan.server.ParikshanDesktopLauncher"))
+      .redirectErrorStream(true)
+      .redirectOutput(logFile)
+      .start()
   }
   fun stop() { process?.destroy(); process = null }
 }
@@ -494,6 +501,10 @@ private fun Project.configureParikshanDependencies(isE2EActive: Boolean) {
   // This prevents production pollution for all other builds.
   if (isE2EActive) {
       addParikshanDependency("commonMainImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client:0.0.1")
+      // Only for Desktop (JVM)
+      if (configurations.findByName("jvmMainImplementation") != null) {
+          addParikshanDependency("jvmMainImplementation", ":parikshan-server", "io.github.aryapreetam:parikshan-server:0.0.1")
+      }
   }
 }
 

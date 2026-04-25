@@ -70,7 +70,9 @@ private class DesktopBootstrapController(
     while (!Thread.currentThread().isInterrupted && handle == null) {
       when (val selection = selectComposeWindow(requiredWindowTitle)) {
         is WindowSelection.Ready -> {
+          System.err.println("Parikshan: Found visible Compose window. Starting server...")
           handle = ParikshanServer.start(window = selection.window, config = config)
+          System.err.println("Parikshan: Server started on ${config.host}:${config.port}")
           return
         }
 

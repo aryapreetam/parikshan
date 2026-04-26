@@ -19,11 +19,11 @@ import kotlinx.serialization.builtins.ListSerializer
  * in-browser Parikshan bridge installed by Modifier.testTag instrumentation.
  */
 class WasmDriver private constructor(
-  private val playwright: Playwright,
-  private val browser: Browser,
-  private val page: Page,
   private val sessionToken: String = System.getProperty("parikshan.token") ?: ""
 ) : TestDriver {
+
+  private val page: Page
+    get() = checkNotNull(sharedPage) { "WasmDriver shared page is not initialized" }
 
   override suspend fun send(command: Command): Response {
     command.token = sessionToken
@@ -35,8 +35,7 @@ class WasmDriver private constructor(
   }
 
   override suspend fun close() {
-    runCatching { browser.close() }
-    runCatching { playwright.close() }
+    // Shared browser across tests. JVM shutdown hook will close it.
   }
 
   private suspend fun handleCommand(command: Command): Response =
@@ -71,6 +70,7 @@ class WasmDriver private constructor(
       is Command.Click -> {
         val clicked = page.evaluate("tag => window.__parikshan_click(tag)", command.tag) as? Boolean ?: false
         if (!clicked) return Response.Error(command.id, "Click failed for '${command.tag}'")
+        delay(100)
         Response.Ok(command.id)
       }
 
@@ -81,6 +81,7 @@ class WasmDriver private constructor(
             listOf(command.tag, command.text)
           ) as? Boolean ?: false
         if (!input) return Response.Error(command.id, "Input failed for '${command.tag}'")
+        delay(100)
         Response.Ok(command.id)
       }
 
@@ -91,6 +92,7 @@ class WasmDriver private constructor(
             listOf(command.tag, command.direction.name)
           ) as? Boolean ?: false
         if (!scrolled) return Response.Error(command.id, "Scroll failed for '${command.tag}'")
+        delay(100)
         Response.Ok(command.id)
       }
 
@@ -134,24 +136,47 @@ class WasmDriver private constructor(
   }
 
   companion object {
+    private var sharedPlaywright: Playwright? = null
+    private var sharedBrowser: Browser? = null
+    private var sharedPage: Page? = null
+
+    init {
+      Runtime.getRuntime().addShutdownHook(Thread {
+        runCatching { sharedBrowser?.close() }
+        runCatching { sharedPlaywright?.close() }
+      })
+    }
+
     suspend fun connect(config: ParikshanWasmConfig = ParikshanWasmConfig.fromSystemProperties()): WasmDriver {
-      val playwright = Playwright.create()
-      val browser =
-        playwright.chromium().launch(
-          BrowserType.LaunchOptions().setHeadless(config.headless)
-        )
-      val page =
-        browser.newPage(
-          Browser.NewPageOptions()
-            .setViewportSize(config.viewportWidth, config.viewportHeight)
-        )
+      if (sharedPlaywright == null) {
+        val playwright = Playwright.create()
+        sharedPlaywright = playwright
+        val browser =
+          playwright.chromium().launch(
+            BrowserType.LaunchOptions().setHeadless(config.headless)
+          )
+        sharedBrowser = browser
+        val page =
+          browser.newPage(
+            Browser.NewPageOptions()
+              .setViewportSize(config.viewportWidth, config.viewportHeight)
+          )
+        page.onConsoleMessage { msg ->
+          val target = if (msg.type() == "error") System.err else System.out
+          target.println("Wasm Console [${msg.type()}]: ${msg.text()}")
+        }
+        sharedPage = page
+      }
+
+      val page = sharedPage!!
+      delay(2000) // Give Wasm app some time to load
       page.navigate(config.appUrl)
       page.waitForFunction(
         "() => typeof window.__parikshan_getTreeJson === 'function'",
         null,
         Page.WaitForFunctionOptions().setTimeout(config.bridgeReadyTimeoutMs.toDouble())
       )
-      return WasmDriver(playwright, browser, page)
+      return WasmDriver()
     }
   }
 }

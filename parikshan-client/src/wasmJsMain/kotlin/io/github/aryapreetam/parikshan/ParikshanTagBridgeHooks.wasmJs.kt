@@ -111,27 +111,36 @@ internal actual object ParikshanTagBridgeHooks {
     return true
   }
 
-  private fun ensureBridgeInstalled() {
+  fun ensureBridgeInstalled() {
     if (bridgeInstalled) {
       return
     }
     bridgeInstalled = true
 
     GlobalThis.getNodeJson = { tag: String ->
-      nodes[tag]?.let { node ->
+      io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.snapshotNode(tag)?.let { snapshot ->
+        ProtocolJson.instance.encodeToString(NodeSnapshot.serializer(), snapshot)
+      } ?: nodes[tag]?.let { node ->
         ProtocolJson.instance.encodeToString(NodeSnapshot.serializer(), node.toSnapshot(tag))
       }
     }
     GlobalThis.getTreeJson = {
-      val tree = nodes.entries.map { (tag, node) -> node.toSnapshot(tag) }
-      ProtocolJson.instance.encodeToString(ListSerializer(NodeSnapshot.serializer()), tree)
+      val semanticsTree = io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.snapshotTree()
+      val trackedTree = nodes.entries.map { (tag, node) -> node.toSnapshot(tag) }
+      val combined = (semanticsTree + trackedTree).distinctBy { it.tag }
+      ProtocolJson.instance.encodeToString(ListSerializer(NodeSnapshot.serializer()), combined)
     }
-    GlobalThis.performClick = { tag -> performClick(tag) }
-    GlobalThis.performInput = { tag, text -> performInput(tag, text) }
+    GlobalThis.performClick = { tag -> 
+      io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performClick(tag) || performClick(tag) 
+    }
+    GlobalThis.performInput = { tag, text -> 
+      io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performInput(tag, text) || performInput(tag, text) 
+    }
     GlobalThis.performScroll = { tag, directionName ->
-      ScrollDirection.entries.firstOrNull { it.name == directionName }?.let { direction ->
-        performScroll(tag, direction)
-      } ?: false
+      val direction = ScrollDirection.entries.firstOrNull { it.name == directionName }
+      if (direction != null) {
+        io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performScroll(tag, direction) || performScroll(tag, direction)
+      } else false
     }
   }
 }

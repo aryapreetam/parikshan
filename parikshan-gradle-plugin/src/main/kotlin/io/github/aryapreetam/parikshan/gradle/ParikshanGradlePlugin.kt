@@ -10,6 +10,7 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.jar.JarFile
 import javax.inject.Inject
+import org.gradle.api.file.FileCollection
 import org.gradle.api.artifacts.Dependency
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.Action
@@ -150,12 +151,17 @@ class ParikshanGradlePlugin : Plugin<Project> {
       project.gradle.startParameter.taskNames.any { it.contains("e2e", ignoreCase = true) } ||
         project.hasProperty("parikshan.e2e.active")
     var prepareIosBootSourceTask: TaskProvider<Task>? = null
+    var prepareWasmBootSourceTask: TaskProvider<Task>? = null
 
     if (isE2ERequested) {
       project.pluginManager.withPlugin("org.jetbrains.kotlin.multiplatform") {
         prepareIosBootSourceTask =
           project.registerParikshanIosBootSource(
             iosProjectDir = iosProjectDir,
+            logger = iosLogger
+          )
+        prepareWasmBootSourceTask =
+          project.registerParikshanWasmBootSource(
             logger = iosLogger
           )
       }
@@ -199,7 +205,8 @@ class ParikshanGradlePlugin : Plugin<Project> {
         dependsOn(startDesktopTask)
         finalizedBy(stopDesktopTask)
         configureE2eHostTestExecution(
-          hostTestTask = hostTestTask.get(),
+          hostTestClassesDirs = hostTestTask.get().testClassesDirs,
+          hostTestClasspath = hostTestTask.get().classpath,
           e2eTestClasses = e2eTestClasses,
           target = "Desktop",
           logger = project.logger
@@ -215,7 +222,8 @@ class ParikshanGradlePlugin : Plugin<Project> {
         dependsOn(installPlaywrightTask, startWasmTask)
         finalizedBy(stopWasmTask)
         configureE2eHostTestExecution(
-          hostTestTask = hostTestTask.get(),
+          hostTestClassesDirs = hostTestTask.get().testClassesDirs,
+          hostTestClasspath = hostTestTask.get().classpath,
           e2eTestClasses = e2eTestClasses,
           target = "Wasm",
           logger = project.logger
@@ -223,6 +231,10 @@ class ParikshanGradlePlugin : Plugin<Project> {
         systemProperty("parikshan.target", "wasm")
         systemProperty("parikshan.token", sessionToken)
         systemProperty("parikshan.wasm.url", "http://127.0.0.1:${extension.wasmServerPort.get()}")
+        testLogging {
+          showStandardStreams = true
+          exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        }
       }
 
       // --- iOS E2E Test Task ---
@@ -346,7 +358,8 @@ class ParikshanGradlePlugin : Plugin<Project> {
         dependsOn(startIosAppTask)
         finalizedBy(stopIosAppTask)
         configureE2eHostTestExecution(
-          hostTestTask = hostTestTask.get(),
+          hostTestClassesDirs = hostTestTask.get().testClassesDirs,
+          hostTestClasspath = hostTestTask.get().classpath,
           e2eTestClasses = e2eTestClasses,
           target = "iOS",
           logger = project.logger
@@ -389,7 +402,8 @@ class ParikshanGradlePlugin : Plugin<Project> {
         dependsOn(startAndroidAppTask)
         finalizedBy(stopAndroidAppTask)
         configureE2eHostTestExecution(
-          hostTestTask = hostTestTask.get(),
+          hostTestClassesDirs = hostTestTask.get().testClassesDirs,
+          hostTestClasspath = hostTestTask.get().classpath,
           e2eTestClasses = e2eTestClasses,
           target = "Android",
           logger = project.logger
@@ -531,7 +545,8 @@ private fun Project.discoverE2eTestClasses(): List<String> {
 }
 
 private fun Test.configureE2eHostTestExecution(
-  hostTestTask: Test,
+  hostTestClassesDirs: FileCollection,
+  hostTestClasspath: FileCollection,
   e2eTestClasses: List<String>,
   target: String,
   logger: Logger
@@ -541,9 +556,9 @@ private fun Test.configureE2eHostTestExecution(
   }
 
   outputs.upToDateWhen { false }
-  testClassesDirs = hostTestTask.testClassesDirs
-  classpath = hostTestTask.classpath
-  dependsOn(hostTestTask.testClassesDirs.buildDependencies)
+  testClassesDirs = hostTestClassesDirs
+  classpath = hostTestClasspath
+  dependsOn(hostTestClassesDirs.buildDependencies)
 
   filter {
     isFailOnNoMatchingTests = true
@@ -554,7 +569,7 @@ private fun Test.configureE2eHostTestExecution(
     val existingClassDirs = testClassesDirs.files.filter { it.exists() }
     if (existingClassDirs.isEmpty()) {
       throw GradleException(
-        "Parikshan $target: host test classes were not compiled. Expected output from '${hostTestTask.name}'."
+        "Parikshan $target: host test classes were not compiled."
       )
     }
     logger.lifecycle("Parikshan $target: running E2E test classes ${e2eTestClasses.joinToString()}")
@@ -615,6 +630,68 @@ private fun Project.registerParikshanIosBootSource(
     dependsOn(prepareTask)
   }
   return prepareTask
+}
+
+private fun Project.registerParikshanWasmBootSource(
+  logger: Logger
+): TaskProvider<Task> {
+  val generatedDir = layout.buildDirectory.dir("parikshan/synthetic-src-wasm").get().asFile
+  val prepareTask =
+    tasks.register("prepareParikshanWasmBootSource") {
+      group = "verification"
+      outputs.dir(generatedDir)
+      outputs.upToDateWhen { false }
+      doLast {
+        generatedDir.deleteRecursively()
+        generatedDir.mkdirs()
+        
+        File(generatedDir, "ParikshanWasmBoot.kt").writeText(
+          """
+            import io.github.aryapreetam.parikshan.ParikshanComposeViewport
+            import io.github.aryapreetam.parikshan.initializeParikshanWasm
+            import androidx.compose.ui.ExperimentalComposeUiApi
+            import kotlinx.browser.document
+            import sample.app.App
+
+            @OptIn(ExperimentalComposeUiApi::class)
+            fun main() {
+                val body = document.body ?: return
+                initializeParikshanWasm()
+                ParikshanComposeViewport(body) {
+                    App()
+                }
+            }
+          """.trimIndent()
+        )
+        logger.lifecycle("Parikshan Wasm: Generated synthetic bootstrapper at ${generatedDir.absolutePath}")
+      }
+    }
+
+  replaceWasmMainSourceDirWhenAvailable(generatedDir)
+  tasks.matching {
+    it.name.contains("compileKotlinWasmJs", ignoreCase = true) ||
+      it.name.contains("wasmJsBrowser", ignoreCase = true)
+  }.configureEach {
+    dependsOn(prepareTask)
+  }
+  return prepareTask
+}
+
+private fun Project.replaceWasmMainSourceDirWhenAvailable(generatedDir: File) {
+  val kmp = extensions.findByName("kotlin") ?: return
+  @Suppress("UNCHECKED_CAST")
+  val sourceSets =
+    kmp.javaClass.getMethod("getSourceSets").invoke(kmp) as org.gradle.api.NamedDomainObjectContainer<Any>
+  sourceSets.all(
+    object : Action<Any> {
+      override fun execute(sourceSet: Any) {
+        val name = (sourceSet as? org.gradle.api.Named)?.name
+        if (name == "wasmJsMain") {
+          replaceKotlinSourceDirs(sourceSet, generatedDir)
+        }
+      }
+    }
+  )
 }
 
 private fun Project.replaceIosMainSourceDirWhenAvailable(generatedDir: File) {

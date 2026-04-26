@@ -70,22 +70,43 @@ abstract class ParikshanExtension @Inject constructor(
 class ParikshanGradlePlugin : Plugin<Project> {
   override fun apply(project: Project) {
     val extension = project.extensions.create<ParikshanExtension>("parikshan")
+    val sessionToken = project.providers.gradleProperty("parikshan.token").getOrNull() ?: UUID.randomUUID().toString()
 
     // --- Desktop Tasks ---
+
+    val appJarTaskNameValue = extension.appJarTaskName
+    val appArgsValue = extension.appArgs
+    val hostValue = extension.host
+    val portValue = extension.port
+    val timeoutMsValue = extension.startupTimeoutMs
+    val pollMsValue = extension.startupPollIntervalMs
+    val titleValue = extension.desktopWindowTitle
+    val buildDirValue = project.layout.buildDirectory
+    val tokenValue = sessionToken
 
     val startDesktopTask =
       project.tasks.register("startParikshanDesktopApp") {
         group = "verification"
+        
+        // Resolve JAR location at configuration time as a Provider
+        val appJarFileProvider = project.tasks.named<org.gradle.jvm.tasks.Jar>(appJarTaskNameValue.get())
+          .flatMap { it.archiveFile }
+        
+        inputs.file(appJarFileProvider)
+
         doLast {
+          val jar = appJarFileProvider.get().asFile
+          
           ParikshanDesktopProcess.start(
-            project = project,
-            appJarTaskName = extension.appJarTaskName.get(),
-            appArgs = extension.appArgs.get(),
-            host = extension.host.get(),
-            port = extension.port.get(),
-            timeoutMs = extension.startupTimeoutMs.get(),
-            pollMs = extension.startupPollIntervalMs.get(),
-            title = extension.desktopWindowTitle.orNull
+            jar = jar,
+            token = tokenValue,
+            logFile = File(buildDirValue.get().asFile, "parikshan/desktop-app.log"),
+            appArgs = appArgsValue.get(),
+            host = hostValue.get(),
+            port = portValue.get(),
+            timeoutMs = timeoutMsValue.get(),
+            pollMs = pollMsValue.get(),
+            title = titleValue.orNull
           )
         }
       }
@@ -146,7 +167,6 @@ class ParikshanGradlePlugin : Plugin<Project> {
     val iosRootDir = project.rootDir
     
     // ONE Global Session Token
-    val sessionToken = project.providers.gradleProperty("parikshan.token").getOrNull() ?: UUID.randomUUID().toString()
     val isE2ERequested =
       project.gradle.startParameter.taskNames.any { it.contains("e2e", ignoreCase = true) } ||
         project.hasProperty("parikshan.e2e.active")
@@ -262,10 +282,15 @@ class ParikshanGradlePlugin : Plugin<Project> {
         }
       }
 
+      val projectPath = project.path
+      val rootDirAbs = iosRootDir.absolutePath
+      val sampleDirAbs = iosProjectDir.parentFile.absolutePath
+
       val startIosAppTask = project.tasks.register("startIosApp") {
         group = "verification"
         prepareIosBootSourceTask?.let { dependsOn(it) }
         outputs.upToDateWhen { false }
+        
         doLast {
           val simulator = resolveIosSimulatorDevice(iosDevice, iosProjectDir)
           iosSimulatorUdid = simulator.udid
@@ -286,11 +311,10 @@ class ParikshanGradlePlugin : Plugin<Project> {
           val pbxprojFile = File(generatedIosAppDir, "${File(iosXcodeProject).name}/project.pbxproj")
           if (pbxprojFile.exists()) {
               var pbxText = pbxprojFile.readText()
-              val absoluteSampleDir = iosProjectDir.parentFile.absolutePath
-              val absoluteGradlew = File(iosRootDir, "gradlew").absolutePath
-              val gradleCmd = "$absoluteGradlew -p ${iosRootDir.absolutePath} --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.token=$sessionToken ${project.path}:embedAndSignAppleFrameworkForXcode"
+              val absoluteGradlew = File(rootDirAbs, "gradlew").absolutePath
+              val gradleCmd = "$absoluteGradlew -p $rootDirAbs --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.token=$sessionToken $projectPath:embedAndSignAppleFrameworkForXcode"
               val oldScript = "cd \\\"\$SRCROOT/..\\\"\\n./../gradlew :sample:composeApp:embedAndSignAppleFrameworkForXcode"
-              val newScript = "cd \\\"$absoluteSampleDir\\\"\\n$gradleCmd"
+              val newScript = "cd \\\"$sampleDirAbs\\\"\\n$gradleCmd"
               pbxText = pbxText.replace(oldScript, newScript)
               pbxprojFile.writeText(pbxText)
           }
@@ -490,12 +514,9 @@ private object ParikshanAndroidRecorder {
 
 private object ParikshanDesktopProcess {
   private var process: Process? = null
-  fun start(project: Project, appJarTaskName: String, appArgs: List<String>, host: String, port: Int, timeoutMs: Long, pollMs: Long, title: String?) {
+  fun start(jar: File, token: String, logFile: File, appArgs: List<String>, host: String, port: Int, timeoutMs: Long, pollMs: Long, title: String?) {
     stop()
-    val jar = project.tasks.findByName(appJarTaskName)?.outputs?.files?.firstOrNull { it.extension == "jar" } ?: throw GradleException("No jar")
     val mainClass = JarFile(jar).manifest.mainAttributes.getValue("Main-Class")
-    val token = project.providers.gradleProperty("parikshan.token").getOrNull() ?: ""
-    val logFile = File(project.layout.buildDirectory.get().asFile, "parikshan/desktop-app.log")
     logFile.parentFile.mkdirs()
     val windowTitleProp = if (title != null) "-Dparikshan.desktop.windowTitle=$title" else ""
     process = ProcessBuilder(listOfNotNull(System.getProperty("java.home") + "/bin/java", "-Dparikshan.host=$host", "-Dparikshan.port=$port", "-Dparikshan.token=$token", "-Dparikshan.desktop.appMainClass=$mainClass", windowTitleProp.takeIf { it.isNotEmpty() }, "-cp", jar.absolutePath, "io.github.aryapreetam.parikshan.server.ParikshanDesktopLauncher"))

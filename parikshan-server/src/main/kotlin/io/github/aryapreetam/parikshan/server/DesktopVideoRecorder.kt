@@ -35,6 +35,11 @@ internal class DesktopVideoRecorder(
   private var activeConfig: DesktopVideoSessionConfig? = null
   private var stableCaptureBounds: Rectangle? = null
 
+  val isRecording: Boolean
+    get() = synchronized(encoderLock) {
+      activeConfig != null && encoder != null
+    }
+
   fun start(config: DesktopVideoSessionConfig) {
     stop()
     virtualCursorScreenPoint.set(null)

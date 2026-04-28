@@ -2,8 +2,11 @@ package io.github.aryapreetam.parikshan.client
 
 import io.github.aryapreetam.parikshan.TestDriver
 import io.github.aryapreetam.parikshan.protocol.Command
+import io.github.aryapreetam.parikshan.protocol.ProtocolJson
 import io.github.aryapreetam.parikshan.protocol.Response
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URI
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
@@ -12,8 +15,9 @@ import kotlin.random.Random
 
 internal object ParikshanVideoSessionManager {
   private val lock = Mutex()
-  private val shutdownHookInstalled = AtomicBoolean(false)
   private var activeClassName: String? = null
+  private var activeDriver: TestDriver? = null
+  private val shutdownHookInstalled = AtomicBoolean(false)
 
   suspend fun beforeScenario(
     driver: TestDriver,
@@ -24,9 +28,46 @@ internal object ParikshanVideoSessionManager {
     if (!config.enabled) {
       return
     }
-    installShutdownHookIfNeeded(clientConfig = clientConfig, config = config)
+
+    if (shutdownHookInstalled.compareAndSet(false, true)) {
+      Runtime.getRuntime().addShutdownHook(Thread {
+        val (clsName, drv) = runBlocking {
+          lock.withLock {
+            val c = activeClassName
+            val d = activeDriver
+            activeClassName = null
+            activeDriver = null
+            Pair(c, d)
+          }
+        }
+        if (clsName == null || drv == null) return@Thread
+
+        val target = System.getProperty("parikshan.target")?.lowercase()
+        if (target == "desktop" || target == null || target == "") {
+           runCatching {
+              val token = System.getProperty("parikshan.token") ?: ""
+              val command = Command.StopRecording(id = nextId(), sessionName = clsName).apply { this.token = token }
+              val json = ProtocolJson.encodeCommand(command)
+              val url = URI("http://${clientConfig.host}:${clientConfig.port}/").toURL()
+              val conn = url.openConnection() as HttpURLConnection
+              conn.requestMethod = "POST"
+              conn.setRequestProperty("Content-Type", "application/json")
+              conn.doOutput = true
+              conn.connectTimeout = 5000
+              conn.readTimeout = 10000
+              conn.outputStream.use { it.write(json.toByteArray()) }
+              conn.inputStream.readBytes()
+           }
+        } else {
+           runBlocking {
+               runCatching { drv.send(Command.StopRecording(id = nextId(), sessionName = clsName)) }
+           }
+        }
+      })
+    }
 
     lock.withLock {
+      activeDriver = driver
       if (activeClassName == className) {
         return
       }
@@ -37,40 +78,6 @@ internal object ParikshanVideoSessionManager {
       sendStart(driver = driver, className = className, config = config)
       activeClassName = className
     }
-  }
-
-  private fun installShutdownHookIfNeeded(
-    clientConfig: ParikshanClientConfig,
-    config: ParikshanVideoConfig
-  ) {
-    if (!shutdownHookInstalled.compareAndSet(false, true)) {
-      return
-    }
-
-    Runtime.getRuntime().addShutdownHook(
-      Thread {
-        val className =
-          runBlocking {
-            lock.withLock {
-            activeClassName.also { activeClassName = null }
-            }
-          } ?: return@Thread
-
-        runBlocking {
-          runCatching {
-            val client = ParikshanClient(clientConfig)
-            client.connect()
-            client.send(
-              Command.StopRecording(
-                id = nextId(),
-                sessionName = className
-              )
-            )
-            client.disconnect()
-          }
-        }
-      }
-    )
   }
 
   private suspend fun sendStart(
@@ -111,9 +118,9 @@ internal object ParikshanVideoSessionManager {
     outputDir: String
   ): String {
     val simpleName = className.substringAfterLast('.').replace('$', '_')
-    val file = File(outputDir, "$simpleName.mp4")
+    val file = File(outputDir, "$simpleName.mp4").absoluteFile
     file.parentFile?.mkdirs()
-    return file.path
+    return file.absolutePath
   }
 
   private fun checkResponse(

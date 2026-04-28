@@ -9,8 +9,8 @@ data class ParikshanVideoConfig(
 ) {
   companion object {
     private const val DEFAULT_OUTPUT_DIR = "build/parikshan/videos"
-    private const val DEFAULT_FPS = 1
-    private const val DEFAULT_STEP_DELAY_MS = 350L
+    private const val DEFAULT_FPS = 10
+    private const val DEFAULT_STEP_DELAY_MS = 0L
 
     fun fromSystemProperties(): ParikshanVideoConfig {
       val enabled = System.getProperty("parikshan.video.enabled")?.toBooleanStrictOrNull() ?: false

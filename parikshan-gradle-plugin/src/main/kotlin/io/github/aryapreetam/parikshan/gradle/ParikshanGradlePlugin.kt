@@ -115,7 +115,11 @@ class ParikshanGradlePlugin : Plugin<Project> {
       project.tasks.register("stopParikshanDesktopApp") {
         group = "verification"
         doLast {
-          ParikshanDesktopProcess.stop()
+          ParikshanDesktopProcess.stop(
+            host = hostValue.get(),
+            port = portValue.get(),
+            token = tokenValue
+          )
         }
       }
 
@@ -500,6 +504,10 @@ private fun resolveIosSimulatorDevice(requested: String, workingDir: File): IosS
   return devices.firstOrNull { it.isBooted } ?: devices.firstOrNull() ?: throw GradleException("No simulator")
 }
 
+private object ParikshanIosVideoRecorder {
+  var process: Process? = null
+}
+
 private object ParikshanAndroidRecorder {
   fun resolveDeviceSerial(logger: Logger, workingDir: File, explicit: String?): String {
     val output = ProcessBuilder("adb", "devices").directory(workingDir).start().inputStream.bufferedReader().readText()
@@ -524,7 +532,24 @@ private object ParikshanDesktopProcess {
       .redirectOutput(logFile)
       .start()
   }
-  fun stop() { process?.destroy(); process = null }
+  fun stop(host: String = "127.0.0.1", port: Int = 9877, token: String = "") { 
+    val active = process ?: return
+    runCatching {
+      val json = """{"type":"stopRecording","id":"desktop-stop","sessionName":"any","token":"$token"}"""
+      val url = URL("http://$host:$port/")
+      val conn = url.openConnection() as HttpURLConnection
+      conn.requestMethod = "POST"
+      conn.setRequestProperty("Content-Type", "application/json")
+      conn.doOutput = true
+      conn.connectTimeout = 1000
+      conn.readTimeout = 1000
+      conn.outputStream.use { it.write(json.toByteArray()) }
+      conn.responseCode
+    }
+    Thread.sleep(500)
+    active.destroy()
+    process = null 
+  }
 }
 
 private fun Project.configureParikshanDependencies(isE2EActive: Boolean) {
@@ -595,6 +620,21 @@ private fun Test.configureE2eHostTestExecution(
     }
     logger.lifecycle("Parikshan $target: running E2E test classes ${e2eTestClasses.joinToString()}")
   }
+
+  val videoOutputDir = project.providers.gradleProperty("parikshan.video.outputDir").orNull
+      ?: System.getProperty("parikshan.video.outputDir")
+      ?: project.layout.buildDirectory.dir("parikshan/videos/${target.lowercase()}").get().asFile.absolutePath
+
+  outputs.dir(videoOutputDir)
+  
+  // Forward all parikshan.* system properties and gradle properties to the test JVM
+  project.properties.filterKeys { it.startsWith("parikshan.") }.forEach { (k, v) ->
+      systemProperty(k, v.toString())
+  }
+  System.getProperties().filterKeys { it.toString().startsWith("parikshan.") }.forEach { (k, v) ->
+      systemProperty(k.toString(), v.toString())
+  }
+  systemProperty("parikshan.video.outputDir", videoOutputDir)
 }
 
 private fun Project.registerParikshanIosBootSource(

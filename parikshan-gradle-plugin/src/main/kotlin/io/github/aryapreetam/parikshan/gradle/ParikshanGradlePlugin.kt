@@ -264,7 +264,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
       // --- iOS E2E Test Task ---
 
       fun resolveIosRuntimeProperty(name: String): String? =
-        project.providers.gradleProperty(name).orNull ?: System.getProperty(name)
+        project.providers.gradleProperty(name).orElse(project.providers.systemProperty(name)).orNull
 
       val iosDevice = resolveIosRuntimeProperty("parikshan.ios.device") ?: "iPhone 16"
       val iosPort = resolveIosRuntimeProperty("parikshan.ios.port")?.toIntOrNull() ?: 9878
@@ -621,20 +621,60 @@ private fun Test.configureE2eHostTestExecution(
     logger.lifecycle("Parikshan $target: running E2E test classes ${e2eTestClasses.joinToString()}")
   }
 
-  val videoOutputDir = project.providers.gradleProperty("parikshan.video.outputDir").orNull
-      ?: System.getProperty("parikshan.video.outputDir")
-      ?: project.layout.buildDirectory.dir("parikshan/videos/${target.lowercase()}").get().asFile.absolutePath
+  val videoOutputDir = project.providers.gradleProperty("parikshan.video.outputDir")
+      .orElse(project.providers.systemProperty("parikshan.video.outputDir"))
+      .getOrElse(project.layout.buildDirectory.dir("parikshan/videos/${target.lowercase()}").get().asFile.absolutePath)
 
   outputs.dir(videoOutputDir)
   
-  // Forward all parikshan.* system properties and gradle properties to the test JVM
-  project.properties.filterKeys { it.startsWith("parikshan.") }.forEach { (k, v) ->
-      systemProperty(k, v.toString())
+  // Forward all relevant parikshan.* properties to the test JVM using provider-aware API.
+  // This ensures that command-line overrides (-P flags) are correctly picked up
+  // even when the Gradle configuration cache is reused.
+  val propsToForward = listOf(
+    "parikshan.target",
+    "parikshan.token",
+    "parikshan.video.enabled",
+    "parikshan.video.outputDir",
+    "parikshan.video.fps",
+    "parikshan.video.showCursor",
+    "parikshan.video.stepDelayMs",
+    "parikshan.video.postRollMs",
+    "parikshan.video.width",
+    "parikshan.video.height",
+    "parikshan.wasm.url",
+    "parikshan.wasm.headless",
+    "parikshan.wasm.viewportWidth",
+    "parikshan.wasm.viewportHeight",
+    "parikshan.wasm.bridgeReadyTimeoutMs",
+    "parikshan.ios.device",
+    "parikshan.ios.port",
+    "parikshan.ios.bundleId",
+    "parikshan.ios.xcodeProject",
+    "parikshan.ios.xcodeScheme"
+  )
+
+  for (propName in propsToForward) {
+    val provider = project.providers.gradleProperty(propName)
+      .orElse(project.providers.systemProperty(propName))
+      .orElse("")
+
+    // Resolve the provider at configuration time and only set non-empty values.
+    // Using a resolved string here ensures the test JVM receives the actual
+    // property value instead of a Provider's debug string representation.
+    val resolved = provider.orNull ?: ""
+    if (resolved.isNotEmpty()) {
+      systemProperty(propName, resolved)
+    }
   }
-  System.getProperties().filterKeys { it.toString().startsWith("parikshan.") }.forEach { (k, v) ->
-      systemProperty(k.toString(), v.toString())
+
+  // Ensure parikshan.video.outputDir has a sensible default if not provided.
+  val outputDirProvider = project.providers.gradleProperty("parikshan.video.outputDir")
+    .orElse(project.providers.systemProperty("parikshan.video.outputDir"))
+    .orElse(videoOutputDir)
+  val outputDirResolved = outputDirProvider.orNull ?: videoOutputDir
+  if (outputDirResolved.isNotEmpty()) {
+    systemProperty("parikshan.video.outputDir", outputDirResolved)
   }
-  systemProperty("parikshan.video.outputDir", videoOutputDir)
 }
 
 private fun Project.registerParikshanIosBootSource(

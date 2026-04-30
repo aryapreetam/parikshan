@@ -30,7 +30,16 @@ internal object ParikshanVideoSessionManager {
     }
 
     if (shutdownHookInstalled.compareAndSet(false, true)) {
-      Runtime.getRuntime().addShutdownHook(Thread {
+      Runtime.getRuntime().addShutdownHook(Thread({
+        val target = System.getProperty("parikshan.target")?.lowercase()
+
+        // Wasm target manages its own video lifecycle via WasmDriver's shutdown hook.
+        // Sending StopRecording to WasmDriver is a no-op, and running coroutines
+        // or HTTP I/O during JVM shutdown is unreliable — skip entirely.
+        if (target == "wasm" || target == "web") {
+          return@Thread
+        }
+
         val (clsName, drv) = runBlocking {
           lock.withLock {
             val c = activeClassName
@@ -42,7 +51,6 @@ internal object ParikshanVideoSessionManager {
         }
         if (clsName == null || drv == null) return@Thread
 
-        val target = System.getProperty("parikshan.target")?.lowercase()
         if (target == "desktop" || target == null || target == "") {
            runCatching {
               val token = System.getProperty("parikshan.token") ?: ""
@@ -63,7 +71,7 @@ internal object ParikshanVideoSessionManager {
                runCatching { drv.send(Command.StopRecording(id = nextId(), sessionName = clsName)) }
            }
         }
-      })
+      }, "parikshan-video-session-shutdown"))
     }
 
     lock.withLock {
@@ -118,7 +126,14 @@ internal object ParikshanVideoSessionManager {
     outputDir: String
   ): String {
     val simpleName = className.substringAfterLast('.').replace('$', '_')
-    val file = File(outputDir, "$simpleName.mp4").absoluteFile
+    val target = System.getProperty("parikshan.target")?.lowercase() ?: ""
+    val ext = when (target) {
+      "wasm", "web" -> "webm"
+      "desktop", "", null -> "mp4"
+      else -> "webm"
+    }
+
+    val file = File(outputDir, "$simpleName.$ext").absoluteFile
     file.parentFile?.mkdirs()
     return file.absolutePath
   }

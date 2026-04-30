@@ -15,7 +15,7 @@ Pods/
 *.gpg
 *yarn.lock
 /.github/copilot-instructions.md
-/doc-to-ignore/
+/docs-to-ignore/
 # Template configuration (each user should run setup-template.sh)
 .template-config.json
 .junie/memory/errors.md
@@ -25,3 +25,6 @@ Pods/
 .junie/memory/tasks.md
 .junie/memory/backups/language_v1.0.json
 .gemini/settings.json
+.agent/
+graphify-out/
+.graphifyignore

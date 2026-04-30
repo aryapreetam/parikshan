@@ -21,7 +21,7 @@ internal fun Project.configureAndroidInstrumentationDefaults() {
     }
   }
 
-  val testFilter = providers.gradleProperty("parikshan.testFilter").orNull ?: System.getProperty("parikshan.testFilter")
+  val testFilter = providers.gradleProperty("parikshan.testFilter").orElse(providers.systemProperty("parikshan.testFilter")).orNull
   if (testFilter.isNullOrBlank()) {
     return
   }

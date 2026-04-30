@@ -49,11 +49,7 @@ internal object WasmSemanticsAccessor {
     val text = textList?.joinToString(" ") { it.text } 
       ?: node.config.getOrNull(SemanticsProperties.EditableText)?.text
     
-    var bounds = node.boundsInWindow
-    if (bounds.width <= 0 || bounds.height <= 0) {
-        bounds = node.boundsInRoot
-    }
-
+    val bounds = node.boundsInWindow
     val hasArea = bounds.width > 0 && bounds.height > 0
 
     return NodeSnapshot(
@@ -84,8 +80,8 @@ internal object WasmSemanticsAccessor {
   fun performScroll(tag: String, direction: ScrollDirection): Boolean {
     val node = findNodeByTag(tag) ?: return false
     val action = node.config.getOrNull(SemanticsActions.ScrollBy) ?: return false
-    val x = if (direction == ScrollDirection.Left) -500f else if (direction == ScrollDirection.Right) 500f else 0f
-    val y = if (direction == ScrollDirection.Up) -500f else if (direction == ScrollDirection.Down) 500f else 0f
+    val x = if (direction == ScrollDirection.Left) -1000f else if (direction == ScrollDirection.Right) 1000f else 0f
+    val y = if (direction == ScrollDirection.Up) -1000f else if (direction == ScrollDirection.Down) 1000f else 0f
     return action.action?.invoke(x, y) ?: false
   }
 }

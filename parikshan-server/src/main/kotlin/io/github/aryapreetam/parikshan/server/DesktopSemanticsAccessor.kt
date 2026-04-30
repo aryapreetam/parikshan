@@ -84,8 +84,10 @@ internal class DesktopSemanticsAccessor(
 
   fun windowBoundsOnScreen(): Rectangle =
     onEdt {
+      val scaleX = runCatching { window.graphicsConfiguration?.defaultTransform?.scaleX ?: 1.0 }.getOrDefault(1.0)
+      val scaleY = runCatching { window.graphicsConfiguration?.defaultTransform?.scaleY ?: 1.0 }.getOrDefault(1.0)
       val location = window.locationOnScreen
-      Rectangle(location.x, location.y, window.width, window.height)
+      Rectangle((location.x * scaleX).toInt(), (location.y * scaleY).toInt(), (window.width * scaleX).toInt(), (window.height * scaleY).toInt())
     }
 
   @OptIn(ExperimentalComposeUiApi::class)
@@ -105,6 +107,8 @@ internal class DesktopSemanticsAccessor(
 
   private fun SemanticsNode.toDesktopNode(): DesktopNode? {
     val tag = config.getOrNull(SemanticsProperties.TestTag) ?: ""
+    val scaleX = runCatching { window.graphicsConfiguration?.defaultTransform?.scaleX ?: 1.0 }.getOrDefault(1.0)
+    val scaleY = runCatching { window.graphicsConfiguration?.defaultTransform?.scaleY ?: 1.0 }.getOrDefault(1.0)
     val location = window.locationOnScreen
     val nodeBounds = boundsInWindow
     val editableText = config.getOrNull(SemanticsProperties.EditableText)?.text
@@ -118,14 +122,17 @@ internal class DesktopSemanticsAccessor(
     // Include nodes that have either a testTag or text content
     if (tag.isBlank() && textValue == null) return null
 
+    val locationX = location.x * scaleX
+    val locationY = location.y * scaleY
+
     return DesktopNode(
       tag = tag,
       bounds =
         Bounds(
-          left = location.x + nodeBounds.left.toDouble(),
-          top = location.y + nodeBounds.top.toDouble(),
-          right = location.x + nodeBounds.right.toDouble(),
-          bottom = location.y + nodeBounds.bottom.toDouble()
+          left = locationX + nodeBounds.left.toDouble() * scaleX,
+          top = locationY + nodeBounds.top.toDouble() * scaleY,
+          right = locationX + nodeBounds.right.toDouble() * scaleX,
+          bottom = locationY + nodeBounds.bottom.toDouble() * scaleY
         ),
       visible = !invisible,
       text = textValue

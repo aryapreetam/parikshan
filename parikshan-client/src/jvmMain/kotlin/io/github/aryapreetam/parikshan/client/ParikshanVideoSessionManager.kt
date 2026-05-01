@@ -122,10 +122,11 @@ internal object ParikshanVideoSessionManager {
     outputDir: String
   ): String {
     val simpleName = className.substringAfterLast('.').replace('$', '_')
-    val target = System.getProperty("parikshan.target")?.lowercase() ?: ""
+    val rawTarget = System.getProperty("parikshan.target")
+    val target = rawTarget?.lowercase()?.trim() ?: ""
     val ext = when (target) {
       "wasm", "web" -> "webm"
-      "desktop", "", null -> "mp4"
+      "desktop", "ios", "android", "", "null" -> "mp4"
       else -> "webm"
     }
 
@@ -139,7 +140,8 @@ internal object ParikshanVideoSessionManager {
     action: String
   ) {
     if (response is Response.Error) {
-      throw IllegalStateException("$action failed: ${response.message}")
+      // Don't crash the test if video recording fails, just log it.
+      System.err.println("WARN: $action failed: ${response.message}")
     }
   }
 

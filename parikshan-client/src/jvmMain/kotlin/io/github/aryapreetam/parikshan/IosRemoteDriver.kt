@@ -15,10 +15,19 @@ class IosRemoteDriver private constructor(
   private val sessionToken: String = System.getProperty("parikshan.token") ?: ""
 ) : TestDriver {
 
+  // State is now managed in companion object to persist across driver instances
+
   override suspend fun send(command: Command): Response {
     // SECURITY: Sign the command with the global session token
     command.token = sessionToken
     
+    if (command is Command.StartRecording) {
+        return startHostRecording(command)
+    }
+    if (command is Command.StopRecording) {
+        return stopHostRecording(command)
+    }
+
     val json = ProtocolJson.encodeCommand(command)
     val responseJson = httpPost(json)
     val response = ProtocolJson.decodeResponse(responseJson)
@@ -36,6 +45,111 @@ class IosRemoteDriver private constructor(
     }
     
     return response
+  }
+
+  private fun startHostRecording(command: Command.StartRecording): Response {
+    val udid = System.getProperty("parikshan.ios.udid") ?: "booted"
+    val videoFile = java.io.File(command.path)
+    videoFile.parentFile?.mkdirs()
+    
+    // Stop any existing recording
+    stopHostRecording(Command.StopRecording(command.id, command.sessionName))
+    
+    activeVideoPath = videoFile.absolutePath
+    
+    // Also proactively kill any existing simctl io recordVideo processes for this device
+    cleanupSimctlRecording(udid)
+    
+    val pb = ProcessBuilder(
+        "xcrun", "simctl", "io", udid, "recordVideo", "--codec=h264", "--force", videoFile.absolutePath
+    )
+    
+    try {
+        val process = pb.start()
+        activeRecordingProcess = process
+        // Wait a bit to ensure it actually started
+        Thread.sleep(2000) 
+        if (process.isAlive == false) {
+            val error = process.errorStream?.bufferedReader()?.readText() ?: "Unknown error"
+            if (error.contains("Resource busy", ignoreCase = true)) {
+                cleanupSimctlRecording(udid)
+                Thread.sleep(1000)
+                val retryProcess = pb.start()
+                activeRecordingProcess = retryProcess
+                Thread.sleep(2000)
+                if (retryProcess.isAlive == true) {
+                    return Response.Ok(command.id)
+                }
+            }
+            val finalError = process.errorStream?.bufferedReader()?.readText() ?: error
+            return Response.Error(command.id, "Failed to start simctl recording (udid=$udid): $finalError")
+        }
+        return Response.Ok(command.id)
+    } catch (e: Exception) {
+        return Response.Error(command.id, "Exception starting simctl recording: ${e.message}")
+    }
+  }
+
+  private fun cleanupSimctlRecording(udid: String) {
+    try {
+        // Try SIGINT first to let them finalize nicely
+        ProcessBuilder("pkill", "-INT", "-f", "simctl io $udid recordVideo").start().waitFor()
+        Thread.sleep(500)
+        // Then SIGKILL for any stubborn ones
+        ProcessBuilder("pkill", "-9", "-f", "simctl io $udid recordVideo").start().waitFor()
+    } catch (e: Exception) {
+        // Ignore pkill failures
+    }
+  }
+
+  private fun stopHostRecording(command: Command.StopRecording): Response {
+    val process = activeRecordingProcess
+    if (process == null) {
+        return Response.Ok(command.id)
+    }
+    
+    val videoPath = activeVideoPath
+    
+    try {
+        // Send SIGINT for clean finalization
+        val pid = process.pid()
+        ProcessBuilder("kill", "-2", pid.toString()).start().waitFor()
+        
+        if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
+            process.destroy()
+            if (!process.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+            }
+        }
+        
+        // Post-process with ffmpeg to fix MP4 playback (faststart)
+        if (videoPath != null && java.io.File(videoPath).exists()) {
+            try {
+                val tempFile = java.io.File(videoPath + ".tmp.mp4")
+                val ffmpegPb = ProcessBuilder(
+                    "ffmpeg", "-y", "-i", videoPath, "-c", "copy", "-movflags", "faststart", tempFile.absolutePath
+                )
+                val ffmpegProcess = ffmpegPb.start()
+                if (ffmpegProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS) && ffmpegProcess.exitValue() == 0) {
+                    java.io.File(videoPath).delete()
+                    tempFile.renameTo(java.io.File(videoPath))
+                } else {
+                    val err = ffmpegProcess.errorStream.bufferedReader().readText()
+                    System.err.println("ffmpeg post-processing failed: $err")
+                    tempFile.delete()
+                }
+            } catch (e: Exception) {
+                System.err.println("Exception during ffmpeg post-processing: ${e.message}")
+            }
+        }
+    } catch (e: Exception) {
+        process.destroyForcibly()
+    } finally {
+        activeRecordingProcess = null
+        activeVideoPath = null
+    }
+    
+    return Response.Ok(command.id)
   }
 
   override suspend fun close() {
@@ -62,6 +176,9 @@ class IosRemoteDriver private constructor(
   }
 
   companion object {
+    @Volatile private var activeRecordingProcess: Process? = null
+    @Volatile private var activeVideoPath: String? = null
+
     /**
      * Create and connect to the iOS driver, waiting for the server to be ready.
      */

@@ -18,11 +18,117 @@ class AndroidRemoteDriver private constructor(
   private val sessionToken: String = System.getProperty("parikshan.token") ?: ""
 ) : TestDriver {
 
+  // State is now managed in companion object to persist across driver instances
+
   override suspend fun send(command: Command): Response {
     command.token = sessionToken
+    
+    if (command is Command.StartRecording) {
+        return startHostRecording(command)
+    }
+    if (command is Command.StopRecording) {
+        return stopHostRecording(command)
+    }
+
     val json = ProtocolJson.encodeCommand(command)
     val responseJson = httpPost(json)
     return ProtocolJson.decodeResponse(responseJson)
+  }
+
+  private fun startHostRecording(command: Command.StartRecording): Response {
+    val serial = System.getProperty("parikshan.android.serial") ?: ""
+    val adbPrefix = if (serial.isNotEmpty()) listOf("adb", "-s", serial) else listOf("adb")
+    
+    // Stop any existing recording
+    stopHostRecording(Command.StopRecording(command.id, command.sessionName))
+    
+    activeVideoPath = command.path
+    
+    // Clean up any existing file on device
+    ProcessBuilder(adbPrefix + listOf("shell", "rm", "/sdcard/parikshan_video.mp4")).start().waitFor()
+    
+    val pb = ProcessBuilder(adbPrefix + listOf("shell", "screenrecord", "/sdcard/parikshan_video.mp4"))
+    try {
+        val process = pb.start()
+        activeRecordingProcess = process
+        // Wait a bit to ensure it started
+        Thread.sleep(1000)
+        if (process.isAlive == false) {
+             val error = process.errorStream?.bufferedReader()?.readText() ?: "Unknown error"
+             return Response.Error(command.id, "Failed to start adb screenrecord: $error")
+        }
+        return Response.Ok(command.id)
+    } catch (e: Exception) {
+        return Response.Error(command.id, "Exception starting adb screenrecord: ${e.message}")
+    }
+  }
+
+  private fun stopHostRecording(command: Command.StopRecording): Response {
+    val serial = System.getProperty("parikshan.android.serial") ?: ""
+    val adbPrefix = if (serial.isNotEmpty()) listOf("adb", "-s", serial) else listOf("adb")
+    
+    val process = activeRecordingProcess
+    if (process != null) {
+        try {
+            // Try to find the PID of screenrecord on device
+            val pidProcess = ProcessBuilder(adbPrefix + listOf("shell", "pidof", "screenrecord")).start()
+            val pid = pidProcess.inputStream.bufferedReader().readText().trim()
+            
+            if (pid.isNotEmpty()) {
+                // Gracefully stop specifically that screenrecord process
+                ProcessBuilder(adbPrefix + listOf("shell", "kill", "-2", pid)).start().waitFor()
+            } else {
+                // Fallback to pkill if pidof fails or returns nothing
+                ProcessBuilder(adbPrefix + listOf("shell", "pkill", "-2", "screenrecord")).start().waitFor()
+            }
+            
+            // Wait for the adb shell process to finish
+            if (!process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.destroy()
+            }
+        } catch (e: Exception) {
+            process.destroy()
+        } finally {
+            activeRecordingProcess = null
+        }
+    }
+    
+    // Give the device a moment to finalize the file
+    Thread.sleep(2000)
+    
+    // Pull the file from device to host
+    val hostPath = activeVideoPath
+    if (hostPath != null) {
+        val hostFile = java.io.File(hostPath)
+        hostFile.parentFile?.mkdirs()
+        try {
+            // Check if file exists on device first
+            val checkFile = ProcessBuilder(adbPrefix + listOf("shell", "ls", "/sdcard/parikshan_video.mp4"))
+                .start()
+                .waitFor()
+            
+            if (checkFile == 0) {
+                val pullPb = ProcessBuilder(adbPrefix + listOf("pull", "/sdcard/parikshan_video.mp4", hostFile.absolutePath))
+                val pullProcess = pullPb.start()
+                val pullResult = pullProcess.waitFor()
+                if (pullResult != 0) {
+                    val error = pullProcess.errorStream.bufferedReader().readText()
+                    System.err.println("Failed to pull video from Android device: exit code $pullResult. Error: $error")
+                } else {
+                    // Success! Now remove it from device
+                    ProcessBuilder(adbPrefix + listOf("shell", "rm", "/sdcard/parikshan_video.mp4")).start().waitFor()
+                }
+            } else {
+                System.err.println("Video file /sdcard/parikshan_video.mp4 not found on Android device.")
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            activeVideoPath = null
+        }
+    }
+    
+    return Response.Ok(command.id)
   }
 
   override suspend fun close() {
@@ -56,6 +162,9 @@ class AndroidRemoteDriver private constructor(
   }
 
   companion object {
+    @Volatile private var activeRecordingProcess: Process? = null
+    @Volatile private var activeVideoPath: String? = null
+
     private fun configFromSystemProperties(): ParikshanClientConfig {
       val host = System.getProperty("parikshan.host") ?: "127.0.0.1"
       val port = System.getProperty("parikshan.port")?.toIntOrNull() ?: 9879

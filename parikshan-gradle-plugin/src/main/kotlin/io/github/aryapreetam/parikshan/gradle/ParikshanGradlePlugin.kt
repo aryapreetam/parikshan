@@ -396,6 +396,10 @@ class ParikshanGradlePlugin : Plugin<Project> {
         systemProperty("parikshan.host", "127.0.0.1")
         systemProperty("parikshan.port", iosPort.toString())
         systemProperty("parikshan.token", sessionToken)
+        doFirst {
+          val simulator = resolveIosSimulatorDevice(iosDevice, iosProjectDir)
+          systemProperty("parikshan.ios.udid", simulator.udid)
+        }
       }
 
       // --- Android E2E Test Task ---
@@ -440,6 +444,10 @@ class ParikshanGradlePlugin : Plugin<Project> {
         systemProperty("parikshan.host", "127.0.0.1")
         systemProperty("parikshan.port", "9879")
         systemProperty("parikshan.token", sessionToken)
+        doFirst {
+           val serial = ParikshanAndroidRecorder.resolveDeviceSerial(androidLogger, androidProjectDir, null)
+           systemProperty("parikshan.android.serial", serial)
+        }
         
         doLast {
            val serial = ParikshanAndroidRecorder.resolveDeviceSerial(androidLogger, androidProjectDir, null)
@@ -650,7 +658,9 @@ private fun Test.configureE2eHostTestExecution(
     "parikshan.ios.port",
     "parikshan.ios.bundleId",
     "parikshan.ios.xcodeProject",
-    "parikshan.ios.xcodeScheme"
+    "parikshan.ios.xcodeScheme",
+    "parikshan.ios.udid",
+    "parikshan.android.serial"
   )
 
   for (propName in propsToForward) {

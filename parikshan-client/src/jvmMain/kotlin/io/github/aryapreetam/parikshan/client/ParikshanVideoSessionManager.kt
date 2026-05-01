@@ -15,8 +15,8 @@ import kotlin.random.Random
 
 internal object ParikshanVideoSessionManager {
   private val lock = Mutex()
-  private var activeClassName: String? = null
-  private var activeDriver: TestDriver? = null
+  @Volatile private var activeClassName: String? = null
+  @Volatile private var activeDriver: TestDriver? = null
   private val shutdownHookInstalled = AtomicBoolean(false)
 
   suspend fun beforeScenario(
@@ -40,15 +40,11 @@ internal object ParikshanVideoSessionManager {
           return@Thread
         }
 
-        val (clsName, drv) = runBlocking {
-          lock.withLock {
-            val c = activeClassName
-            val d = activeDriver
-            activeClassName = null
-            activeDriver = null
-            Pair(c, d)
-          }
-        }
+        val clsName = activeClassName
+        val drv = activeDriver
+        activeClassName = null
+        activeDriver = null
+
         if (clsName == null || drv == null) return@Thread
 
         if (target == "desktop" || target == null || target == "") {

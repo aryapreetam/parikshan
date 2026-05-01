@@ -621,11 +621,12 @@ private fun Test.configureE2eHostTestExecution(
     logger.lifecycle("Parikshan $target: running E2E test classes ${e2eTestClasses.joinToString()}")
   }
 
-  val videoOutputDir = project.providers.gradleProperty("parikshan.video.outputDir")
+  val videoOutputDirProvider = project.providers.gradleProperty("parikshan.video.outputDir")
       .orElse(project.providers.systemProperty("parikshan.video.outputDir"))
-      .getOrElse(project.layout.buildDirectory.dir("parikshan/videos/${target.lowercase()}").get().asFile.absolutePath)
+      .map { java.io.File(it) }
+      .orElse(project.layout.buildDirectory.dir("parikshan/videos/${target.lowercase()}").map { it.asFile })
 
-  outputs.dir(videoOutputDir)
+  outputs.dir(videoOutputDirProvider)
   
   // Forward all relevant parikshan.* properties to the test JVM using provider-aware API.
   // This ensures that command-line overrides (-P flags) are correctly picked up
@@ -634,7 +635,6 @@ private fun Test.configureE2eHostTestExecution(
     "parikshan.target",
     "parikshan.token",
     "parikshan.video.enabled",
-    "parikshan.video.outputDir",
     "parikshan.video.fps",
     "parikshan.video.showCursor",
     "parikshan.video.stepDelayMs",
@@ -667,14 +667,9 @@ private fun Test.configureE2eHostTestExecution(
     }
   }
 
-  // Ensure parikshan.video.outputDir has a sensible default if not provided.
-  val outputDirProvider = project.providers.gradleProperty("parikshan.video.outputDir")
-    .orElse(project.providers.systemProperty("parikshan.video.outputDir"))
-    .orElse(videoOutputDir)
-  val outputDirResolved = outputDirProvider.orNull ?: videoOutputDir
-  if (outputDirResolved.isNotEmpty()) {
-    systemProperty("parikshan.video.outputDir", outputDirResolved)
-  }
+  jvmArgumentProviders.add(org.gradle.process.CommandLineArgumentProvider {
+    listOf("-Dparikshan.video.outputDir=${videoOutputDirProvider.get().absolutePath}")
+  })
 }
 
 private fun Project.registerParikshanIosBootSource(

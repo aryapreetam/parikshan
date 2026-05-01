@@ -17,9 +17,11 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 
 /**
@@ -36,7 +38,9 @@ class WasmDriver private constructor(
   override suspend fun send(command: Command): Response {
     command.token = sessionToken
     return runCatching {
-      handleCommand(command)
+      withContext(Dispatchers.IO) {
+        handleCommand(command)
+      }
     }.getOrElse { throwable ->
       Response.Error(command.id, throwable.message ?: "Wasm driver error")
     }
@@ -157,9 +161,6 @@ class WasmDriver private constructor(
               // Close the page to force Playwright to finalize the recording for this page
               runCatching { sharedPage?.close() }
 
-              // Give Playwright a moment to rename/flush the video file
-              delay(1000)
-
               val rawVideoPath = runCatching { videoObj?.path() }.getOrNull()
 
               if (rawVideoPath != null && Files.exists(rawVideoPath)) {
@@ -176,32 +177,7 @@ class WasmDriver private constructor(
                   e.printStackTrace()
                 }
               } else {
-                System.err.println("WasmVideo: Video file NOT found at expected path $rawVideoPath. Searching in temp dir...")
-                val recoveredPath = playwrightTempDir?.let { dir ->
-                  if (Files.exists(dir)) {
-                    Files.list(dir).use { stream ->
-                      stream.filter { it.toString().endsWith(".webm") || it.toString().endsWith(".mp4") }
-                        .findFirst().orElse(null)
-                    }
-                  } else null
-                }
-
-                if (recoveredPath != null && Files.exists(recoveredPath)) {
-                  val finalVideoPath = Paths.get(targetPath)
-                  finalVideoPath.parent?.let { Files.createDirectories(it) }
-                  try {
-                    Files.copy(recoveredPath, finalVideoPath, StandardCopyOption.REPLACE_EXISTING)
-                    val size = runCatching { Files.size(finalVideoPath) }.getOrNull()
-                    val sizeText = size?.toString() ?: "unknown"
-                    System.err.println("WasmVideo: Recovered video from $recoveredPath and saved to $targetPath (bytes=$sizeText)")
-                    runCatching { Files.deleteIfExists(recoveredPath) }
-                  } catch (e: Throwable) {
-                    System.err.println("WasmVideo: Error copying recovered video to $targetPath: ${'$'}{e.message}")
-                    e.printStackTrace()
-                  }
-                } else {
-                  System.err.println("WasmVideo: Failed to find any video file in temp dir: $playwrightTempDir")
-                }
+                System.err.println("WasmVideo: Video file NOT found at expected path $rawVideoPath. No fallback attempted to avoid race conditions.")
               }
 
               // Recreate a fresh page so subsequent commands continue to be recorded
@@ -268,106 +244,13 @@ class WasmDriver private constructor(
   }
 
   private fun readDomNode(tag: String): NodeSnapshot? {
-    val payload =
-      page.evaluate(
-        """
-        tag => {
-          const extractText = (element) => {
-            if (!element) return null;
-            const candidates = [
-              element.innerText, element.textContent, element.getAttribute?.('aria-label'),
-              element.getAttribute?.('title'), element.getAttribute?.('value'), element.value, element.placeholder
-            ];
-            for (const candidate of candidates) {
-              const normalized = candidate?.trim?.();
-              if (normalized) return normalized;
-            }
-            const labeledDescendant = element.querySelector?.('[aria-label]');
-            const labeledText = labeledDescendant?.getAttribute?.('aria-label')?.trim?.();
-            if (labeledText) return labeledText;
-            return null;
-          };
-          const queue = [document.documentElement, document.body].filter(Boolean);
-          const visited = new Set();
-          let element = null;
-          while (queue.length > 0 && element == null) {
-            const current = queue.shift();
-            if (!current || visited.has(current)) continue;
-            visited.add(current);
-            if (current.id === tag) { element = current; break; }
-            const descendants = current.querySelectorAll?.(`[id="${tag}"]`) ?? [];
-            if (descendants.length > 0) { element = descendants[0]; break; }
-            if (current.shadowRoot) queue.push(current.shadowRoot);
-            const children = current.children ?? current.childNodes ?? [];
-            for (const child of children) queue.push(child);
-          }
-          if (!element) return null;
-          const rect = element.getBoundingClientRect();
-          const style = window.getComputedStyle(element);
-          const text = extractText(element);
-          const visible = style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
-          return JSON.stringify({
-            tag,
-            bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
-            visible, text
-          });
-        }
-        """.trimIndent(),
-        tag
-      ) as? String ?: return null
+    val payload = page.evaluate("tag => window.__parikshan_utils.readNode(tag)", tag) as? String ?: return null
     return ProtocolJson.instance.decodeFromString(NodeSnapshot.serializer(), payload)
   }
 
   private fun readDomTree(): List<NodeSnapshot> {
-    val payload =
-      page.evaluate(
-        """
-        () => {
-          const extractText = (element) => {
-            if (!element) return null;
-            const candidates = [
-              element.innerText, element.textContent, element.getAttribute?.('aria-label'),
-              element.getAttribute?.('title'), element.getAttribute?.('value'), element.value, element.placeholder
-            ];
-            for (const candidate of candidates) {
-              const normalized = candidate?.trim?.();
-              if (normalized) return normalized;
-            }
-            const labeledDescendant = element.querySelector?.('[aria-label]');
-            const labeledText = labeledDescendant?.getAttribute?.('aria-label')?.trim?.();
-            if (labeledText) return labeledText;
-            return null;
-          };
-          const nodes = [];
-          const queue = [document.documentElement, document.body].filter(Boolean);
-          const visited = new Set();
-          while (queue.length > 0) {
-            const current = queue.shift();
-            if (!current || visited.has(current)) continue;
-            visited.add(current);
-            if (current.id) {
-              const rect = current.getBoundingClientRect();
-              const style = window.getComputedStyle(current);
-              const text = extractText(current);
-              nodes.push({
-                tag: current.id,
-                bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
-                visible: style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0,
-                text
-              });
-            }
-            if (current.shadowRoot) queue.push(current.shadowRoot);
-            const children = current.children ?? current.childNodes ?? [];
-            for (const child of children) queue.push(child);
-          }
-          return JSON.stringify(nodes);
-        }
-        """.trimIndent()
-      ) as? String ?: "[]"
-    return ProtocolJson.instance.decodeFromString(
-      ListSerializer(NodeSnapshot.serializer()),
-      payload
-    )
+    val payload = page.evaluate("() => window.__parikshan_utils.readTree()") as? String ?: "[]"
+    return ProtocolJson.instance.decodeFromString(ListSerializer(NodeSnapshot.serializer()), payload)
   }
 
   private fun invokeBridgeClick(tag: String): Boolean =
@@ -377,29 +260,7 @@ class WasmDriver private constructor(
 
   private fun invokeDomClick(tag: String): Boolean =
     runCatching {
-      page.evaluate(
-        """
-        tag => {
-          const queue = [document.documentElement, document.body].filter(Boolean);
-          const visited = new Set();
-          while (queue.length > 0) {
-            const current = queue.shift();
-            if (!current || visited.has(current)) continue;
-            visited.add(current);
-            if (current.id === tag) {
-              current.click?.();
-              current.dispatchEvent?.(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }));
-              return true;
-            }
-            if (current.shadowRoot) queue.push(current.shadowRoot);
-            const children = current.children ?? current.childNodes ?? [];
-            for (const child of children) queue.push(child);
-          }
-          return false;
-        }
-        """.trimIndent(),
-        tag
-      ) as? Boolean ?: false
+      page.evaluate("tag => window.__parikshan_utils.invokeClick(tag)", tag) as? Boolean ?: false
     }.getOrDefault(false)
 
   private fun invokeBridgeInput(tag: String, text: String): Boolean =
@@ -442,10 +303,6 @@ class WasmDriver private constructor(
         runCatching { sharedPage?.close() }
         runCatching { sharedContext?.close() }
         
-        // Wait for Playwright to finalize the video file on disk.
-        // It often needs a moment to rename from .temp to .webm/mp4.
-        Thread.sleep(1000)
-
         val rawVideoPath = runCatching { videoObj?.path() }.getOrNull()
         System.err.println("WasmVideo: Playwright reports video path: $rawVideoPath")
 
@@ -469,29 +326,7 @@ class WasmDriver private constructor(
                 e.printStackTrace()
               }
             } else {
-              System.err.println("WasmVideo: Video file NOT found at expected path $rawVideoPath. Searching in temp dir...")
-              val recoveredPath = playwrightTempDir?.let { dir ->
-                if (Files.exists(dir)) {
-                  Files.list(dir).use { stream ->
-                    stream.filter { it.toString().endsWith(".webm") || it.toString().endsWith(".mp4") }
-                      .findFirst().orElse(null)
-                  }
-                } else null
-              }
-              if (recoveredPath != null && Files.exists(recoveredPath)) {
-                try {
-                  Files.copy(recoveredPath, finalVideoPath, StandardCopyOption.REPLACE_EXISTING)
-                  val size = runCatching { Files.size(finalVideoPath) }.getOrNull()
-                  val sizeText = size?.toString() ?: "unknown"
-                  System.err.println("WasmVideo: Recovered video from $recoveredPath and saved to $targetPath (bytes=$sizeText)")
-                  runCatching { Files.deleteIfExists(recoveredPath) }
-                } catch (e: Throwable) {
-                  System.err.println("WasmVideo: Error copying recovered video to $targetPath: ${'$'}{e.message}")
-                  e.printStackTrace()
-                }
-              } else {
-                System.err.println("WasmVideo: Failed to find any video file in temp dir: $playwrightTempDir")
-              }
+              System.err.println("WasmVideo: Video file NOT found at expected path $rawVideoPath. No fallback attempted to avoid race conditions.")
             }
           }.onFailure {
             System.err.println("WasmVideo: Error saving video to $targetPath: ${it.message}")
@@ -561,6 +396,94 @@ class WasmDriver private constructor(
         }
 
         val context = browser.newContext(contextOptions)
+        
+        val initScript = """
+          window.__parikshan_utils = {
+            extractText: function(element) {
+              if (!element) return null;
+              const candidates = [
+                element.innerText, element.textContent, element.getAttribute?.('aria-label'),
+                element.getAttribute?.('title'), element.getAttribute?.('value'), element.value, element.placeholder
+              ];
+              for (const candidate of candidates) {
+                const normalized = candidate?.trim?.();
+                if (normalized) return normalized;
+              }
+              const labeledDescendant = element.querySelector?.('[aria-label]');
+              const labeledText = labeledDescendant?.getAttribute?.('aria-label')?.trim?.();
+              if (labeledText) return labeledText;
+              return null;
+            },
+            findNode: function(tag) {
+              const queue = [document.documentElement, document.body].filter(Boolean);
+              const visited = new Set();
+              let element = null;
+              let i = 0;
+              while (i < queue.length && element == null) {
+                const current = queue[i++];
+                if (!current || visited.has(current)) continue;
+                visited.add(current);
+                if (current.id === tag) { element = current; break; }
+                const descendants = current.querySelectorAll?.(`[id="${'$'}{tag}"]`) ?? [];
+                if (descendants.length > 0) { element = descendants[0]; break; }
+                if (current.shadowRoot) queue.push(current.shadowRoot);
+                const children = current.children ?? current.childNodes ?? [];
+                for (const child of children) queue.push(child);
+              }
+              return element;
+            },
+            readNode: function(tag) {
+              const element = this.findNode(tag);
+              if (!element) return null;
+              const rect = element.getBoundingClientRect();
+              const style = window.getComputedStyle(element);
+              const text = this.extractText(element);
+              const visible = style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+              return JSON.stringify({
+                tag,
+                bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
+                visible, text
+              });
+            },
+            readTree: function() {
+              const nodes = [];
+              const queue = [document.documentElement, document.body].filter(Boolean);
+              const visited = new Set();
+              let i = 0;
+              while (i < queue.length) {
+                const current = queue[i++];
+                if (!current || visited.has(current)) continue;
+                visited.add(current);
+                if (current.id) {
+                  const rect = current.getBoundingClientRect();
+                  const style = window.getComputedStyle(current);
+                  const text = this.extractText(current);
+                  nodes.push({
+                    tag: current.id,
+                    bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
+                    visible: style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0,
+                    text
+                  });
+                }
+                if (current.shadowRoot) queue.push(current.shadowRoot);
+                const children = current.children ?? current.childNodes ?? [];
+                for (const child of children) queue.push(child);
+              }
+              return JSON.stringify(nodes);
+            },
+            invokeClick: function(tag) {
+              const current = this.findNode(tag);
+              if (current) {
+                current.click?.();
+                current.dispatchEvent?.(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }));
+                return true;
+              }
+              return false;
+            }
+          };
+        """.trimIndent()
+        context.addInitScript(initScript)
+        
         sharedContext = context
 
         val page = context.newPage()

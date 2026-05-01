@@ -85,8 +85,10 @@ class SelectorScenarios {
       targetSelector = Selector.Auto("Trigger Bottom Action")
     )
     click("Trigger Bottom Action")
+    
+    // Wait for it to appear, then assert it is physically visible on screen
     waitFor("done")
-    assertTrue(getTree().isVisibleWithin("scroll_demo_screen", "Trigger Bottom Action"))
+    assertVisible("done")
   }
 }
 
@@ -99,10 +101,11 @@ private suspend fun E2ETestScope.openInputForm() {
 private suspend fun E2ETestScope.scrollUntilVisible(
   containerSelector: Selector,
   targetSelector: Selector,
+  edgePadding: Double = 24.0,
   maxScrolls: Int = 40
 ) {
   repeat(maxScrolls + 1) { attempt ->
-    val targetVisible = getTree().isVisibleWithin(containerSelector, targetSelector)
+    val targetVisible = getTree().isVisibleWithin(containerSelector, targetSelector, edgePadding)
     if (targetVisible) {
       return
     }

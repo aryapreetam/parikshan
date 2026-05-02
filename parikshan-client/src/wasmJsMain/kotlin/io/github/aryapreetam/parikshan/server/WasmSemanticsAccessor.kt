@@ -50,12 +50,23 @@ internal object WasmSemanticsAccessor {
       ?: node.config.getOrNull(SemanticsProperties.EditableText)?.text
     
     val bounds = node.boundsInWindow
-    val hasArea = bounds.width > 0 && bounds.height > 0
+    val hasArea = bounds.width > 0f && bounds.height > 0f
+
+    // In WASM, we use the actual browser viewport dimensions to verify physical visibility.
+    // Compose's boundsInWindow in WASM are relative to the browser window.
+    val viewportWidth = kotlinx.browser.window.innerWidth
+    val viewportHeight = kotlinx.browser.window.innerHeight
+    
+    val centerX = bounds.left + (bounds.width / 2f)
+    val centerY = bounds.top + (bounds.height / 2f)
+    val isPhysicallyVisible = hasArea &&
+      centerX >= 0 && centerX <= viewportWidth &&
+      centerY >= 0 && centerY <= viewportHeight
 
     return NodeSnapshot(
       tag = tag,
       text = text,
-      visible = hasArea,
+      visible = isPhysicallyVisible,
       bounds = Bounds(
         left = bounds.left.toDouble(),
         top = bounds.top.toDouble(),

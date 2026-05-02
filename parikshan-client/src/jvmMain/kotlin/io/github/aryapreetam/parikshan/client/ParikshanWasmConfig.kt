@@ -11,7 +11,7 @@ data class ParikshanWasmConfig(
     private const val DEFAULT_URL = "http://127.0.0.1:8081"
     private const val DEFAULT_HEADLESS = false
     private const val DEFAULT_VIEWPORT_WIDTH = 1280
-    private const val DEFAULT_VIEWPORT_HEIGHT = 720
+    private const val DEFAULT_VIEWPORT_HEIGHT = 600
     private const val DEFAULT_BRIDGE_READY_TIMEOUT_MS = 30_000L
 
     fun fromSystemProperties(): ParikshanWasmConfig {

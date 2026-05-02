@@ -218,7 +218,26 @@ class AndroidDriver private constructor(
 
   private fun isVisible(node: SemanticsNode): Boolean {
     val bounds = node.boundsInRoot
-    return bounds.width > 0f && bounds.height > 0f && node.layoutInfo.isPlaced
+    val hasArea = bounds.width > 0f && bounds.height > 0f
+    if (!hasArea || !node.layoutInfo.isPlaced) return false
+
+    // Intersect with root bounds to verify physical viewport presence.
+    // We use the composeUiTest.onRoot() to safely get the viewport bounds on Android.
+    val rootNode = try {
+      composeUiTest.onRoot().fetchSemanticsNode()
+    } catch (e: Throwable) {
+      null
+    }
+    val rootBounds = rootNode?.boundsInRoot
+
+    return if (rootBounds != null) {
+      val centerX = (bounds.left + bounds.right) / 2f
+      val centerY = (bounds.top + bounds.bottom) / 2f
+      centerX >= rootBounds.left && centerX <= rootBounds.right &&
+        centerY >= rootBounds.top && centerY <= rootBounds.bottom
+    } else {
+      true
+    }
   }
 
   private fun performDeviceSwipe(

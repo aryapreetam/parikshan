@@ -241,6 +241,9 @@ object ParikshanAndroidServer {
         val root = try { composeRule.onRoot() } catch (e: Throwable) { null }
         
         if (root != null) {
+          val rootNode = try { root.fetchSemanticsNode() } catch (e: Throwable) { null }
+          val rootBounds = rootNode?.boundsInWindow
+
           fun traverse(node: androidx.compose.ui.semantics.SemanticsNode) {
             val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: ""
             val textList = node.config.getOrNull(SemanticsProperties.Text)
@@ -248,15 +251,25 @@ object ParikshanAndroidServer {
               ?: node.config.getOrNull(SemanticsProperties.EditableText)?.text
             
             val bounds = node.boundsInWindow
+            val hasArea = bounds.width > 0f && bounds.height > 0f
+            val isPhysicallyVisible = if (rootBounds != null && hasArea) {
+              val centerX = bounds.left + (bounds.width / 2f)
+              val centerY = bounds.top + (bounds.height / 2f)
+              centerX >= rootBounds.left && centerX <= rootBounds.right &&
+                centerY >= rootBounds.top && centerY <= rootBounds.bottom
+            } else {
+              hasArea
+            }
+
             nodes.add(NodeSnapshot(
               tag = tag,
               text = text,
-              visible = true,
+              visible = isPhysicallyVisible,
               bounds = Bounds(bounds.left.toDouble(), bounds.top.toDouble(), bounds.right.toDouble(), bounds.bottom.toDouble())
             ))
             node.children.forEach { traverse(it) }
           }
-          try { traverse(root.fetchSemanticsNode()) } catch (e: Throwable) { }
+          if (rootNode != null) { traverse(rootNode) }
         }
         Response.Tree(id = command.id, nodes = nodes)
       }

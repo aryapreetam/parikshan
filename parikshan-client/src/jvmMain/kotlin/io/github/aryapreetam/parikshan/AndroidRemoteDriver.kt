@@ -38,19 +38,20 @@ class AndroidRemoteDriver private constructor(
   private fun startHostRecording(command: Command.StartRecording): Response {
     val serial = System.getProperty("parikshan.android.serial") ?: ""
     val adbPrefix = if (serial.isNotEmpty()) listOf("adb", "-s", serial) else listOf("adb")
+    val stateKey = serial.ifEmpty { "default" }
     
     // Stop any existing recording
     stopHostRecording(Command.StopRecording(command.id, command.sessionName))
     
-    activeVideoPath = command.path
+    activeVideoPaths[stateKey] = command.path
     
     // Clean up any existing file on device
-    ProcessBuilder(adbPrefix + listOf("shell", "rm", "/sdcard/parikshan_video.mp4")).start().waitFor()
+    ProcessBuilder(adbPrefix + listOf("shell", "rm", "/data/local/tmp/parikshan_video.mp4")).start().waitFor()
     
-    val pb = ProcessBuilder(adbPrefix + listOf("shell", "screenrecord", "/sdcard/parikshan_video.mp4"))
+    val pb = ProcessBuilder(adbPrefix + listOf("shell", "screenrecord", "/data/local/tmp/parikshan_video.mp4"))
     try {
         val process = pb.start()
-        activeRecordingProcess = process
+        activeRecordingProcesses[stateKey] = process
         // Wait a bit to ensure it started
         Thread.sleep(1000)
         if (process.isAlive == false) {
@@ -66,8 +67,9 @@ class AndroidRemoteDriver private constructor(
   private fun stopHostRecording(command: Command.StopRecording): Response {
     val serial = System.getProperty("parikshan.android.serial") ?: ""
     val adbPrefix = if (serial.isNotEmpty()) listOf("adb", "-s", serial) else listOf("adb")
+    val stateKey = serial.ifEmpty { "default" }
     
-    val process = activeRecordingProcess
+    val process = activeRecordingProcesses.remove(stateKey)
     if (process != null) {
         try {
             // Try to find the PID of screenrecord on device
@@ -88,8 +90,6 @@ class AndroidRemoteDriver private constructor(
             }
         } catch (e: Exception) {
             process.destroy()
-        } finally {
-            activeRecordingProcess = null
         }
     }
     
@@ -97,18 +97,18 @@ class AndroidRemoteDriver private constructor(
     Thread.sleep(2000)
     
     // Pull the file from device to host
-    val hostPath = activeVideoPath
+    val hostPath = activeVideoPaths.remove(stateKey)
     if (hostPath != null) {
         val hostFile = java.io.File(hostPath)
         hostFile.parentFile?.mkdirs()
         try {
             // Check if file exists on device first
-            val checkFile = ProcessBuilder(adbPrefix + listOf("shell", "ls", "/sdcard/parikshan_video.mp4"))
+            val checkFile = ProcessBuilder(adbPrefix + listOf("shell", "ls", "/data/local/tmp/parikshan_video.mp4"))
                 .start()
                 .waitFor()
             
             if (checkFile == 0) {
-                val pullPb = ProcessBuilder(adbPrefix + listOf("pull", "/sdcard/parikshan_video.mp4", hostFile.absolutePath))
+                val pullPb = ProcessBuilder(adbPrefix + listOf("pull", "/data/local/tmp/parikshan_video.mp4", hostFile.absolutePath))
                 val pullProcess = pullPb.start()
                 val pullResult = pullProcess.waitFor()
                 if (pullResult != 0) {
@@ -116,15 +116,13 @@ class AndroidRemoteDriver private constructor(
                     System.err.println("Failed to pull video from Android device: exit code $pullResult. Error: $error")
                 } else {
                     // Success! Now remove it from device
-                    ProcessBuilder(adbPrefix + listOf("shell", "rm", "/sdcard/parikshan_video.mp4")).start().waitFor()
+                    ProcessBuilder(adbPrefix + listOf("shell", "rm", "/data/local/tmp/parikshan_video.mp4")).start().waitFor()
                 }
             } else {
-                System.err.println("Video file /sdcard/parikshan_video.mp4 not found on Android device.")
+                System.err.println("Video file /data/local/tmp/parikshan_video.mp4 not found on Android device.")
             }
         } catch (e: Exception) {
             e.printStackTrace()
-        } finally {
-            activeVideoPath = null
         }
     }
     
@@ -162,8 +160,8 @@ class AndroidRemoteDriver private constructor(
   }
 
   companion object {
-    @Volatile private var activeRecordingProcess: Process? = null
-    @Volatile private var activeVideoPath: String? = null
+    private val activeRecordingProcesses = java.util.concurrent.ConcurrentHashMap<String, Process>()
+    private val activeVideoPaths = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     private fun configFromSystemProperties(): ParikshanClientConfig {
       val host = System.getProperty("parikshan.host") ?: "127.0.0.1"

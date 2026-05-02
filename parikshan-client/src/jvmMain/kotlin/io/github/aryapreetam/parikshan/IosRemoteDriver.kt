@@ -55,7 +55,7 @@ class IosRemoteDriver private constructor(
     // Stop any existing recording
     stopHostRecording(Command.StopRecording(command.id, command.sessionName))
     
-    activeVideoPath = videoFile.absolutePath
+    activeVideoPaths[udid] = videoFile.absolutePath
     
     // Also proactively kill any existing simctl io recordVideo processes for this device
     cleanupSimctlRecording(udid)
@@ -66,7 +66,7 @@ class IosRemoteDriver private constructor(
     
     try {
         val process = pb.start()
-        activeRecordingProcess = process
+        activeRecordingProcesses[udid] = process
         // Wait a bit to ensure it actually started
         Thread.sleep(2000) 
         if (process.isAlive == false) {
@@ -75,7 +75,7 @@ class IosRemoteDriver private constructor(
                 cleanupSimctlRecording(udid)
                 Thread.sleep(1000)
                 val retryProcess = pb.start()
-                activeRecordingProcess = retryProcess
+                activeRecordingProcesses[udid] = retryProcess
                 Thread.sleep(2000)
                 if (retryProcess.isAlive == true) {
                     return Response.Ok(command.id)
@@ -103,12 +103,13 @@ class IosRemoteDriver private constructor(
   }
 
   private fun stopHostRecording(command: Command.StopRecording): Response {
-    val process = activeRecordingProcess
+    val udid = System.getProperty("parikshan.ios.udid") ?: "booted"
+    val process = activeRecordingProcesses.remove(udid)
     if (process == null) {
         return Response.Ok(command.id)
     }
     
-    val videoPath = activeVideoPath
+    val videoPath = activeVideoPaths.remove(udid)
     
     try {
         // Send SIGINT for clean finalization
@@ -144,9 +145,6 @@ class IosRemoteDriver private constructor(
         }
     } catch (e: Exception) {
         process.destroyForcibly()
-    } finally {
-        activeRecordingProcess = null
-        activeVideoPath = null
     }
     
     return Response.Ok(command.id)
@@ -176,8 +174,8 @@ class IosRemoteDriver private constructor(
   }
 
   companion object {
-    @Volatile private var activeRecordingProcess: Process? = null
-    @Volatile private var activeVideoPath: String? = null
+    private val activeRecordingProcesses = java.util.concurrent.ConcurrentHashMap<String, Process>()
+    private val activeVideoPaths = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     /**
      * Create and connect to the iOS driver, waiting for the server to be ready.

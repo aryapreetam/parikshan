@@ -161,19 +161,33 @@ private fun Bounds.canSafelyInteractWith(
   val overlapBottom = minOf(bottom, other.bottom)
   if (overlapRight <= overlapLeft || overlapBottom <= overlapTop) return false
 
-  val centerX = (other.left + other.right) / 2.0
-  val centerY = (other.top + other.bottom) / 2.0
-  val horizontalPadding = edgePadding
-  val topPadding = maxOf(edgePadding, other.height() * 0.2)
-  val bottomPadding = maxOf(edgePadding, other.height() * 0.35)
-  val safeLeft = left + horizontalPadding
-  val safeTop = top + topPadding
-  val safeRight = right - horizontalPadding
-  val safeBottom = bottom - bottomPadding
+  val safeLeft = left + edgePadding
+  val safeTop = top + edgePadding
+  val safeRight = right - edgePadding
+  val safeBottom = bottom - edgePadding
+  
   if (safeRight <= safeLeft || safeBottom <= safeTop) return false
 
-  return centerX in safeLeft..safeRight && centerY in safeTop..safeBottom
+  val centerX = (other.left + other.right) / 2.0
+  val centerY = (other.top + other.bottom) / 2.0
+
+  if (centerX !in safeLeft..safeRight || centerY !in safeTop..safeBottom) return false
+
+  val fitsHorizontally = other.width() <= width()
+  val fitsVertically = other.height() <= height()
+
+  val horizontalSafe = if (fitsHorizontally) {
+    other.left >= left && other.right <= right
+  } else true
+
+  val verticalSafe = if (fitsVertically) {
+    other.top >= top && other.bottom <= bottom
+  } else true
+
+  return horizontalSafe && verticalSafe
 }
+
+private fun Bounds.width(): Double = right - left
 
 private fun Bounds.hasArea(): Boolean = right > left && bottom > top
 

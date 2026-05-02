@@ -103,6 +103,7 @@ internal class DesktopSemanticsAccessor(
     }
   }
 
+  @OptIn(ExperimentalComposeUiApi::class)
   private fun SemanticsNode.toDesktopNode(): DesktopNode? {
     val tag = config.getOrNull(SemanticsProperties.TestTag) ?: ""
     val location = window.locationOnScreen
@@ -118,6 +119,17 @@ internal class DesktopSemanticsAccessor(
     // Include nodes that have either a testTag or text content
     if (tag.isBlank() && textValue == null) return null
 
+    // Determine the actual visible viewport of the Compose content area.
+    // We convert Compose bounds (which are in density-dependent pixels) to 
+    // logical coordinates to match the AWT content pane.
+    val density = window.graphicsConfiguration.defaultTransform.scaleX.toFloat()
+    val contentBounds = window.contentPane.bounds
+    val isPhysicallyVisible = 
+      (nodeBounds.left / density) < contentBounds.width &&
+      (nodeBounds.right / density) > 0 &&
+      (nodeBounds.top / density) < contentBounds.height &&
+      (nodeBounds.bottom / density) > 0
+
     return DesktopNode(
       tag = tag,
       bounds =
@@ -127,7 +139,7 @@ internal class DesktopSemanticsAccessor(
           right = location.x + nodeBounds.right.toDouble(),
           bottom = location.y + nodeBounds.bottom.toDouble()
         ),
-      visible = !invisible,
+      visible = !invisible && isPhysicallyVisible,
       text = textValue
     )
   }

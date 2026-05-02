@@ -34,6 +34,7 @@ class E2ETestScope internal constructor(
   }
 
   suspend fun click(selector: Selector) {
+    waitFor(selector = selector)
     val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
     expectOk(
       action = "click(${selector.raw})",
@@ -53,6 +54,7 @@ class E2ETestScope internal constructor(
     selector: Selector,
     text: String
   ) {
+    waitFor(selector = selector)
     val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
     expectOk(
       action = "input(${selector.raw})",
@@ -72,6 +74,7 @@ class E2ETestScope internal constructor(
     selector: Selector,
     direction: ScrollDirection
   ) {
+    waitFor(selector = selector)
     val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
     expectOk(
       action = "scroll(${selector.raw})",
@@ -85,8 +88,32 @@ class E2ETestScope internal constructor(
   }
 
   suspend fun assertVisible(selector: Selector) {
-    resolveSelectorOrThrow(selector = selector, requireVisible = true)
+    waitFor(selector = selector)
     settleAfterCommand()
+  }
+
+  suspend fun assertNotVisible(tag: String, message: String? = null) {
+    assertNotVisible(selector = tag.asAutoSelector(), message = message)
+  }
+
+  suspend fun assertNotVisible(
+    selector: Selector,
+    message: String? = null,
+    timeoutMs: Long = config.defaultWaitTimeoutMs
+  ) {
+    val startMark = TimeSource.Monotonic.markNow()
+    do {
+      if (!hasVisibleNode(selector)) {
+        settleAfterCommand()
+        return
+      }
+      if (startMark.elapsedNow() >= timeoutMs.milliseconds) {
+        break
+      }
+      delay(WAIT_POLL_INTERVAL_MS)
+    } while (true)
+
+    throw AssertionError(message ?: "Expected '${selector.raw}' to be not visible after ${timeoutMs}ms")
   }
 
   suspend fun assertText(
@@ -100,32 +127,9 @@ class E2ETestScope internal constructor(
     selector: Selector,
     expected: String
   ) {
-    val nativeTag =
-      when (selector) {
-        is Selector.Auto -> selector.raw
-        is Selector.Tag -> selector.value
-        is Selector.Text -> null
-      }
-
-    if (nativeTag != null) {
-      val response =
-        driver.send(
-          Command.AssertText(
-            id = nextId(),
-            tag = nativeTag,
-            expected = expected
-          )
-        )
-      if (response is Response.Ok) {
-        settleAfterCommand()
-        return
-      }
-    }
-
-    val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
-    if (resolved.node.text != expected) {
-      throw AssertionError("assertText(${selector.raw}) failed: expected '$expected', got '${resolved.node.text}'")
-    }
+    // assertText now has "waiting built-in" for the content to match,
+    // which is the world-class standard for E2E testing.
+    waitForVisibleText(selector = selector, expected = expected)
     settleAfterCommand()
   }
 
@@ -147,6 +151,12 @@ class E2ETestScope internal constructor(
         lookupSelector(selector = selector, requireVisible = true)
         settleAfterCommand()
         return
+      } catch (error: SelectorResolutionException) {
+        // Ambiguity is a permanent failure; do not wait/retry for 10s.
+        if (error.message?.contains("multiple", ignoreCase = true) == true) {
+          throw AssertionError(error.message)
+        }
+        lastError = error.message
       } catch (error: IllegalArgumentException) {
         lastError = error.message
       }
@@ -166,6 +176,7 @@ class E2ETestScope internal constructor(
     )
   }
 
+  @Deprecated("Use assertText() instead, which now has built-in waiting.", ReplaceWith("assertText(tag, expected)"))
   suspend fun waitForVisibleText(
     tag: String,
     expected: String,
@@ -174,6 +185,7 @@ class E2ETestScope internal constructor(
     waitForVisibleText(selector = tag.asAutoSelector(), expected = expected, timeoutMs = timeoutMs)
   }
 
+  @Deprecated("Use assertText() instead, which now has built-in waiting.", ReplaceWith("assertText(selector, expected)"))
   suspend fun waitForVisibleText(
     selector: Selector,
     expected: String,

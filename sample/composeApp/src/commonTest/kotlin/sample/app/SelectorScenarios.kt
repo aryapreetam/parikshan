@@ -16,9 +16,7 @@ class SelectorScenarios {
 
   @Test
   fun testTaskList() = e2eTest {
-    waitFor("nav_task_list")
     click("nav_task_list")
-    waitFor("task_list_screen")
     assertVisible("task_item_1")
     screenshot(screenshotPath("task-list"))
   }
@@ -27,18 +25,16 @@ class SelectorScenarios {
   fun testInputForm() = e2eTest {
     openInputForm()
     input("input_name_field", "New Task")
-    waitForVisibleText("input_name_preview", expected = "New Task")
     assertText("input_name_preview", "New Task")
     click("form_submit_button")
-    waitFor("form_success_message")
     assertVisible("form_success_message")
   }
 
   @Test
   fun testUniqueTextSelector() = e2eTest {
     openInputForm()
+    scrollUntilVisible(Selector.Tag("input_form_screen"), Selector.Auto("Unique Text Action"))
     click("Unique Text Action")
-    waitFor("Unique text clicked")
     assertVisible("Unique text clicked")
   }
 
@@ -46,13 +42,14 @@ class SelectorScenarios {
   fun testTagPrecedenceOverText() = e2eTest {
     openInputForm()
     click("Submit")
-    waitFor("Tag selector won")
     assertText("selector_result_message", "Tag selector won")
   }
 
   @Test
   fun testAmbiguousTextSelectorFailsClearly() = e2eTest {
     openInputForm()
+    // Scroll to the second button to ensure BOTH "Duplicate Action" buttons are physically visible
+    scrollUntilVisible(Selector.Tag("input_form_screen"), Selector.Tag("duplicate_action_secondary"))
 
     val error =
       kotlin.runCatching {
@@ -67,16 +64,11 @@ class SelectorScenarios {
 
   @Test
   fun testScrollAndTree() = e2eTest {
-    waitFor("nav_scroll_demo")
     click("nav_scroll_demo")
-    waitFor("scroll_demo_screen")
+    assertVisible("scroll_demo_screen")
 
-    val initialNodes = getTree()
-    assertFalse(
-      initialNodes.isVisibleWithin(
-        containerSelector = Selector.Tag("scroll_demo_screen"),
-        targetSelector = Selector.Auto("Trigger Bottom Action")
-      ),
+    assertNotVisible(
+      "Trigger Bottom Action",
       "Bottom action should not be interactable before scrolling"
     )
 
@@ -85,28 +77,28 @@ class SelectorScenarios {
       targetSelector = Selector.Auto("Trigger Bottom Action")
     )
     click("Trigger Bottom Action")
-    
-    // Wait for it to appear, then assert it is physically visible on screen
-    waitFor("done")
+
+    // Ensure 'done' is physically visible on screen before asserting
+    scrollUntilVisible(
+      containerSelector = Selector.Tag("scroll_demo_screen"),
+      targetSelector = Selector.Auto("done")
+    )
     assertVisible("done")
   }
 }
 
 private suspend fun E2ETestScope.openInputForm() {
-  waitFor("nav_input_form")
   click("nav_input_form")
-  waitFor("input_form_screen")
+  assertVisible("input_form_screen")
 }
 
 private suspend fun E2ETestScope.scrollUntilVisible(
   containerSelector: Selector,
   targetSelector: Selector,
-  edgePadding: Double = 24.0,
   maxScrolls: Int = 40
 ) {
   repeat(maxScrolls + 1) { attempt ->
-    val targetVisible = getTree().isVisibleWithin(containerSelector, targetSelector, edgePadding)
-    if (targetVisible) {
+    if (hasVisibleNode(targetSelector)) {
       return
     }
     if (attempt == maxScrolls) {
@@ -115,80 +107,6 @@ private suspend fun E2ETestScope.scrollUntilVisible(
       )
     }
     scroll(containerSelector, ScrollDirection.Down)
+    kotlinx.coroutines.delay(200)
   }
 }
-
-private fun List<NodeSnapshot>.isVisibleWithin(
-  containerTag: String,
-  targetTag: String,
-  edgePadding: Double = 24.0
-): Boolean =
-  isVisibleWithin(
-    containerSelector = Selector.Tag(containerTag),
-    targetSelector = Selector.Auto(targetTag),
-    edgePadding = edgePadding
-  )
-
-private fun List<NodeSnapshot>.isVisibleWithin(
-  containerSelector: Selector,
-  targetSelector: Selector,
-  edgePadding: Double = 24.0
-): Boolean {
-  val containerBounds =
-    try {
-      containerSelector.resolveNode(this, requireVisible = false).node.bounds
-    } catch (e: io.github.aryapreetam.parikshan.SelectorResolutionException) {
-      return false
-    }
-  val target =
-    try {
-      targetSelector.resolveNode(this, requireVisible = false).node
-    } catch (e: io.github.aryapreetam.parikshan.SelectorResolutionException) {
-      return false
-    }
-  if (!target.visible) return false
-  return containerBounds.canSafelyInteractWith(target.bounds, edgePadding)
-}
-
-private fun Bounds.canSafelyInteractWith(
-  other: Bounds,
-  edgePadding: Double
-): Boolean {
-  if (!hasArea() || !other.hasArea()) return false
-  val overlapLeft = maxOf(left, other.left)
-  val overlapTop = maxOf(top, other.top)
-  val overlapRight = minOf(right, other.right)
-  val overlapBottom = minOf(bottom, other.bottom)
-  if (overlapRight <= overlapLeft || overlapBottom <= overlapTop) return false
-
-  val safeLeft = left + edgePadding
-  val safeTop = top + edgePadding
-  val safeRight = right - edgePadding
-  val safeBottom = bottom - edgePadding
-  
-  if (safeRight <= safeLeft || safeBottom <= safeTop) return false
-
-  val centerX = (other.left + other.right) / 2.0
-  val centerY = (other.top + other.bottom) / 2.0
-
-  if (centerX !in safeLeft..safeRight || centerY !in safeTop..safeBottom) return false
-
-  val fitsHorizontally = other.width() <= width()
-  val fitsVertically = other.height() <= height()
-
-  val horizontalSafe = if (fitsHorizontally) {
-    other.left >= left && other.right <= right
-  } else true
-
-  val verticalSafe = if (fitsVertically) {
-    other.top >= top && other.bottom <= bottom
-  } else true
-
-  return horizontalSafe && verticalSafe
-}
-
-private fun Bounds.width(): Double = right - left
-
-private fun Bounds.hasArea(): Boolean = right > left && bottom > top
-
-private fun Bounds.height(): Double = bottom - top

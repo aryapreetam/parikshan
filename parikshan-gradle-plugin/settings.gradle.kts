@@ -1,1 +1,1 @@
-rootProject.name = "parikshan-gradle-plugin"
+rootProject.name = "gradle-plugin"

@@ -14,6 +14,6 @@ plugins {
 apply(from = "gradle/check-template-setup.gradle.kts")
 
 allprojects {
-  group = "io.github.aryapreetam"
-  version = "0.0.1.1"
+  group = findProperty("parikshanGroup") ?: "io.github.aryapreetam"
+  version = findProperty("parikshanVersion") ?: "0.0.1"
 }

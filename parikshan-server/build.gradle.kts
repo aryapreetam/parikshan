@@ -3,6 +3,7 @@ plugins {
   alias(libs.plugins.serialization)
   alias(libs.plugins.compose)
   alias(libs.plugins.compose.compiler)
+  alias(libs.plugins.maven.publish)
 }
 
 kotlin {
@@ -19,4 +20,8 @@ dependencies {
   implementation(libs.ktor.server.websockets)
   implementation(libs.jcodec.javase)
   implementation(compose.desktop.currentOs)
+}
+
+mavenPublishing {
+  coordinates(project.group.toString(), project.name, project.version.toString())
 }

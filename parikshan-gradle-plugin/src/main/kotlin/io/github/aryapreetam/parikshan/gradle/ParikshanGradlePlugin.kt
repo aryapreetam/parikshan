@@ -25,6 +25,7 @@ import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.JavaExec
 import org.gradle.api.tasks.TaskProvider
+import org.gradle.api.tasks.bundling.Zip
 import org.gradle.api.tasks.testing.Test
 import org.gradle.kotlin.dsl.create
 import org.gradle.kotlin.dsl.named
@@ -70,6 +71,12 @@ abstract class ParikshanExtension @Inject constructor(
 class ParikshanGradlePlugin : Plugin<Project> {
   override fun apply(project: Project) {
     val extension = project.extensions.create<ParikshanExtension>("parikshan")
+
+    // Ensure all ZIP/JAR tasks can handle large entry counts (Zip64)
+    // This is required for large Compose Uber JARs.
+    project.tasks.withType(Zip::class.java).configureEach {
+      isZip64 = true
+    }
     val sessionToken = project.providers.gradleProperty("parikshan.token").getOrNull() ?: UUID.randomUUID().toString()
 
     // --- Desktop Tasks ---
@@ -270,6 +277,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
       val iosPort = resolveIosRuntimeProperty("parikshan.ios.port")?.toIntOrNull() ?: 9878
       val iosBundleId = resolveIosRuntimeProperty("parikshan.ios.bundleId") ?: "sample.app.ios"
       val iosXcodeProject = resolveIosRuntimeProperty("parikshan.ios.xcodeProject")
+        ?: project.discoverIosXcodeProject()?.absolutePath
         ?: "${project.projectDir}/../iosApp/iosApp.xcodeproj"
       val iosXcodeScheme = resolveIosRuntimeProperty("parikshan.ios.xcodeScheme") ?: "iosApp"
       val iosDerivedData = project.layout.buildDirectory.dir("parikshan/ios-build").get().asFile
@@ -569,7 +577,26 @@ private fun Project.configureParikshanDependencies(isE2EActive: Boolean) {
   // This prevents production pollution for all other builds.
   if (isE2EActive) {
       addParikshanDependency("commonMainImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client:0.0.1")
-      // Only for Desktop (JVM)
+      
+      // Inject server into all JVM targets
+      val kmp = extensions.findByName("kotlin")
+      if (kmp != null) {
+          try {
+              @Suppress("UNCHECKED_CAST")
+              val targets = kmp.javaClass.getMethod("getTargets").invoke(kmp) as org.gradle.api.NamedDomainObjectCollection<Any>
+              targets.forEach { target ->
+                  val targetName = (target as org.gradle.api.Named).name
+                  val className = target.javaClass.name
+                  if (className.contains("KotlinJvmTarget", ignoreCase = true) || 
+                      targetName.contains("jvm", ignoreCase = true) || 
+                      targetName.contains("desktop", ignoreCase = true)) {
+                      addParikshanDependency("${targetName}MainImplementation", ":parikshan-server", "io.github.aryapreetam:parikshan-server:0.0.1")
+                  }
+              }
+          } catch (_: Exception) { }
+      }
+
+      // Fallback for non-KMP or failed resolution
       if (configurations.findByName("jvmMainImplementation") != null) {
           addParikshanDependency("jvmMainImplementation", ":parikshan-server", "io.github.aryapreetam:parikshan-server:0.0.1")
       }
@@ -582,8 +609,56 @@ private fun Project.addParikshanDependency(config: String, path: String, maven: 
   dependencies.add(config, dep)
 }
 
-private fun Project.resolveHostTestTaskName(override: String?): String = override ?: "jvmTest"
-private fun Project.resolveWasmDistributionTaskName(override: String?): String = override ?: "wasmJsBrowserDevelopmentWebpack"
+private fun Project.resolveHostTestTaskName(override: String?): String {
+  if (override != null) return override
+  val kmp = extensions.findByName("kotlin") ?: return "jvmTest"
+  try {
+      @Suppress("UNCHECKED_CAST")
+      val targets = kmp.javaClass.getMethod("getTargets").invoke(kmp) as org.gradle.api.NamedDomainObjectCollection<Any>
+      
+      println("DEBUG: Found ${targets.size} targets in KMP")
+      targets.forEach { println("DEBUG: Target name=${(it as org.gradle.api.Named).name}, class=${it.javaClass.name}") }
+
+      val jvmTargets = targets.filter { target ->
+          val targetName = (target as org.gradle.api.Named).name
+          val className = target.javaClass.name
+          val match = className.contains("KotlinJvmTarget", ignoreCase = true) || 
+                    targetName.contains("jvm", ignoreCase = true) || 
+                    targetName.contains("desktop", ignoreCase = true)
+          if (match) println("DEBUG: Matched target=$targetName as JVM target")
+          match
+      }
+      
+      val target = jvmTargets.find { (it as org.gradle.api.Named).name in listOf("desktop", "jvm") }
+          ?: jvmTargets.firstOrNull()
+          
+      if (target != null) {
+          val name = (target as org.gradle.api.Named).name
+          val taskName = "${name}Test"
+          println("DEBUG: Resolved hostTestTaskName=$taskName")
+          return taskName
+      }
+  } catch (e: Exception) { 
+      println("DEBUG: Exception in resolveHostTestTaskName: ${e.message}")
+  }
+  println("DEBUG: Falling back to jvmTest")
+  return "jvmTest"
+}
+
+private fun Project.resolveWasmDistributionTaskName(override: String?): String {
+  if (override != null) return override
+  val kmp = extensions.findByName("kotlin") ?: return "wasmJsBrowserDevelopmentWebpack"
+  try {
+      @Suppress("UNCHECKED_CAST")
+      val targets = kmp.javaClass.getMethod("getTargets").invoke(kmp) as org.gradle.api.NamedDomainObjectCollection<Any>
+      val wasmTargets = targets.filter { it.javaClass.name.contains("KotlinWasm", ignoreCase = true) }
+      if (wasmTargets.size == 1) {
+          val name = (wasmTargets[0] as org.gradle.api.Named).name
+          return "${name}BrowserDevelopmentWebpack"
+      }
+  } catch (_: Exception) { }
+  return "wasmJsBrowserDevelopmentWebpack"
+}
 
 private fun Project.discoverE2eTestClasses(): List<String> {
   val classes = mutableListOf<String>()
@@ -741,7 +816,7 @@ private fun Project.registerParikshanIosBootSource(
 private fun Project.registerParikshanWasmBootSource(
   logger: Logger
 ): TaskProvider<Task> {
-  val generatedDir = layout.buildDirectory.dir("parikshan/synthetic-src-wasm").get().asFile
+  val generatedDir = layout.buildDirectory.dir("parikshan/generated-wasm-main").get().asFile
   val prepareTask =
     tasks.register("prepareParikshanWasmBootSource") {
       group = "verification"
@@ -750,26 +825,20 @@ private fun Project.registerParikshanWasmBootSource(
       doLast {
         generatedDir.deleteRecursively()
         generatedDir.mkdirs()
-        
-        File(generatedDir, "ParikshanWasmBoot.kt").writeText(
-          """
-            import io.github.aryapreetam.parikshan.ParikshanComposeViewport
-            import io.github.aryapreetam.parikshan.initializeParikshanWasm
-            import androidx.compose.ui.ExperimentalComposeUiApi
-            import kotlinx.browser.document
-            import sample.app.App
-
-            @OptIn(ExperimentalComposeUiApi::class)
-            fun main() {
-                val body = document.body ?: return
-                initializeParikshanWasm()
-                ParikshanComposeViewport(body) {
-                    App()
-                }
+        val wasmMainDir = File(projectDir, "src/wasmJsMain/kotlin")
+        if (wasmMainDir.exists()) {
+          wasmMainDir.copyRecursively(generatedDir, overwrite = true)
+        }
+        generatedDir.walkTopDown()
+          .filter { it.isFile && it.extension == "kt" }
+          .forEach { file ->
+            val original = file.readText()
+            val instrumented = instrumentComposeWasmSource(original)
+            if (instrumented != original) {
+              file.writeText(instrumented)
+              logger.lifecycle("Parikshan Wasm: Instrumented generated source ${file.name}")
             }
-          """.trimIndent()
-        )
-        logger.lifecycle("Parikshan Wasm: Generated synthetic bootstrapper at ${generatedDir.absolutePath}")
+          }
       }
     }
 
@@ -897,6 +966,42 @@ private fun postIosPing(
   } finally {
     conn.disconnect()
   }
+}
+
+private fun instrumentComposeWasmSource(source: String): String {
+  if (!source.contains("ComposeViewport")) {
+    return source
+  }
+  
+  var result = source
+  
+  // 1. Swap ComposeViewport with ParikshanComposeViewport
+  result = result.replace(
+    Regex("""import\s+androidx\.compose\.ui\.window\.ComposeViewport\s*\R"""),
+    ""
+  ).replace("ComposeViewport", "ParikshanComposeViewport")
+  
+  // 2. Inject Parikshan imports and initializer
+  result = addKotlinImport(result, "import io.github.aryapreetam.parikshan.ParikshanComposeViewport")
+  result = addKotlinImport(result, "import io.github.aryapreetam.parikshan.initializeParikshanWasm")
+  
+  // 3. Inject initializeParikshanWasm() at the start of main()
+  val mainMatch = Regex("""fun\s+main\s*\([^)]*\)\s*\{""").find(result)
+  if (mainMatch != null) {
+      result = result.replaceRange(
+          mainMatch.range.last + 1,
+          mainMatch.range.last + 1,
+          "\n  initializeParikshanWasm()\n"
+      )
+  }
+  
+  return result
+}
+
+private fun Project.discoverIosXcodeProject(): File? {
+    return rootDir.walkTopDown()
+        .filter { it.isDirectory && it.extension == "xcodeproj" && !it.absolutePath.contains(".gradle") && !it.absolutePath.contains("build") }
+        .firstOrNull()
 }
 
 private fun escapeJson(value: String): String =

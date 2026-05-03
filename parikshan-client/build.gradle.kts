@@ -7,6 +7,7 @@ plugins {
   alias(libs.plugins.serialization)
   alias(libs.plugins.compose)
   alias(libs.plugins.compose.compiler)
+  alias(libs.plugins.maven.publish)
 }
 
 kotlin {
@@ -57,4 +58,8 @@ android {
   defaultConfig {
     minSdk = 24
   }
+}
+
+mavenPublishing {
+  coordinates(project.group.toString(), project.name, project.version.toString())
 }

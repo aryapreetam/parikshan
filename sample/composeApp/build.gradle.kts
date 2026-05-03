@@ -11,9 +11,8 @@ plugins {
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.compose)
   alias(libs.plugins.android.application)
-  id("io.github.aryapreetam.parikshan.gradle-plugin")
-}
-
+  id("io.github.aryapreetam.parikshan")
+  }
 kotlin {
   jvmToolchain(17)
 

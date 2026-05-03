@@ -3,6 +3,7 @@
 plugins {
   alias(libs.plugins.multiplatform)
   alias(libs.plugins.serialization)
+  alias(libs.plugins.maven.publish)
 }
 
 kotlin {
@@ -25,4 +26,8 @@ kotlin {
       implementation(kotlin("test"))
     }
   }
+}
+
+mavenPublishing {
+  coordinates(project.group.toString(), project.name, project.version.toString())
 }

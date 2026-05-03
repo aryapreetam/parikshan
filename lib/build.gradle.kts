@@ -38,7 +38,7 @@ dependencies {
 
 mavenPublishing {
   publishToMavenCentral()
-  coordinates("io.github.aryapreetam", "parikshan", "0.0.1")
+  coordinates(project.group.toString(), "parikshan", project.version.toString())
 
   pom {
     name = "Parikshan - Compose Multiplatform E2E Testing"

@@ -17,11 +17,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-
-private enum class SampleScreen {
+enum class SampleScreen {
   TaskList,
   InputForm,
-  ScrollDemo
+  ScrollDemo,
+  SubtextDemo
 }
 
 @Composable
@@ -41,6 +41,9 @@ fun App() {
     showScrollSuccess.value = false
     activeScreen.value = SampleScreen.ScrollDemo
   }
+  val onSubtextDemoSelected = {
+    activeScreen.value = SampleScreen.SubtextDemo
+  }
 
   MaterialTheme {
     BoxWithConstraints(
@@ -55,7 +58,8 @@ fun App() {
           CompactNavigation(
             onTaskListSelected = onTaskListSelected,
             onInputFormSelected = onInputFormSelected,
-            onScrollDemoSelected = onScrollDemoSelected
+            onScrollDemoSelected = onScrollDemoSelected,
+            onSubtextDemoSelected = onSubtextDemoSelected
           )
           Spacer(modifier = Modifier.height(12.dp))
           ContentSurface(
@@ -77,7 +81,8 @@ fun App() {
           SidebarNavigation(
             onTaskListSelected = onTaskListSelected,
             onInputFormSelected = onInputFormSelected,
-            onScrollDemoSelected = onScrollDemoSelected
+            onScrollDemoSelected = onScrollDemoSelected,
+            onSubtextDemoSelected = onSubtextDemoSelected
           )
           Spacer(modifier = Modifier.width(12.dp))
           ContentSurface(
@@ -103,7 +108,8 @@ fun App() {
 private fun SidebarNavigation(
   onTaskListSelected: () -> Unit,
   onInputFormSelected: () -> Unit,
-  onScrollDemoSelected: () -> Unit
+  onScrollDemoSelected: () -> Unit,
+  onSubtextDemoSelected: () -> Unit
 ) {
   Column(
     modifier =
@@ -142,6 +148,15 @@ private fun SidebarNavigation(
     ) {
       Text("Scroll Demo")
     }
+    Button(
+      onClick = onSubtextDemoSelected,
+      modifier =
+        Modifier
+          .fillMaxWidth()
+          .testTag("nav_subtext_demo")
+    ) {
+      Text("Subtext Demo")
+    }
   }
 }
 
@@ -149,7 +164,8 @@ private fun SidebarNavigation(
 private fun CompactNavigation(
   onTaskListSelected: () -> Unit,
   onInputFormSelected: () -> Unit,
-  onScrollDemoSelected: () -> Unit
+  onScrollDemoSelected: () -> Unit,
+  onSubtextDemoSelected: () -> Unit
 ) {
   Column(
     modifier =
@@ -190,6 +206,15 @@ private fun CompactNavigation(
             .testTag("nav_scroll_demo")
       ) {
         Text("Scroll Demo")
+      }
+      Button(
+        onClick = onSubtextDemoSelected,
+        modifier =
+          Modifier
+            .weight(1f)
+            .testTag("nav_subtext_demo")
+      ) {
+        Text("Subtext")
       }
     }
   }
@@ -235,6 +260,9 @@ private fun ContentSurface(
           showSuccess = showScrollSuccess,
           onBottomAction = onBottomAction
         )
+
+      SampleScreen.SubtextDemo ->
+        SubtextDemoScreen()
     }
   }
 }
@@ -409,5 +437,49 @@ private fun ScrollDemoScreen(
     }
 
     Spacer(modifier = Modifier.height(24.dp))
+  }
+}
+
+@Composable
+private fun SubtextDemoScreen() {
+  Column(
+    modifier =
+      Modifier
+        .fillMaxSize()
+        .testTag("subtext_demo_screen"),
+    verticalArrangement = Arrangement.spacedBy(12.dp)
+  ) {
+    Text("Subtext Demo", style = MaterialTheme.typography.headlineSmall)
+    Text(
+      "This is a sample text for testing purpose",
+      modifier =
+        Modifier
+          .fillMaxWidth()
+          .testTag("sample_large_text")
+    )
+
+    Text(
+      "This is a sample",
+      modifier =
+        Modifier
+          .fillMaxWidth()
+          .testTag("sample_large_text_short")
+    )
+
+    Text(
+      "This is a sample text",
+      modifier =
+        Modifier
+          .fillMaxWidth()
+          .testTag("sample_large_text_short_1")
+    )
+
+    Text(
+      "This is a sample text for not testing",
+      modifier =
+        Modifier
+          .fillMaxWidth()
+          .testTag("sample_large_text__negative")
+    )
   }
 }

@@ -14,6 +14,8 @@ import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
@@ -168,41 +170,51 @@ class AndroidDriver private constructor(
   }
 
   private fun findFirstInteraction(tag: String) =
-    composeUiTest.onAllNodesWithTag(tag, useUnmergedTree = true)
+    composeUiTest.onAllNodes(hasTestTag(tag).or(hasText(tag, substring = true, ignoreCase = true)), useUnmergedTree = false)
       .takeIf { it.fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
       ?.onFirst()
 
   private fun findFirstNode(tag: String): SemanticsNode? =
-    composeUiTest.onAllNodesWithTag(tag, useUnmergedTree = true)
+    composeUiTest.onAllNodes(hasTestTag(tag).or(hasText(tag, substring = true, ignoreCase = true)), useUnmergedTree = false)
       .fetchSemanticsNodes(atLeastOneRootRequired = false)
       .firstOrNull()
 
   private fun snapshotTree(): List<NodeSnapshot> {
     val root =
-      composeUiTest.onRoot(useUnmergedTree = true).fetchSemanticsNode(
+      composeUiTest.onRoot(useUnmergedTree = false).fetchSemanticsNode(
         errorMessageOnFail = "Unable to read root semantics node"
       )
+    val rootBounds = try {
+      composeUiTest.onRoot().fetchSemanticsNode().boundsInRoot
+    } catch (e: Throwable) {
+      null
+    }
     return buildList {
-      appendTaggedNodes(root, this)
+      appendSnapshots(root, this, rootBounds)
     }
   }
 
-  private fun appendTaggedNodes(
+  private fun appendSnapshots(
     node: SemanticsNode,
-    snapshots: MutableList<NodeSnapshot>
+    snapshots: MutableList<NodeSnapshot>,
+    rootBounds: androidx.compose.ui.geometry.Rect?
   ) {
-    val tag = node.config.getOrNull(SemanticsProperties.TestTag)
-    if (tag != null) {
+    val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: ""
+    val editableText = node.config.getOrNull(SemanticsProperties.EditableText)?.text
+    val spokenText = node.config.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text }.orEmpty()
+    val textValue = editableText?.takeIf { it.isNotBlank() } ?: spokenText.ifBlank { null }
+    
+    if (tag.isNotEmpty() || textValue != null) {
       snapshots +=
         NodeSnapshot(
           tag = tag,
           bounds = boundsOf(node),
-          visible = isVisible(node),
-          text = snapshotTextOf(node)
+          visible = isVisible(node, rootBounds),
+          text = textValue
         )
     }
     node.children.forEach { child ->
-      appendTaggedNodes(child, snapshots)
+      appendSnapshots(child, snapshots, rootBounds)
     }
   }
 
@@ -216,19 +228,10 @@ class AndroidDriver private constructor(
     )
   }
 
-  private fun isVisible(node: SemanticsNode): Boolean {
+  private fun isVisible(node: SemanticsNode, rootBounds: androidx.compose.ui.geometry.Rect? = null): Boolean {
     val bounds = node.boundsInRoot
     val hasArea = bounds.width > 0f && bounds.height > 0f
     if (!hasArea || !node.layoutInfo.isPlaced) return false
-
-    // Intersect with root bounds to verify physical viewport presence.
-    // We use the composeUiTest.onRoot() to safely get the viewport bounds on Android.
-    val rootNode = try {
-      composeUiTest.onRoot().fetchSemanticsNode()
-    } catch (e: Throwable) {
-      null
-    }
-    val rootBounds = rootNode?.boundsInRoot
 
     return if (rootBounds != null) {
       val centerX = (bounds.left + bounds.right) / 2f
@@ -266,7 +269,7 @@ class AndroidDriver private constructor(
   }
 
   private fun snapshotTextOf(node: SemanticsNode): String? =
-    directTextOf(node) ?: descendantTextsOf(node).takeIf { it.isNotEmpty() }?.joinToString(separator = "")
+    directTextOf(node) ?: descendantTextsOf(node).takeIf { it.isNotEmpty() }?.joinToString("")
 
   private fun directTextOf(node: SemanticsNode): String? {
     node.config.getOrNull(SemanticsProperties.EditableText)?.text
@@ -275,7 +278,7 @@ class AndroidDriver private constructor(
 
     val values = node.config.getOrNull(SemanticsProperties.Text).orEmpty()
     if (values.isNotEmpty()) {
-      return values.joinToString(separator = "") { it.text }.takeIf { it.isNotBlank() }
+      return values.joinToString("") { it.text }.takeIf { it.isNotBlank() }
     }
     return null
   }
@@ -317,7 +320,7 @@ class AndroidDriver private constructor(
       composeUiTest.waitForIdle()
       try {
         return composeUiTest
-          .onRoot(useUnmergedTree = true)
+          .onRoot(useUnmergedTree = false)
           .captureToImage()
           .asAndroidBitmap()
       } catch (throwable: Throwable) {

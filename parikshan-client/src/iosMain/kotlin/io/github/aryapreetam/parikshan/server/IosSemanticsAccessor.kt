@@ -30,8 +30,13 @@ internal object IosSemanticsAccessor {
   }
 
   fun findNodeByTag(tag: String): SemanticsNode? {
-    return findAllNodes().find { node ->
-      node.config.getOrNull(SemanticsProperties.TestTag) == tag
+    val all = findAllNodes()
+    all.find { it.config.getOrNull(SemanticsProperties.TestTag) == tag }?.let { return it }
+    return all.find { node ->
+      val textList = node.config.getOrNull(SemanticsProperties.Text)
+      val text = textList?.joinToString("") { it.text } 
+        ?: node.config.getOrNull(SemanticsProperties.EditableText)?.text
+      text?.contains(tag, ignoreCase = true) == true
     }
   }
 
@@ -47,7 +52,7 @@ internal object IosSemanticsAccessor {
   private fun toNodeSnapshot(node: SemanticsNode): NodeSnapshot {
     val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: ""
     val textList = node.config.getOrNull(SemanticsProperties.Text)
-    val text = textList?.joinToString(" ") { it.text } 
+    val text = textList?.joinToString("") { it.text } 
       ?: node.config.getOrNull(SemanticsProperties.EditableText)?.text
     
     val bounds = node.boundsInWindow

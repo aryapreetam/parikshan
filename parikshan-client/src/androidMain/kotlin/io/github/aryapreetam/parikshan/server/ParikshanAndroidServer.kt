@@ -6,6 +6,9 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -43,6 +46,10 @@ object ParikshanAndroidServer {
   private val shutdownLatch = CountDownLatch(1)
   private lateinit var composeRule: ComposeTestRule
   private var sessionToken: String = ""
+  @Volatile
+  private var shutdownRequested = false
+
+  fun isShutdownRequested() = shutdownRequested
 
   fun start(rule: ComposeTestRule, port: Int = 9879, sessionToken: String? = null) {
     if (!running.compareAndSet(false, true)) return
@@ -169,14 +176,14 @@ object ParikshanAndroidServer {
   private fun handleCommand(command: Command): Response {
     return when (command) {
       is Command.Click -> {
-        val node = composeRule.onNodeWithTag(command.tag)
+        val node = composeRule.onAllNodes(hasTestTag(command.tag).or(hasText(command.tag, substring = true, ignoreCase = true))).onFirst()
         try { node.performScrollTo() } catch (e: Throwable) { /* Ignore */ }
         node.performClick()
         Response.Ok(command.id)
       }
 
       is Command.Input -> {
-        val node = composeRule.onNodeWithTag(command.tag)
+        val node = composeRule.onAllNodes(hasTestTag(command.tag).or(hasText(command.tag, substring = true, ignoreCase = true))).onFirst()
         try { node.performScrollTo() } catch (e: Throwable) { /* Ignore */ }
         node.performTextClearance()
         node.performTextInput(command.text)
@@ -184,7 +191,7 @@ object ParikshanAndroidServer {
       }
 
       is Command.Scroll -> {
-        val node = composeRule.onNodeWithTag(command.tag)
+        val node = composeRule.onAllNodes(hasTestTag(command.tag).or(hasText(command.tag, substring = true, ignoreCase = true))).onFirst()
         try {
           node.performTouchInput {
             when (command.direction) {
@@ -201,38 +208,38 @@ object ParikshanAndroidServer {
       }
 
       is Command.AssertVisible -> {
-        composeRule.onNodeWithTag(command.tag).assertIsDisplayed()
-        val nodeInfo = composeRule.onNodeWithTag(command.tag).fetchSemanticsNode()
+        composeRule.onAllNodes(hasTestTag(command.tag).or(hasText(command.tag, substring = true, ignoreCase = true))).onFirst().assertIsDisplayed()
+        val nodeInfo = composeRule.onAllNodes(hasTestTag(command.tag).or(hasText(command.tag, substring = true, ignoreCase = true))).onFirst().fetchSemanticsNode()
         val bounds = nodeInfo.boundsInWindow
         Response.NodeInfo(
           id = command.id,
           bounds = Bounds(bounds.left.toDouble(), bounds.top.toDouble(), bounds.right.toDouble(), bounds.bottom.toDouble()),
           visible = true,
-          text = nodeInfo.config.getOrNull(SemanticsProperties.Text)?.joinToString(" ") { it.text }
+          text = nodeInfo.config.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text }
         )
       }
 
       is Command.AssertText -> {
-        composeRule.onNodeWithTag(command.tag).assertTextEquals(command.expected)
+        composeRule.onAllNodes(hasTestTag(command.tag).or(hasText(command.tag, substring = true, ignoreCase = true))).onFirst().assertTextEquals(command.expected)
         Response.Ok(command.id)
       }
 
       is Command.WaitFor -> {
         composeRule.waitUntil(timeoutMillis = command.timeoutMs) {
           try {
-            composeRule.onNodeWithTag(command.tag).assertIsDisplayed()
+            composeRule.onAllNodes(hasTestTag(command.tag).or(hasText(command.tag, substring = true, ignoreCase = true))).onFirst().assertIsDisplayed()
             true
           } catch (e: Throwable) {
             false
           }
         }
-        val nodeInfo = composeRule.onNodeWithTag(command.tag).fetchSemanticsNode()
+        val nodeInfo = composeRule.onAllNodes(hasTestTag(command.tag).or(hasText(command.tag, substring = true, ignoreCase = true))).onFirst().fetchSemanticsNode()
         val bounds = nodeInfo.boundsInWindow
         Response.NodeInfo(
           id = command.id,
           bounds = Bounds(bounds.left.toDouble(), bounds.top.toDouble(), bounds.right.toDouble(), bounds.bottom.toDouble()),
           visible = true,
-          text = nodeInfo.config.getOrNull(SemanticsProperties.Text)?.joinToString(" ") { it.text }
+          text = nodeInfo.config.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text }
         )
       }
 
@@ -247,7 +254,7 @@ object ParikshanAndroidServer {
           fun traverse(node: androidx.compose.ui.semantics.SemanticsNode) {
             val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: ""
             val textList = node.config.getOrNull(SemanticsProperties.Text)
-            val text = textList?.joinToString(" ") { it.text } 
+            val text = textList?.joinToString("") { it.text } 
               ?: node.config.getOrNull(SemanticsProperties.EditableText)?.text
             
             val bounds = node.boundsInWindow
@@ -292,7 +299,10 @@ object ParikshanAndroidServer {
       }
       is Command.StartRecording -> Response.Ok(command.id)
       is Command.StopRecording -> Response.Ok(command.id)
-      is Command.Shutdown -> Response.Ok(command.id)
+      is Command.Shutdown -> {
+        shutdownRequested = true
+        Response.Ok(command.id)
+      }
       is Command.Ping -> Response.Ok(command.id)
     }
   }

@@ -210,18 +210,31 @@ class ParikshanGradlePlugin : Plugin<Project> {
 
       startDesktopTask.configure { dependsOn(extension.appJarTaskName.get()) }
 
+      val wasmOutputDirProvider = wasmOutputDir
+      val wasmDevDirProvider = wasmDevDir
+      val wasmProdDirProvider = wasmProdDir
+      val wasmResourcesDirProvider = wasmResourcesDir
+      val buildDirProvider = project.layout.buildDirectory
+      val gradleLogger = project.logger
+
       prepareWasmAssetsTask.configure {
         dependsOn(wasmDistributionTaskName)
-        project.tasks.findByName("wasmJsProcessResources")?.let { dependsOn(it) }
+        dependsOn("wasmJsProcessResources")
         doLast {
-          val output = wasmOutputDir.get().asFile
+          val output = wasmOutputDirProvider.get().asFile
           output.deleteRecursively()
           output.mkdirs()
-          val distDir = if (wasmDevDir.get().asFile.exists()) wasmDevDir.get().asFile else wasmProdDir.get().asFile
-          distDir.copyRecursively(output, overwrite = true)
+          val distDir = if (wasmDevDirProvider.get().asFile.exists()) wasmDevDirProvider.get().asFile else wasmProdDirProvider.get().asFile
+          if (distDir.exists()) distDir.copyRecursively(output, overwrite = true)
+          val buildDir = buildDirProvider.get().asFile
+          listOf("processedResources/wasmJs/main", "kotlin-multiplatform-resources/assemble-hierarchically/wasmJsResolveSelfResources", "kotlin-multiplatform-resources/aggregated-resources/wasmJs")
+            .map { File(buildDir, it) }.filter { it.exists() }.forEach { resDir ->
+              gradleLogger.lifecycle("Parikshan Wasm: Copying resources from ${resDir.absolutePath}")
+              resDir.copyRecursively(output, overwrite = true)
+            }
           val indexHtml = File(output, "index.html")
           if (!indexHtml.exists()) {
-            val srcIndex = File(wasmResourcesDir.get().asFile, "index.html")
+            val srcIndex = File(wasmResourcesDirProvider.get().asFile, "index.html")
             if (srcIndex.exists()) srcIndex.copyTo(indexHtml)
           }
         }
@@ -320,16 +333,26 @@ class ParikshanGradlePlugin : Plugin<Project> {
           generatedIosAppDir.deleteRecursively()
           originalIosAppDir.copyRecursively(generatedIosAppDir)
           
-          val pbxprojFile = File(generatedIosAppDir, "${File(iosXcodeProject).name}/project.pbxproj")
-          if (pbxprojFile.exists()) {
-              var pbxText = pbxprojFile.readText()
-              val absoluteGradlew = File(rootDirAbs, "gradlew").absolutePath
-              val gradleCmd = "$absoluteGradlew -p $rootDirAbs --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.token=$sessionToken $projectPath:embedAndSignAppleFrameworkForXcode"
-              val oldScript = "cd \\\"\$SRCROOT/..\\\"\\n./../gradlew :sample:composeApp:embedAndSignAppleFrameworkForXcode"
-              val newScript = "cd \\\"$sampleDirAbs\\\"\\n$gradleCmd"
-              pbxText = pbxText.replace(oldScript, newScript)
-              pbxprojFile.writeText(pbxText)
-          }
+          val absoluteGradlew = File(rootDirAbs, "gradlew").absolutePath
+          val gradlewShim = File(generatedIosAppDir, "gradlew")
+          val shimContent = """
+              #!/bin/sh
+              exec "$absoluteGradlew" -p "$rootDirAbs" --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.token=$sessionToken "${'$'}@"
+              """.trimIndent()
+          
+          gradlewShim.writeText(shimContent)
+          gradlewShim.setExecutable(true)
+          
+          // --- XCODE ./../gradlew COMPATIBILITY ---
+          // Some Xcode projects use relative paths to find gradlew. Since we moved the project to a subfolder,
+          // we place shims at the expected relative locations as well.
+          val parentShim = File(generatedIosAppDir.parentFile, "gradlew")
+          parentShim.writeText(shimContent)
+          parentShim.setExecutable(true)
+
+          val grandParentShim = File(generatedIosAppDir.parentFile.parentFile, "gradlew")
+          grandParentShim.writeText(shimContent)
+          grandParentShim.setExecutable(true)
 
           iosLogger.lifecycle("Parikshan iOS: Building app via xcodebuild...")
           val appBuildProducts = File(iosDerivedData, "Build/Products/Debug-iphonesimulator")
@@ -817,6 +840,7 @@ private fun Project.registerParikshanWasmBootSource(
   logger: Logger
 ): TaskProvider<Task> {
   val generatedDir = layout.buildDirectory.dir("parikshan/generated-wasm-main").get().asFile
+  val projectDirFile = project.projectDir
   val prepareTask =
     tasks.register("prepareParikshanWasmBootSource") {
       group = "verification"
@@ -825,7 +849,7 @@ private fun Project.registerParikshanWasmBootSource(
       doLast {
         generatedDir.deleteRecursively()
         generatedDir.mkdirs()
-        val wasmMainDir = File(projectDir, "src/wasmJsMain/kotlin")
+        val wasmMainDir = File(projectDirFile, "src/wasmJsMain/kotlin")
         if (wasmMainDir.exists()) {
           wasmMainDir.copyRecursively(generatedDir, overwrite = true)
         }

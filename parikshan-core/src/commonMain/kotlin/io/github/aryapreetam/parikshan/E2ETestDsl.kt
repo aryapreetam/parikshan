@@ -36,6 +36,7 @@ class E2ETestScope internal constructor(
   suspend fun click(selector: Selector) {
     waitFor(selector = selector)
     val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
+    checkAmbiguity(resolved)
     expectOk(
       action = "click(${selector.raw})",
       response = driver.send(Command.Click(id = nextId(), tag = resolved.tag))
@@ -56,6 +57,7 @@ class E2ETestScope internal constructor(
   ) {
     waitFor(selector = selector)
     val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
+    checkAmbiguity(resolved)
     expectOk(
       action = "input(${selector.raw})",
       response = driver.send(Command.Input(id = nextId(), tag = resolved.tag, text = text))
@@ -76,6 +78,7 @@ class E2ETestScope internal constructor(
   ) {
     waitFor(selector = selector)
     val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
+    checkAmbiguity(resolved)
     expectOk(
       action = "scroll(${selector.raw})",
       response = driver.send(Command.Scroll(id = nextId(), tag = resolved.tag, direction = direction))
@@ -152,10 +155,6 @@ class E2ETestScope internal constructor(
         settleAfterCommand()
         return
       } catch (error: SelectorResolutionException) {
-        // Ambiguity is a permanent failure; do not wait/retry for 10s.
-        if (error.message?.contains("multiple", ignoreCase = true) == true) {
-          throw AssertionError(error.message)
-        }
         lastError = error.message
       } catch (error: IllegalArgumentException) {
         lastError = error.message
@@ -356,6 +355,12 @@ class E2ETestScope internal constructor(
     } catch (error: IllegalArgumentException) {
       throw AssertionError(error.message ?: "Could not resolve selector ${selector.raw}")
     }
+
+  private fun checkAmbiguity(resolved: ResolvedSelector) {
+    if (resolved.allMatches.size > 1) {
+      throw AssertionError(resolved.selector.ambiguousTextMessage(resolved.allMatches))
+    }
+  }
 }
 
 suspend fun e2eTest(

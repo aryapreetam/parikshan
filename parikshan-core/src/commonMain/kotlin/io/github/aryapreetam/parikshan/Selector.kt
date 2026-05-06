@@ -25,7 +25,8 @@ sealed interface Selector {
 data class ResolvedSelector(
   val selector: Selector,
   val matchType: MatchType,
-  val node: NodeSnapshot
+  val node: NodeSnapshot,
+  val allMatches: List<NodeSnapshot> = listOf(node)
 ) {
   val tag: String = node.tag
 
@@ -109,7 +110,13 @@ private fun matchingTextNodes(
   // (the container) and others don't (the inner Text), keep only the tagged
   // ones so the framework can route click/assert commands by testTag.
   val tagged = allMatches.filter { it.tag.isNotEmpty() }
-  return if (tagged.isNotEmpty() && tagged.size < allMatches.size) tagged else allMatches
+  val filtered = if (tagged.isNotEmpty() && tagged.size < allMatches.size) tagged else allMatches
+
+  // Further deduplicate by tag. If multiple nodes have the same tag,
+  // they represent the same logical element in the accessibility tree (common on iOS).
+  return filtered.groupBy { it.tag }.flatMap { (tag, group) ->
+    if (tag.isEmpty()) group else listOf(group.first())
+  }
 }
 
 private fun resolveByText(
@@ -123,17 +130,14 @@ private fun resolveByText(
       nodes = nodes,
       requireVisible = requireVisible
     )
-  return when (matches.size) {
-    1 ->
-      ResolvedSelector(
-        selector = selector,
-        matchType = ResolvedSelector.MatchType.Text,
-        node = matches.single()
-      )
+  if (matches.isEmpty()) throw SelectorResolutionException(selector.textNotFoundMessage())
 
-    0 -> throw SelectorResolutionException(selector.textNotFoundMessage())
-    else -> throw SelectorResolutionException(selector.ambiguousTextMessage(matches))
-  }
+  return ResolvedSelector(
+    selector = selector,
+    matchType = ResolvedSelector.MatchType.Text,
+    node = matches.first(),
+    allMatches = matches
+  )
 }
 
 private fun Selector.resolveSingleTagMatch(
@@ -147,24 +151,25 @@ private fun Selector.resolveSingleTagMatch(
     } else {
       tagMatches.firstOrNull()
     }
-    ?: throw SelectorResolutionException(tagNotFoundMessage(selector))
+      ?: throw SelectorResolutionException(tagNotFoundMessage(selector))
   if (requireVisible && !match.visible) {
     throw SelectorResolutionException(tagNotVisibleMessage(selector))
   }
   return ResolvedSelector(
     selector = selector,
     matchType = ResolvedSelector.MatchType.Tag,
-    node = match
+    node = match,
+    allMatches = tagMatches
   )
 }
 
 private fun Selector.textNotFoundMessage(): String =
   when (this) {
     is Selector.Auto ->
-      "No node matched selector ${describe()} (checked exact tag first, then exact visible text)."
+      "No node matched selector ${describe()} (checked exact tag first, then visible text substring)."
 
     is Selector.Tag -> tagNotFoundMessage(this)
-    is Selector.Text -> "No visible node matched exact text '${normalizedRaw()}'."
+    is Selector.Text -> "No visible node matched text substring '${normalizedRaw()}'."
   }
 
 private fun tagNotFoundMessage(selector: Selector): String =
@@ -173,7 +178,7 @@ private fun tagNotFoundMessage(selector: Selector): String =
 private fun tagNotVisibleMessage(selector: Selector): String =
   "Selector ${selector.describe()} matched tag '${selector.normalizedRaw()}', but the node is not visible."
 
-private fun Selector.ambiguousTextMessage(matches: List<NodeSnapshot>): String {
+internal fun Selector.ambiguousTextMessage(matches: List<NodeSnapshot>): String {
   val matchSummary =
     matches.joinToString(separator = ", ") { node ->
       "tag='${node.tag}'"

@@ -41,7 +41,7 @@ class ParikshanAndroidRunner {
     // Start the Parikshan server and pass the compose rule
     ParikshanAndroidServer.start(composeRule, port = 9879, sessionToken = sessionToken)
 
-    // Block forever until the server receives a Shutdown command
+    // Wait for shutdown command
     ParikshanAndroidServer.awaitShutdown()
   }
 }

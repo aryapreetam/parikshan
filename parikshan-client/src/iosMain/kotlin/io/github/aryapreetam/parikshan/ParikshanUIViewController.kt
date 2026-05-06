@@ -40,7 +40,12 @@ private class ParikshanSemanticsGrabberNode : Modifier.Node() {
     override fun onAttach() {
         super.onAttach()
         try {
-            IosSemanticsAccessor.injectOwner(requireOwner())
-        } catch (_: Throwable) {}
+            println("[Parikshan] onAttach called in GrabberNode")
+            val owner = requireOwner()
+            println("[Parikshan] Grabbed SemanticsOwner: $owner")
+            IosSemanticsAccessor.injectOwner(owner)
+        } catch (e: Throwable) {
+            println("[Parikshan] Error grabbing SemanticsOwner: ${e.message}")
+        }
     }
 }

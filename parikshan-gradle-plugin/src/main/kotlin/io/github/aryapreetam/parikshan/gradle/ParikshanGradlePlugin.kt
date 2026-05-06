@@ -288,20 +288,26 @@ class ParikshanGradlePlugin : Plugin<Project> {
 
       val iosDevice = resolveIosRuntimeProperty("parikshan.ios.device") ?: "iPhone 16"
       val iosPort = resolveIosRuntimeProperty("parikshan.ios.port")?.toIntOrNull() ?: 9878
-      val iosBundleId = resolveIosRuntimeProperty("parikshan.ios.bundleId") ?: "sample.app.ios"
       val iosXcodeProject = resolveIosRuntimeProperty("parikshan.ios.xcodeProject")
         ?: project.discoverIosXcodeProject()?.absolutePath
         ?: "${project.projectDir}/../iosApp/iosApp.xcodeproj"
       val iosXcodeScheme = resolveIosRuntimeProperty("parikshan.ios.xcodeScheme") ?: "iosApp"
+      fun getIosBundleId(): String {
+        val prop = resolveIosRuntimeProperty("parikshan.ios.bundleId")
+        if (prop != null) return prop
+        val extracted = extractIosBundleId(File(iosXcodeProject), iosXcodeScheme)
+        project.logger.lifecycle("Parikshan iOS: Extracted bundle ID: $extracted")
+        return extracted ?: "sample.app.ios"
+      }
       val iosDerivedData = project.layout.buildDirectory.dir("parikshan/ios-build").get().asFile
-
       var iosSimulatorUdid: String? = null
 
       val stopIosAppTask = project.tasks.register("stopIosApp") {
         group = "verification"
         doLast {
           iosSimulatorUdid?.let { udid ->
-            ProcessBuilder("xcrun", "simctl", "terminate", udid, iosBundleId).start().waitFor()
+            val bundleId = getIosBundleId()
+            ProcessBuilder("xcrun", "simctl", "terminate", udid, bundleId).start().waitFor()
             iosLogger.lifecycle("Parikshan iOS: App terminated")
           }
         }
@@ -382,10 +388,11 @@ class ParikshanGradlePlugin : Plugin<Project> {
           
           val appBundle = appBuildProducts.listFiles()?.firstOrNull { it.name.endsWith(".app") } ?: throw GradleException("No .app bundle")
 
+          val bundleId = getIosBundleId()
           iosLogger.lifecycle("Parikshan iOS: Launching app...")
-          ProcessBuilder("xcrun", "simctl", "terminate", simulator.udid, iosBundleId).start().waitFor()
+          ProcessBuilder("xcrun", "simctl", "terminate", simulator.udid, bundleId).start().waitFor()
           ProcessBuilder("xcrun", "simctl", "install", simulator.udid, appBundle.absolutePath).start().waitFor()
-          ProcessBuilder("xcrun", "simctl", "launch", simulator.udid, iosBundleId).apply {
+          ProcessBuilder("xcrun", "simctl", "launch", simulator.udid, bundleId).apply {
               environment()["SIMCTL_CHILD_PARIKSHAN_TOKEN"] = sessionToken
               environment()["PARIKSHAN_TOKEN"] = sessionToken
           }.start().waitFor()
@@ -1026,6 +1033,27 @@ private fun Project.discoverIosXcodeProject(): File? {
     return rootDir.walkTopDown()
         .filter { it.isDirectory && it.extension == "xcodeproj" && !it.absolutePath.contains(".gradle") && !it.absolutePath.contains("build") }
         .firstOrNull()
+}
+
+private fun extractIosBundleId(xcodeProject: File, scheme: String): String? {
+  return try {
+    val process = ProcessBuilder(
+      "xcodebuild",
+      "-project", xcodeProject.absolutePath,
+      "-scheme", scheme,
+      "-showBuildSettings"
+    )
+      .redirectError(ProcessBuilder.Redirect.DISCARD)
+      .start()
+      
+    val output = process.inputStream.bufferedReader().readText()
+    process.waitFor()
+    
+    val match = Regex("""\bPRODUCT_BUNDLE_IDENTIFIER\s*=\s*(.+)""").find(output)
+    match?.groupValues?.get(1)?.trim()
+  } catch (e: Exception) {
+    null
+  }
 }
 
 private fun escapeJson(value: String): String =

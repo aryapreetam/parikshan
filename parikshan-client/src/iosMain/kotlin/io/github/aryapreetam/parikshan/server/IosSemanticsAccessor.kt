@@ -23,10 +23,9 @@ internal object IosSemanticsAccessor {
 
   fun findAllNodes(): List<SemanticsNode> {
     val owner = globalSemanticsOwner ?: return emptyList()
-    // Try both merging modes to be safe
-    val nodes = owner.getAllSemanticsNodes(mergingEnabled = true)
-    if (nodes.isNotEmpty()) return nodes
-    return owner.getAllSemanticsNodes(mergingEnabled = false)
+    val merged = owner.getAllSemanticsNodes(mergingEnabled = true)
+    val unmerged = owner.getAllSemanticsNodes(mergingEnabled = false)
+    return (merged + unmerged).distinctBy { it.id }
   }
 
   fun findNodeByTag(tag: String): SemanticsNode? {
@@ -58,21 +57,10 @@ internal object IosSemanticsAccessor {
     val bounds = node.boundsInWindow
     val hasArea = bounds.width > 0f && bounds.height > 0f
 
-    // Standardize physical visibility check using root viewport intersection.
-    val rootBounds = globalSemanticsOwner?.rootSemanticsNode?.boundsInWindow
-    val isPhysicallyVisible = if (rootBounds != null && hasArea) {
-      val centerX = bounds.left + (bounds.width / 2f)
-      val centerY = bounds.top + (bounds.height / 2f)
-      centerX >= rootBounds.left && centerX <= rootBounds.right &&
-        centerY >= rootBounds.top && centerY <= rootBounds.bottom
-    } else {
-      hasArea
-    }
-
     return NodeSnapshot(
       tag = tag,
       text = text,
-      visible = isPhysicallyVisible,
+      visible = hasArea,
       bounds = Bounds(
         left = bounds.left.toDouble(),
         top = bounds.top.toDouble(),

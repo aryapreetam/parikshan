@@ -28,7 +28,7 @@ data class ResolvedSelector(
   val node: NodeSnapshot,
   val allMatches: List<NodeSnapshot> = listOf(node)
 ) {
-  val tag: String = node.tag
+  val tag: String = node.tag.ifEmpty { node.text ?: selector.raw }
 
   enum class MatchType {
     Tag,

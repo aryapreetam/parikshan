@@ -244,6 +244,10 @@ object ParikshanIosServer {
       is Command.WaitFor -> {
         val deadline = platform.posix.time(null) + ((command.timeoutMs + 999L) / 1000L)
         while (platform.posix.time(null) <= deadline) {
+          val allNodes = IosSemanticsAccessor.findAllNodes()
+          if (allNodes.isEmpty()) {
+            println("[ParikshanIosServer] WaitFor: 0 semantics nodes found! Is SemanticsOwner injected? ${IosSemanticsAccessor.globalSemanticsOwner != null}")
+          }
           val node = IosSemanticsAccessor.snapshotNode(command.tag)
           if (node?.visible == true) {
             return Response.NodeInfo(command.id, node.bounds, visible = true, text = node.text)

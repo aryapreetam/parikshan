@@ -26,15 +26,49 @@ internal class DesktopSemanticsAccessor(
 ) {
   fun findByTag(tag: String): DesktopNode? =
     onEdt {
-      findNodeByTagRaw(tag)?.toDesktopNode()
+      val raw = findNodeByTagRaw(tag)
+      println("[ParikshanServer] findByTagRaw('$tag') returned: ${raw != null} (text: ${raw?.config?.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text }})")
+      val desktopNode = raw?.toDesktopNode()
+      println("[ParikshanServer] toDesktopNode() returned: ${desktopNode != null} (visible: ${desktopNode?.visible})")
+      desktopNode
     }
 
-  fun performClick(tag: String): Boolean =
-    onEdt {
-      val node = findNodeByTagRaw(tag) ?: return@onEdt false
-      val action = node.config.getOrNull(SemanticsActions.OnClick)?.action ?: return@onEdt false
-      action.invoke()
+  fun performClick(tag: String): Boolean {
+    val desktopNode = findByTag(tag) ?: return false
+    
+    val semanticSuccess = onEdt {
+      var node = findNodeByTagRaw(tag) ?: return@onEdt false
+      var action = node.config.getOrNull(SemanticsActions.OnClick)?.action
+      while (action == null && node.parent != null) {
+          node = node.parent!!
+          action = node.config.getOrNull(SemanticsActions.OnClick)?.action
+      }
+      if (action == null) return@onEdt false
+      
+      try {
+        action.invoke()
+      } catch (e: Exception) {
+        false
+      }
     }
+
+    if (semanticSuccess) return true
+
+    // Fallback: Native AWT Robot Click
+    return try {
+      val robot = java.awt.Robot()
+      val x = desktopNode.bounds.centerX.toInt()
+      val y = desktopNode.bounds.centerY.toInt()
+      
+      robot.mouseMove(x, y)
+      robot.mousePress(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)
+      Thread.sleep(50) // Brief delay to simulate human click
+      robot.mouseRelease(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)
+      true
+    } catch (e: Exception) {
+      false
+    }
+  }
 
   fun performSetText(
     tag: String,
@@ -92,14 +126,20 @@ internal class DesktopSemanticsAccessor(
   private fun allNodes(): List<SemanticsNode> {
     return window.semanticsOwners
       .flatMap { owner ->
-        owner.getAllSemanticsNodes(mergingEnabled = true)
+        val merged = owner.getAllSemanticsNodes(mergingEnabled = true)
+        val unmerged = owner.getAllSemanticsNodes(mergingEnabled = false)
+        (merged + unmerged).distinctBy { it.id }
       }
   }
 
   private fun findNodeByTagRaw(tag: String): SemanticsNode? {
-    return allNodes().firstOrNull { node ->
-      val nodeTag = node.config.getOrNull(SemanticsProperties.TestTag) ?: return@firstOrNull false
-      nodeTag == tag
+    val all = allNodes()
+    all.firstOrNull { it.config.getOrNull(SemanticsProperties.TestTag) == tag }?.let { return it }
+    return all.firstOrNull { node ->
+      val textList = node.config.getOrNull(SemanticsProperties.Text)
+      val text = textList?.joinToString("") { it.text } 
+        ?: node.config.getOrNull(SemanticsProperties.EditableText)?.text
+      text?.contains(tag, ignoreCase = true) == true
     }
   }
 

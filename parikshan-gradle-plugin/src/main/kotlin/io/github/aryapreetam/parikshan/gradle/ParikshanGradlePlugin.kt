@@ -599,14 +599,18 @@ private object ParikshanDesktopProcess {
 }
 
 private fun Project.configureParikshanDependencies(isE2EActive: Boolean) {
+  // A world-class plugin resolves its own runtime version dynamically.
+  // We read the version of the plugin class that Gradle actually loaded into the buildscript classpath.
+  val pluginVersion = ParikshanGradlePlugin::class.java.`package`.implementationVersion ?: "0.0.1"
+
   // Test DSL is always available in commonTest
-  addParikshanDependency("commonTestImplementation", ":lib", "io.github.aryapreetam:parikshan:0.0.1")
-  addParikshanDependency("commonTestImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client:0.0.1")
+  addParikshanDependency("commonTestImplementation", ":lib", "io.github.aryapreetam:parikshan:$pluginVersion")
+  addParikshanDependency("commonTestImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client:$pluginVersion")
 
   // The client engine is only injected into the production binary during active E2E tasks.
   // This prevents production pollution for all other builds.
   if (isE2EActive) {
-      addParikshanDependency("commonMainImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client:0.0.1")
+      addParikshanDependency("commonMainImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client:$pluginVersion")
       
       // Inject server into all JVM targets
       val kmp = extensions.findByName("kotlin")
@@ -620,7 +624,7 @@ private fun Project.configureParikshanDependencies(isE2EActive: Boolean) {
                   if (className.contains("KotlinJvmTarget", ignoreCase = true) || 
                       targetName.contains("jvm", ignoreCase = true) || 
                       targetName.contains("desktop", ignoreCase = true)) {
-                      addParikshanDependency("${targetName}MainImplementation", ":parikshan-server", "io.github.aryapreetam:parikshan-server:0.0.1")
+                      addParikshanDependency("${targetName}MainImplementation", ":parikshan-server", "io.github.aryapreetam:parikshan-server:$pluginVersion")
                   }
               }
           } catch (_: Exception) { }
@@ -628,7 +632,7 @@ private fun Project.configureParikshanDependencies(isE2EActive: Boolean) {
 
       // Fallback for non-KMP or failed resolution
       if (configurations.findByName("jvmMainImplementation") != null) {
-          addParikshanDependency("jvmMainImplementation", ":parikshan-server", "io.github.aryapreetam:parikshan-server:0.0.1")
+          addParikshanDependency("jvmMainImplementation", ":parikshan-server", "io.github.aryapreetam:parikshan-server:$pluginVersion")
       }
   }
 }

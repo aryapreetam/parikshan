@@ -311,7 +311,11 @@ class AndroidDriver private constructor(
     val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: ""
     val editableText = node.config.getOrNull(SemanticsProperties.EditableText)?.text
     val spokenText = node.config.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text }.orEmpty()
-    val textValue = editableText?.takeIf { it.isNotBlank() } ?: spokenText.ifBlank { null }
+    val contentDescription = node.config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString("").orEmpty()
+
+    val textValue = editableText?.takeIf { it.isNotBlank() }
+      ?: spokenText.takeIf { it.isNotBlank() }
+      ?: contentDescription.ifBlank { null }
     
     if (tag.isNotEmpty() || textValue != null) {
       snapshots +=
@@ -387,8 +391,14 @@ class AndroidDriver private constructor(
 
     val values = node.config.getOrNull(SemanticsProperties.Text).orEmpty()
     if (values.isNotEmpty()) {
-      return values.joinToString("") { it.text }.takeIf { it.isNotBlank() }
+      values.joinToString("") { it.text }.takeIf { it.isNotBlank() }?.let { return it }
     }
+
+    val contentDescription = node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty()
+    if (contentDescription.isNotEmpty()) {
+      return contentDescription.joinToString("").takeIf { it.isNotBlank() }
+    }
+
     return null
   }
 

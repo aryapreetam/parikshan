@@ -92,13 +92,30 @@ private fun matchingTextNodes(
     (!requireVisible || node.visible) && node.normalizedText()?.contains(normalized, ignoreCase = true) == true
   }
 
-  val exactMatches = allMatches.filter { it.normalizedText().equals(normalized, ignoreCase = true) }
-  val matchesToUse = if (exactMatches.isNotEmpty()) exactMatches else allMatches
+  if (allMatches.isEmpty()) return emptyList()
 
+  // 1. Exact matches take priority
+  val exactMatches = allMatches.filter { it.normalizedText().equals(normalized, ignoreCase = true) }
+
+  // 2. Starts With matches take priority
+  val startsWithMatches = allMatches.filter { it.normalizedText()?.startsWith(normalized, ignoreCase = true) == true }
+
+  val matchesToUse = when {
+    exactMatches.isNotEmpty() -> exactMatches
+    startsWithMatches.isNotEmpty() -> startsWithMatches
+    else -> allMatches
+  }
+
+  // 3. Tagged nodes take priority (user-provided identifiers)
   val tagged = matchesToUse.filter { it.tag.isNotEmpty() }
   val filtered = if (tagged.isNotEmpty() && tagged.size < matchesToUse.size) tagged else matchesToUse
 
-  return filtered.groupBy { it.tag }.flatMap { (tag, group) ->
+  // 3. Leaf Preference: Sort by area (smallest first) and deduplicate by containment.
+  // This ensures that if a Card and its Title both match the text (via contentDescription),
+  // we prefer the Title (the smaller, more specific node).
+  val sortedByArea = filtered.sortedBy { it.area() }
+
+  return sortedByArea.groupBy { it.tag }.flatMap { (tag, group) ->
     if (tag.isEmpty()) {
       val deduplicated = mutableListOf<NodeSnapshot>()
       for (node in group) {
@@ -107,10 +124,20 @@ private fun matchingTextNodes(
         while (iterator.hasNext()) {
           val existing = iterator.next()
           if (node.text == existing.text) {
-             if (existing.bounds.left <= node.bounds.left + 1.0 && existing.bounds.top <= node.bounds.top + 1.0 && existing.bounds.right + 1.0 >= node.bounds.right && existing.bounds.bottom + 1.0 >= node.bounds.bottom) {
+             // Since we sorted by area, 'existing' is smaller than or equal to 'node'.
+             // If 'node' (the larger one) contains 'existing', we skip 'node'.
+             if (node.bounds.left <= existing.bounds.left + 0.5 &&
+                 node.bounds.top <= existing.bounds.top + 0.5 &&
+                 node.bounds.right >= existing.bounds.right - 0.5 &&
+                 node.bounds.bottom >= existing.bounds.bottom - 0.5) {
                  isDuplicate = true
                  break
-             } else if (node.bounds.left <= existing.bounds.left + 1.0 && node.bounds.top <= existing.bounds.top + 1.0 && node.bounds.right + 1.0 >= existing.bounds.right && node.bounds.bottom + 1.0 >= existing.bounds.bottom) {
+             } else if (existing.bounds.left <= node.bounds.left + 0.5 &&
+                        existing.bounds.top <= node.bounds.top + 0.5 &&
+                        existing.bounds.right >= node.bounds.right - 0.5 &&
+                        existing.bounds.bottom >= node.bounds.bottom - 0.5) {
+                 // If 'existing' contains 'node' (can happen if areas are identical),
+                 // remove 'existing' and prefer 'node'.
                  iterator.remove()
              }
           }
@@ -119,6 +146,7 @@ private fun matchingTextNodes(
       }
       deduplicated
     } else {
+      // For tagged nodes, if multiple exist with the same tag, still prefer the smallest one.
       listOf(group.first())
     }
   }
@@ -191,6 +219,9 @@ private fun Selector.describe(): String =
   }
 
 private fun Selector.normalizedRaw(): String = raw.trim()
+
+private fun NodeSnapshot.area(): Double =
+  (bounds.right - bounds.left) * (bounds.bottom - bounds.top)
 
 private fun NodeSnapshot.normalizedText(): String? = text?.trim()
 

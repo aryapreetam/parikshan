@@ -114,42 +114,38 @@ private fun matchingTextNodes(
   // This ensures that if a Card and its Title both match the text (via contentDescription),
   // we prefer the Title (the smaller, more specific node).
   val sortedByArea = filtered.sortedBy { it.area() }
+  val deduplicated = mutableListOf<NodeSnapshot>()
 
-  return sortedByArea.groupBy { it.tag }.flatMap { (tag, group) ->
-    if (tag.isEmpty()) {
-      val deduplicated = mutableListOf<NodeSnapshot>()
-      for (node in group) {
-        var isDuplicate = false
-        val iterator = deduplicated.iterator()
-        while (iterator.hasNext()) {
-          val existing = iterator.next()
-          if (node.text == existing.text) {
-             // Since we sorted by area, 'existing' is smaller than or equal to 'node'.
-             // If 'node' (the larger one) contains 'existing', we skip 'node'.
-             if (node.bounds.left <= existing.bounds.left + 0.5 &&
-                 node.bounds.top <= existing.bounds.top + 0.5 &&
-                 node.bounds.right >= existing.bounds.right - 0.5 &&
-                 node.bounds.bottom >= existing.bounds.bottom - 0.5) {
-                 isDuplicate = true
-                 break
-             } else if (existing.bounds.left <= node.bounds.left + 0.5 &&
-                        existing.bounds.top <= node.bounds.top + 0.5 &&
-                        existing.bounds.right >= node.bounds.right - 0.5 &&
-                        existing.bounds.bottom >= node.bounds.bottom - 0.5) {
-                 // If 'existing' contains 'node' (can happen if areas are identical),
-                 // remove 'existing' and prefer 'node'.
-                 iterator.remove()
-             }
-          }
+  for (node in sortedByArea) {
+    var isDuplicate = false
+    val iterator = deduplicated.iterator()
+    while (iterator.hasNext()) {
+      val existing = iterator.next()
+      if (node.text == existing.text) {
+        // Since we sorted by area, 'existing' is smaller than or equal to 'node'.
+        // If 'node' (the larger one) contains 'existing', we skip 'node'.
+        if (node.bounds.left <= existing.bounds.left + 0.5 &&
+          node.bounds.top <= existing.bounds.top + 0.5 &&
+          node.bounds.right >= existing.bounds.right - 0.5 &&
+          node.bounds.bottom >= existing.bounds.bottom - 0.5
+        ) {
+          isDuplicate = true
+          break
+        } else if (existing.bounds.left <= node.bounds.left + 0.5 &&
+          existing.bounds.top <= node.bounds.top + 0.5 &&
+          existing.bounds.right >= node.bounds.right - 0.5 &&
+          existing.bounds.bottom >= node.bounds.bottom - 0.5
+        ) {
+          // If 'existing' contains 'node' (can happen if areas are identical),
+          // remove 'existing' and prefer 'node'.
+          iterator.remove()
         }
-        if (!isDuplicate) deduplicated.add(node)
       }
-      deduplicated
-    } else {
-      // For tagged nodes, if multiple exist with the same tag, still prefer the smallest one.
-      listOf(group.first())
     }
+    if (!isDuplicate) deduplicated.add(node)
   }
+
+  return deduplicated
 }
 
 private fun resolveByText(
@@ -164,6 +160,8 @@ private fun resolveByText(
       requireVisible = requireVisible
     )
   if (matches.isEmpty()) throw SelectorResolutionException(selector.textNotFoundMessage())
+
+  if (matches.size > 1) throw SelectorResolutionException(selector.ambiguousTextMessage(matches))
 
   return ResolvedSelector(
     selector = selector,

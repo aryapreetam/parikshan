@@ -324,8 +324,14 @@ object ParikshanAndroidServer {
 
     val values = node.config.getOrNull(SemanticsProperties.Text).orEmpty()
     if (values.isNotEmpty()) {
-      return values.joinToString("") { it.text }.takeIf { it.isNotBlank() }
+      values.joinToString("") { it.text }.takeIf { it.isNotBlank() }?.let { return it }
     }
+
+    val contentDescription = node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty()
+    if (contentDescription.isNotEmpty()) {
+      return contentDescription.joinToString("").takeIf { it.isNotBlank() }
+    }
+
     return null
   }
 
@@ -443,9 +449,13 @@ object ParikshanAndroidServer {
 
           fun traverse(node: SemanticsNode) {
             val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: ""
-            val textList = node.config.getOrNull(SemanticsProperties.Text)
-            val text = textList?.joinToString("") { it.text } 
-              ?: node.config.getOrNull(SemanticsProperties.EditableText)?.text
+            val editableText = node.config.getOrNull(SemanticsProperties.EditableText)?.text
+            val spokenText = node.config.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text }.orEmpty()
+            val contentDescription = node.config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString("").orEmpty()
+
+            val text = editableText?.takeIf { it.isNotBlank() }
+              ?: spokenText.takeIf { it.isNotBlank() }
+              ?: contentDescription.ifBlank { null }
             
             val bounds = node.boundsInWindow
             val hasArea = bounds.width > 0f && bounds.height > 0f

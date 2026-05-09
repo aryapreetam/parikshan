@@ -54,8 +54,8 @@ class SelectorResolutionTest {
         Selector.Auto("Submit").resolveNode(
           nodes =
             listOf(
-              node(tag = "submit_primary", text = "Submit"),
-              node(tag = "submit_secondary", text = "Submit")
+              node(tag = "submit_primary", text = "Submit", bounds = Bounds(0.0, 0.0, 100.0, 40.0)),
+              node(tag = "submit_secondary", text = "Submit", bounds = Bounds(0.0, 50.0, 100.0, 90.0))
             )
         )
       }
@@ -76,14 +76,57 @@ class SelectorResolutionTest {
     assertEquals("submit_button", resolved.tag)
   }
 
+  @Test
+  fun text_selector_prefers_exact_over_startsWith() {
+    val resolved =
+      Selector.Text("Login").resolveNode(
+        nodes =
+          listOf(
+            node(tag = "login_button", text = "Login"),
+            node(tag = "login_label", text = "Login now")
+          )
+      )
+
+    assertEquals("login_button", resolved.tag)
+  }
+
+  @Test
+  fun text_selector_prefers_startsWith_over_contains() {
+    val resolved =
+      Selector.Text("Login").resolveNode(
+        nodes =
+          listOf(
+            node(tag = "login_button", text = "Login now"),
+            node(tag = "other_label", text = "Please Login")
+          )
+      )
+
+    assertEquals("login_button", resolved.tag)
+  }
+
+  @Test
+  fun text_selector_prefers_smaller_node_area() {
+    val resolved =
+      Selector.Text("Login").resolveNode(
+        nodes =
+          listOf(
+            node(tag = "parent_card", text = "Login", bounds = Bounds(0.0, 0.0, 200.0, 100.0)),
+            node(tag = "child_text", text = "Login", bounds = Bounds(50.0, 20.0, 150.0, 60.0))
+          )
+      )
+
+    assertEquals("child_text", resolved.tag)
+  }
+
   private fun node(
     tag: String,
     text: String?,
-    visible: Boolean = true
+    visible: Boolean = true,
+    bounds: Bounds = Bounds(left = 0.0, top = 0.0, right = 100.0, bottom = 40.0)
   ): NodeSnapshot =
     NodeSnapshot(
       tag = tag,
-      bounds = Bounds(left = 0.0, top = 0.0, right = 100.0, bottom = 40.0),
+      bounds = bounds,
       visible = visible,
       text = text
     )

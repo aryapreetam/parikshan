@@ -23,57 +23,69 @@ sealed class Command {
   abstract val id: String
   abstract var token: String
 
+  /** Implemented by commands that target a UI element. */
+  interface HasSelector {
+    val selector: Selector?
+    val tag: String
+  }
+
   @Serializable
   @SerialName("click")
   data class Click(
     override val id: String,
-    val tag: String,
+    override val tag: String,
+    override val selector: Selector? = null,
     override var token: String = ""
-  ) : Command()
+  ) : Command(), HasSelector
 
   @Serializable
   @SerialName("input")
   data class Input(
     override val id: String,
-    val tag: String,
+    override val tag: String,
     val text: String,
+    override val selector: Selector? = null,
     override var token: String = ""
-  ) : Command()
+  ) : Command(), HasSelector
 
   @Serializable
   @SerialName("scroll")
   data class Scroll(
     override val id: String,
-    val tag: String,
+    override val tag: String,
     val direction: ScrollDirection,
+    override val selector: Selector? = null,
     override var token: String = ""
-  ) : Command()
+  ) : Command(), HasSelector
 
   @Serializable
-  @SerialName("assertvisible")
+  @SerialName("assert_visible")
   data class AssertVisible(
     override val id: String,
-    val tag: String,
+    override val tag: String,
+    override val selector: Selector? = null,
     override var token: String = ""
-  ) : Command()
+  ) : Command(), HasSelector
 
   @Serializable
-  @SerialName("asserttext")
+  @SerialName("assert_text")
   data class AssertText(
     override val id: String,
-    val tag: String,
+    override val tag: String,
     val expected: String,
+    override val selector: Selector? = null,
     override var token: String = ""
-  ) : Command()
+  ) : Command(), HasSelector
 
   @Serializable
   @SerialName("waitfor")
   data class WaitFor(
     override val id: String,
-    val tag: String,
-    val timeoutMs: Long,
+    override val tag: String,
+    val timeoutMs: Long = 10000L,
+    override val selector: Selector? = null,
     override var token: String = ""
-  ) : Command()
+  ) : Command(), HasSelector
 
   @Serializable
   @SerialName("screenshot")
@@ -138,3 +150,12 @@ sealed class Command {
     override var token: String = ""
   ) : Command()
 }
+
+/**
+ * Resolves the effective [Selector] from a [Command].
+ * If the command implements [Command.HasSelector], returns the explicit selector
+ * or falls back to [Selector.Auto] wrapping [Command.HasSelector.tag].
+ * Returns `null` for commands that don't target a UI element (e.g., Ping, GetTree).
+ */
+fun Command.resolvedSelector(): Selector? =
+  (this as? Command.HasSelector)?.let { it.selector ?: Selector.Auto(it.tag) }

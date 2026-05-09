@@ -1,43 +1,39 @@
 package io.github.aryapreetam.parikshan.server
 
-import android.os.Bundle
-import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.junit4.ComposeTestRule
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
-import androidx.compose.ui.test.onFirst
-import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
+import androidx.compose.ui.test.swipeUp
 import io.github.aryapreetam.parikshan.protocol.Bounds
 import io.github.aryapreetam.parikshan.protocol.Command
 import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.ProtocolJson
 import io.github.aryapreetam.parikshan.protocol.Response
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
+import io.github.aryapreetam.parikshan.protocol.Selector
+import io.github.aryapreetam.parikshan.protocol.resolvedSelector
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
-import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertTextEquals
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
-
-import androidx.compose.ui.test.performTouchInput
-import androidx.compose.ui.test.swipeDown
-import androidx.compose.ui.test.swipeLeft
-import androidx.compose.ui.test.swipeRight
-import androidx.compose.ui.test.swipeUp
 
 @OptIn(ExperimentalTestApi::class)
 object ParikshanAndroidServer {
@@ -173,27 +169,214 @@ object ParikshanAndroidServer {
     return headers
   }
 
+  private data class SelectorCandidate(
+    val node: SemanticsNode,
+    val score: Int,
+    val area: Float,
+    val depth: Int
+  )
+
+  private fun selectorLabel(command: Command): String =
+    (command as? Command.HasSelector)?.let { it.selector?.raw ?: it.tag }.orEmpty()
+
+  private fun findFirstInteraction(command: Command): SemanticsNodeInteraction? =
+    findFirstNode(command)?.let { interactionFor(it) }
+
+  private fun findFirstNode(command: Command): SemanticsNode? {
+    val selector = command.resolvedSelector() ?: return null
+    return selectorCandidates(selector).firstOrNull()?.node
+  }
+
+  private fun selectorCandidates(selector: Selector): List<SelectorCandidate> {
+    if (selector.raw.isBlank()) return emptyList()
+    val matcher =
+      SemanticsMatcher("Parikshan selector '${selector.raw}'") { node ->
+        selectorScore(node = node, selector = selector) != null
+      }
+
+    return composeRule
+      .onAllNodes(matcher, useUnmergedTree = true)
+      .fetchSemanticsNodes(atLeastOneRootRequired = false)
+      .asSequence()
+      .filter { isVisible(it) }
+      .mapNotNull { node ->
+        selectorScore(node = node, selector = selector)?.let { score ->
+          SelectorCandidate(
+            node = node,
+            score = score,
+            area = nodeArea(node),
+            depth = nodeDepth(node)
+          )
+        }
+      }
+      .sortedWith(
+        compareBy<SelectorCandidate> { it.score }
+          .thenBy { it.area }
+          .thenByDescending { it.depth }
+      )
+      .toList()
+  }
+
+  private fun selectorScore(
+    node: SemanticsNode,
+    selector: Selector
+  ): Int? {
+    val raw = selector.raw.trim()
+    if (raw.isEmpty()) return null
+
+    val tag = node.config.getOrNull(SemanticsProperties.TestTag)?.trim()
+    val text = directTextOf(node)?.trim()
+
+    return when (selector) {
+      is Selector.Tag ->
+        if (tag == selector.value.trim()) 0 else null
+
+      is Selector.Text ->
+        textScore(text = text, raw = selector.value.trim())
+
+      is Selector.Auto ->
+        when {
+          tag == raw -> 0
+          text?.equals(raw, ignoreCase = true) == true -> 10
+          text?.contains(raw, ignoreCase = true) == true -> 20
+          else -> null
+        }
+    }
+  }
+
+  private fun textScore(
+    text: String?,
+    raw: String
+  ): Int? =
+    when {
+      raw.isEmpty() || text == null -> null
+      text.equals(raw, ignoreCase = true) -> 10
+      text.contains(raw, ignoreCase = true) -> 20
+      else -> null
+    }
+
+  private fun interactionFor(node: SemanticsNode): SemanticsNodeInteraction =
+    composeRule.onNode(
+      matcher = SemanticsMatcher("SemanticsNode(id=${node.id})") { it.id == node.id },
+      useUnmergedTree = true
+    )
+
+  private fun clickTargetFor(node: SemanticsNode): SemanticsNode? {
+    var current: SemanticsNode? = node
+    while (current != null) {
+      if (current.config.getOrNull(SemanticsActions.OnClick) != null) {
+        return current
+      }
+      current = current.parent
+    }
+    return null
+  }
+
+  private fun inputTargetFor(node: SemanticsNode): SemanticsNode? {
+    var current: SemanticsNode? = node
+    while (current != null) {
+      if (current.config.getOrNull(SemanticsActions.SetText) != null) {
+        return current
+      }
+      current = current.parent
+    }
+    return null
+  }
+
+  private fun scrollTargetFor(node: SemanticsNode): SemanticsNode? {
+    var current: SemanticsNode? = node
+    while (current != null) {
+      if (current.config.getOrNull(SemanticsActions.ScrollBy) != null) {
+        return current
+      }
+      current = current.parent
+    }
+    return null
+  }
+
+  private fun nodeArea(node: SemanticsNode): Float {
+    val bounds = node.boundsInWindow
+    return bounds.width * bounds.height
+  }
+
+  private fun nodeDepth(node: SemanticsNode): Int {
+    var depth = 0
+    var current = node.parent
+    while (current != null) {
+      depth += 1
+      current = current.parent
+    }
+    return depth
+  }
+
+  private fun isVisible(node: SemanticsNode): Boolean {
+    val bounds = node.boundsInWindow
+    return bounds.width > 0f && bounds.height > 0f && node.layoutInfo.isPlaced
+  }
+
+  private fun snapshotTextOf(node: SemanticsNode): String? =
+    directTextOf(node) ?: descendantTextsOf(node).takeIf { it.isNotEmpty() }?.joinToString("")
+
+  private fun directTextOf(node: SemanticsNode): String? {
+    node.config.getOrNull(SemanticsProperties.EditableText)?.text
+      ?.takeIf { it.isNotBlank() }
+      ?.let { return it }
+
+    val values = node.config.getOrNull(SemanticsProperties.Text).orEmpty()
+    if (values.isNotEmpty()) {
+      return values.joinToString("") { it.text }.takeIf { it.isNotBlank() }
+    }
+    return null
+  }
+
+  private fun descendantTextsOf(node: SemanticsNode): List<String> =
+    buildList {
+      node.children.forEach { child ->
+        appendDescendantText(child, this)
+      }
+    }
+
+  private fun appendDescendantText(
+    node: SemanticsNode,
+    texts: MutableList<String>
+  ) {
+    directTextOf(node)?.let { texts += it }
+    node.children.forEach { child ->
+      appendDescendantText(child, texts)
+    }
+  }
+
   private fun handleCommand(command: Command): Response {
     return when (command) {
       is Command.Click -> {
-        val node = composeRule.onAllNodes(hasTestTag(command.tag).or(hasText(command.tag, substring = true, ignoreCase = true))).onFirst()
-        try { node.performScrollTo() } catch (e: Throwable) { /* Ignore */ }
-        node.performClick()
+        val matched = findFirstNode(command)
+          ?: return Response.Error(command.id, "No node found for selector '${selectorLabel(command)}'")
+        val target = clickTargetFor(matched)
+          ?: return Response.Error(command.id, "Node '${selectorLabel(command)}' is not clickable")
+        val interaction = interactionFor(target)
+        try { interaction.performScrollTo() } catch (e: Throwable) { /* Ignore */ }
+        interaction.performClick()
         Response.Ok(command.id)
       }
 
       is Command.Input -> {
-        val node = composeRule.onAllNodes(hasTestTag(command.tag).or(hasText(command.tag, substring = true, ignoreCase = true))).onFirst()
-        try { node.performScrollTo() } catch (e: Throwable) { /* Ignore */ }
-        node.performTextClearance()
-        node.performTextInput(command.text)
+        val matched = findFirstNode(command)
+          ?: return Response.Error(command.id, "No node found for selector '${selectorLabel(command)}'")
+        val target = inputTargetFor(matched)
+          ?: return Response.Error(command.id, "Node '${selectorLabel(command)}' does not accept text input")
+        val interaction = interactionFor(target)
+        try { interaction.performScrollTo() } catch (e: Throwable) { /* Ignore */ }
+        interaction.performTextClearance()
+        interaction.performTextInput(command.text)
         Response.Ok(command.id)
       }
 
       is Command.Scroll -> {
-        val node = composeRule.onAllNodes(hasTestTag(command.tag).or(hasText(command.tag, substring = true, ignoreCase = true))).onFirst()
+        val matched = findFirstNode(command)
+          ?: return Response.Error(command.id, "No node found for selector '${selectorLabel(command)}'")
+        val interaction = interactionFor(scrollTargetFor(matched) ?: matched)
         try {
-          node.performTouchInput {
+          interaction.performTouchInput {
             when (command.direction) {
               ScrollDirection.Up -> swipeDown()
               ScrollDirection.Down -> swipeUp()
@@ -202,44 +385,51 @@ object ParikshanAndroidServer {
             }
           }
         } catch (e: Throwable) {
-          return Response.Error(command.id, "Failed to scroll '${command.tag}': ${e.message}")
+          return Response.Error(command.id, "Failed to scroll '${selectorLabel(command)}': ${e.message}")
         }
         Response.Ok(command.id)
       }
 
       is Command.AssertVisible -> {
-        composeRule.onAllNodes(hasTestTag(command.tag).or(hasText(command.tag, substring = true, ignoreCase = true))).onFirst().assertIsDisplayed()
-        val nodeInfo = composeRule.onAllNodes(hasTestTag(command.tag).or(hasText(command.tag, substring = true, ignoreCase = true))).onFirst().fetchSemanticsNode()
+        val nodeInfo = findFirstNode(command)
+          ?: return Response.Error(command.id, "No node found for selector '${selectorLabel(command)}'")
+        if (!isVisible(nodeInfo)) {
+          return Response.Error(command.id, "Node '${selectorLabel(command)}' exists but is not visible")
+        }
         val bounds = nodeInfo.boundsInWindow
         Response.NodeInfo(
           id = command.id,
           bounds = Bounds(bounds.left.toDouble(), bounds.top.toDouble(), bounds.right.toDouble(), bounds.bottom.toDouble()),
           visible = true,
-          text = nodeInfo.config.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text }
+          text = snapshotTextOf(nodeInfo)
         )
       }
 
       is Command.AssertText -> {
-        composeRule.onAllNodes(hasTestTag(command.tag).or(hasText(command.tag, substring = true, ignoreCase = true))).onFirst().assertTextEquals(command.expected)
+        val nodeInfo = findFirstNode(command)
+          ?: return Response.Error(command.id, "No node found for selector '${selectorLabel(command)}'")
+        val actual = snapshotTextOf(nodeInfo).orEmpty()
+        if (actual != command.expected) {
+          return Response.Error(
+            command.id,
+            "Text mismatch for '${selectorLabel(command)}'. expected='${command.expected}' actual='$actual'"
+          )
+        }
         Response.Ok(command.id)
       }
 
       is Command.WaitFor -> {
         composeRule.waitUntil(timeoutMillis = command.timeoutMs) {
-          try {
-            composeRule.onAllNodes(hasTestTag(command.tag).or(hasText(command.tag, substring = true, ignoreCase = true))).onFirst().assertIsDisplayed()
-            true
-          } catch (e: Throwable) {
-            false
-          }
+          findFirstNode(command)?.let { isVisible(it) } == true
         }
-        val nodeInfo = composeRule.onAllNodes(hasTestTag(command.tag).or(hasText(command.tag, substring = true, ignoreCase = true))).onFirst().fetchSemanticsNode()
+        val nodeInfo = findFirstNode(command)
+          ?: return Response.Error(command.id, "No node found for selector '${selectorLabel(command)}'")
         val bounds = nodeInfo.boundsInWindow
         Response.NodeInfo(
           id = command.id,
           bounds = Bounds(bounds.left.toDouble(), bounds.top.toDouble(), bounds.right.toDouble(), bounds.bottom.toDouble()),
           visible = true,
-          text = nodeInfo.config.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text }
+          text = snapshotTextOf(nodeInfo)
         )
       }
 
@@ -251,7 +441,7 @@ object ParikshanAndroidServer {
           val rootNode = try { root.fetchSemanticsNode() } catch (e: Throwable) { null }
           val rootBounds = rootNode?.boundsInWindow
 
-          fun traverse(node: androidx.compose.ui.semantics.SemanticsNode) {
+          fun traverse(node: SemanticsNode) {
             val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: ""
             val textList = node.config.getOrNull(SemanticsProperties.Text)
             val text = textList?.joinToString("") { it.text } 

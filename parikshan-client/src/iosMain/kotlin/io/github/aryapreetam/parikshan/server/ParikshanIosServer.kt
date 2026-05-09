@@ -10,6 +10,7 @@ import io.github.aryapreetam.parikshan.pumpRunLoop
 import io.github.aryapreetam.parikshan.protocol.Command
 import io.github.aryapreetam.parikshan.protocol.ProtocolJson
 import io.github.aryapreetam.parikshan.protocol.Response
+import io.github.aryapreetam.parikshan.protocol.resolvedSelector
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
@@ -216,45 +217,49 @@ object ParikshanIosServer {
   }
 
   private fun handleCommand(command: Command): Response {
+    val selector = command.resolvedSelector()
+      ?: io.github.aryapreetam.parikshan.protocol.Selector.Auto("")
+
     return when (command) {
       is Command.Click -> {
-        if (!IosSemanticsAccessor.performClick(command.tag)) return Response.Error(command.id, "Click failed")
+        if (!IosSemanticsAccessor.performClick(command.tag, selector)) return Response.Error(command.id, "Click failed")
         pumpRunLoop(iterations = 5, intervalSeconds = 0.05)
         Response.Ok(command.id)
       }
       is Command.Input -> {
-        if (!IosSemanticsAccessor.performInput(command.tag, command.text)) return Response.Error(command.id, "Input failed")
+        if (!IosSemanticsAccessor.performInput(command.tag, selector, command.text)) return Response.Error(command.id, "Input failed")
         pumpRunLoop(iterations = 5, intervalSeconds = 0.05)
         Response.Ok(command.id)
       }
       is Command.Scroll -> {
-        if (!IosSemanticsAccessor.performScroll(command.tag, command.direction)) return Response.Error(command.id, "Scroll failed")
+        if (!IosSemanticsAccessor.performScroll(command.tag, selector, command.direction)) return Response.Error(command.id, "Scroll failed")
         pumpRunLoop(iterations = 3, intervalSeconds = 0.05)
         Response.Ok(command.id)
       }
       is Command.AssertVisible -> {
-        val node = IosSemanticsAccessor.snapshotNode(command.tag) ?: return Response.Error(command.id, "Not found")
-        Response.NodeInfo(command.id, node.bounds, node.visible, node.text)
+        val node = IosSemanticsAccessor.findNode(command.tag, selector) ?: return Response.Error(command.id, "Not found")
+        val snapshot = IosSemanticsAccessor.snapshotNode(node)
+        Response.NodeInfo(command.id, snapshot.bounds, visible = snapshot.visible, text = snapshot.text)
       }
       is Command.AssertText -> {
-        val node = IosSemanticsAccessor.snapshotNode(command.tag) ?: return Response.Error(command.id, "Not found")
-        if (node.text != command.expected) return Response.Error(command.id, "Mismatch")
+        val node = IosSemanticsAccessor.findNode(command.tag, selector) ?: return Response.Error(command.id, "Not found")
+        val snapshot = IosSemanticsAccessor.snapshotNode(node)
+        if (snapshot.text != command.expected) return Response.Error(command.id, "Mismatch: expected='${command.expected}' actual='${snapshot.text}'")
         Response.Ok(command.id)
       }
       is Command.WaitFor -> {
         val deadline = platform.posix.time(null) + ((command.timeoutMs + 999L) / 1000L)
         while (platform.posix.time(null) <= deadline) {
-          val allNodes = IosSemanticsAccessor.findAllNodes()
-          if (allNodes.isEmpty()) {
-            println("[ParikshanIosServer] WaitFor: 0 semantics nodes found! Is SemanticsOwner injected? ${IosSemanticsAccessor.globalSemanticsOwner != null}")
-          }
-          val node = IosSemanticsAccessor.snapshotNode(command.tag)
-          if (node?.visible == true) {
-            return Response.NodeInfo(command.id, node.bounds, visible = true, text = node.text)
+          val node = IosSemanticsAccessor.findNode(command.tag, selector)
+          if (node != null) {
+            val snapshot = IosSemanticsAccessor.snapshotNode(node)
+            if (snapshot.visible) {
+              return Response.NodeInfo(command.id, snapshot.bounds, visible = snapshot.visible, text = snapshot.text)
+            }
           }
           pumpRunLoop(iterations = 1, intervalSeconds = 0.05)
         }
-        Response.Error(command.id, "Timed out waiting for '${command.tag}' after ${command.timeoutMs}ms")
+        Response.Error(command.id, "Timed out waiting for '${selector.raw}' after ${command.timeoutMs}ms")
       }
       is Command.GetTree -> Response.Tree(command.id, IosSemanticsAccessor.snapshotTree())
       

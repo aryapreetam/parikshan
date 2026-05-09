@@ -11,6 +11,7 @@ import androidx.compose.ui.semantics.getOrNull
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import io.github.aryapreetam.parikshan.protocol.Bounds
 import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
+import io.github.aryapreetam.parikshan.protocol.Selector
 import java.awt.Rectangle
 import javax.swing.SwingUtilities
 
@@ -27,24 +28,45 @@ internal class DesktopSemanticsAccessor(
   fun findByTag(tag: String): DesktopNode? =
     onEdt {
       val raw = findNodeByTagRaw(tag)
-      println("[ParikshanServer] findByTagRaw('$tag') returned: ${raw != null} (text: ${raw?.config?.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text }})")
-      val desktopNode = raw?.toDesktopNode()
-      println("[ParikshanServer] toDesktopNode() returned: ${desktopNode != null} (visible: ${desktopNode?.visible})")
-      desktopNode
+      raw?.toDesktopNode()
     }
 
-  fun performClick(tag: String): Boolean {
-    val desktopNode = findByTag(tag) ?: return false
-    
+  fun findBySelector(selector: Selector): DesktopNode? = onEdt {
+    when (selector) {
+      is Selector.Tag -> findNodeByTagOnly(selector.value)?.toDesktopNode()
+      is Selector.Text -> findNodeByText(selector.value)?.toDesktopNode()
+      is Selector.Auto -> {
+        findNodeByTagOnly(selector.raw)?.toDesktopNode()
+          ?: findNodeByText(selector.raw)?.toDesktopNode()
+      }
+    }
+  }
+
+  private fun findNodeByTagOnly(tag: String): SemanticsNode? {
+    return allNodes().firstOrNull { it.config.getOrNull(SemanticsProperties.TestTag) == tag }
+  }
+
+  private fun findNodeByText(textValue: String): SemanticsNode? {
+    return allNodes().firstOrNull { node ->
+      val textList = node.config.getOrNull(SemanticsProperties.Text)
+      val text = textList?.joinToString("") { it.text } 
+        ?: node.config.getOrNull(SemanticsProperties.EditableText)?.text
+      text?.contains(textValue, ignoreCase = true) == true
+    }
+  }
+
+  fun performClick(selector: Selector): Boolean {
+    val desktopNode = findBySelector(selector) ?: return false
+
     val semanticSuccess = onEdt {
-      var node = findNodeByTagRaw(tag) ?: return@onEdt false
+      var node = findSemanticsNodeBySelector(selector) ?: return@onEdt false
       var action = node.config.getOrNull(SemanticsActions.OnClick)?.action
       while (action == null && node.parent != null) {
           node = node.parent!!
           action = node.config.getOrNull(SemanticsActions.OnClick)?.action
       }
       if (action == null) return@onEdt false
-      
+
       try {
         action.invoke()
       } catch (e: Exception) {
@@ -59,7 +81,7 @@ internal class DesktopSemanticsAccessor(
       val robot = java.awt.Robot()
       val x = desktopNode.bounds.centerX.toInt()
       val y = desktopNode.bounds.centerY.toInt()
-      
+
       robot.mouseMove(x, y)
       robot.mousePress(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)
       Thread.sleep(50) // Brief delay to simulate human click
@@ -70,23 +92,31 @@ internal class DesktopSemanticsAccessor(
     }
   }
 
+  private fun findSemanticsNodeBySelector(selector: Selector): SemanticsNode? {
+    return when (selector) {
+      is Selector.Tag -> findNodeByTagOnly(selector.value)
+      is Selector.Text -> findNodeByText(selector.value)
+      is Selector.Auto -> findNodeByTagOnly(selector.raw) ?: findNodeByText(selector.raw)
+    }
+  }
+
   fun performSetText(
-    tag: String,
+    selector: Selector,
     text: String
   ): Boolean =
     onEdt {
-      val node = findNodeByTagRaw(tag) ?: return@onEdt false
+      val node = findSemanticsNodeBySelector(selector) ?: return@onEdt false
       val action = node.config.getOrNull(SemanticsActions.SetText)?.action ?: return@onEdt false
       action.invoke(AnnotatedString(text))
     }
 
   fun performScrollBy(
-    tag: String,
+    selector: Selector,
     direction: ScrollDirection,
-    amountPx: Float = 260f
+    amountPx: Float = 200f
   ): Boolean =
     onEdt {
-      val node = findNodeByTagRaw(tag) ?: return@onEdt false
+      val node = findSemanticsNodeBySelector(selector) ?: return@onEdt false
       val action = node.config.getOrNull(SemanticsActions.ScrollBy)?.action ?: return@onEdt false
 
       val (deltaX, deltaY) =

@@ -2,6 +2,7 @@ package io.github.aryapreetam.parikshan
 
 import io.github.aryapreetam.parikshan.protocol.Bounds
 import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
+import io.github.aryapreetam.parikshan.protocol.Selector
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals

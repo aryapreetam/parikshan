@@ -1,26 +1,7 @@
 package io.github.aryapreetam.parikshan
 
 import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
-
-sealed interface Selector {
-  val raw: String
-
-  data class Auto(
-    override val raw: String
-  ) : Selector
-
-  data class Tag(
-    val value: String
-  ) : Selector {
-    override val raw: String = value
-  }
-
-  data class Text(
-    val value: String
-  ) : Selector {
-    override val raw: String = value
-  }
-}
+import io.github.aryapreetam.parikshan.protocol.Selector
 
 data class ResolvedSelector(
   val selector: Selector,
@@ -49,7 +30,15 @@ fun Selector.resolveNode(
 
 internal fun String.asAutoSelector(): Selector = Selector.Auto(this)
 
-private fun Selector.Auto.resolveAuto(
+fun Selector.ambiguousTextMessage(matches: List<NodeSnapshot>): String {
+  val matchSummary =
+    matches.joinToString(separator = ", ") { node ->
+      "tag='${node.tag}', text='${node.text}', bounds=${node.bounds}"
+    }
+  return "Selector ${describe()} matched multiple visible text nodes: $matchSummary. Use a stable tag or an explicit selector."
+}
+
+internal fun Selector.Auto.resolveAuto(
   nodes: List<NodeSnapshot>,
   requireVisible: Boolean
 ): ResolvedSelector {
@@ -68,7 +57,7 @@ private fun Selector.Auto.resolveAuto(
   )
 }
 
-private fun Selector.Tag.resolveTag(
+internal fun Selector.Tag.resolveTag(
   nodes: List<NodeSnapshot>,
   requireVisible: Boolean
 ): ResolvedSelector =
@@ -78,7 +67,7 @@ private fun Selector.Tag.resolveTag(
     selector = this
   )
 
-private fun Selector.Text.resolveText(
+internal fun Selector.Text.resolveText(
   nodes: List<NodeSnapshot>,
   requireVisible: Boolean
 ): ResolvedSelector =
@@ -100,22 +89,38 @@ private fun matchingTextNodes(
 ): List<NodeSnapshot> {
   val normalized = raw.trim()
   val allMatches = nodes.filter { node ->
-    (!requireVisible || node.visible) && node.normalizedText()?.contains(normalized) == true
+    (!requireVisible || node.visible) && node.normalizedText()?.contains(normalized, ignoreCase = true) == true
   }
 
-  // Compose Multiplatform iOS emits both a container (e.g. Button) and its
-  // inner Text child as separate accessibility nodes with the same label.
-  // Without deduplication we would report false ambiguity for a single
-  // conceptual UI element. Strategy: if some matches carry a non-empty tag
-  // (the container) and others don't (the inner Text), keep only the tagged
-  // ones so the framework can route click/assert commands by testTag.
-  val tagged = allMatches.filter { it.tag.isNotEmpty() }
-  val filtered = if (tagged.isNotEmpty() && tagged.size < allMatches.size) tagged else allMatches
+  val exactMatches = allMatches.filter { it.normalizedText().equals(normalized, ignoreCase = true) }
+  val matchesToUse = if (exactMatches.isNotEmpty()) exactMatches else allMatches
 
-  // Further deduplicate by tag. If multiple nodes have the same tag,
-  // they represent the same logical element in the accessibility tree (common on iOS).
+  val tagged = matchesToUse.filter { it.tag.isNotEmpty() }
+  val filtered = if (tagged.isNotEmpty() && tagged.size < matchesToUse.size) tagged else matchesToUse
+
   return filtered.groupBy { it.tag }.flatMap { (tag, group) ->
-    if (tag.isEmpty()) group else listOf(group.first())
+    if (tag.isEmpty()) {
+      val deduplicated = mutableListOf<NodeSnapshot>()
+      for (node in group) {
+        var isDuplicate = false
+        val iterator = deduplicated.iterator()
+        while (iterator.hasNext()) {
+          val existing = iterator.next()
+          if (node.text == existing.text) {
+             if (existing.bounds.left <= node.bounds.left + 1.0 && existing.bounds.top <= node.bounds.top + 1.0 && existing.bounds.right + 1.0 >= node.bounds.right && existing.bounds.bottom + 1.0 >= node.bounds.bottom) {
+                 isDuplicate = true
+                 break
+             } else if (node.bounds.left <= existing.bounds.left + 1.0 && node.bounds.top <= existing.bounds.top + 1.0 && node.bounds.right + 1.0 >= existing.bounds.right && node.bounds.bottom + 1.0 >= existing.bounds.bottom) {
+                 iterator.remove()
+             }
+          }
+        }
+        if (!isDuplicate) deduplicated.add(node)
+      }
+      deduplicated
+    } else {
+      listOf(group.first())
+    }
   }
 }
 
@@ -177,14 +182,6 @@ private fun tagNotFoundMessage(selector: Selector): String =
 
 private fun tagNotVisibleMessage(selector: Selector): String =
   "Selector ${selector.describe()} matched tag '${selector.normalizedRaw()}', but the node is not visible."
-
-internal fun Selector.ambiguousTextMessage(matches: List<NodeSnapshot>): String {
-  val matchSummary =
-    matches.joinToString(separator = ", ") { node ->
-      "tag='${node.tag}'"
-    }
-  return "Selector ${describe()} matched multiple visible text nodes: $matchSummary. Use a stable tag or an explicit selector."
-}
 
 private fun Selector.describe(): String =
   when (this) {

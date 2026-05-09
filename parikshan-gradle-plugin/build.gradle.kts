@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
   `kotlin-dsl`
   `java-gradle-plugin`
@@ -16,8 +18,18 @@ java {
   }
 }
 
+val rootProps = Properties().apply {
+    file("../gradle.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
+
 group = "io.github.aryapreetam.parikshan"
-version = findProperty("parikshanVersion") ?: "0.0.1"
+version = rootProps.getProperty("parikshanVersion") ?: "0.0.1"
+
+tasks.withType<Jar> {
+  manifest {
+    attributes["Implementation-Version"] = project.version
+  }
+}
 
 gradlePlugin {
   plugins {

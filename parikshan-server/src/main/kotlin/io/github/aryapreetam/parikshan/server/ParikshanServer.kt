@@ -4,6 +4,7 @@ import androidx.compose.ui.awt.ComposeWindow
 import io.github.aryapreetam.parikshan.protocol.Command
 import io.github.aryapreetam.parikshan.protocol.ProtocolJson
 import io.github.aryapreetam.parikshan.protocol.Response
+import io.github.aryapreetam.parikshan.protocol.resolvedSelector
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
@@ -161,49 +162,54 @@ private class RunningParikshanServer(
   }
 
   private suspend fun handleCommand(command: Command): Response {
+    val activeSelector = command.resolvedSelector()
+
     return when (command) {
       is Command.Click -> {
-        val node = semantics.findByTag(command.tag)
-          ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
+        val sel = activeSelector ?: return Response.Error(command.id, "Command has no selector")
+        val node = semantics.findBySelector(sel)
+          ?: return Response.Error(command.id, "No node found for selector '${sel.raw}'")
         videoRecorder.setVirtualCursor(
           xOnScreen = node.bounds.centerX.roundToInt(),
           yOnScreen = node.bounds.centerY.roundToInt()
         )
         videoRecorder.captureNow()
         delay(120)
-        if (!semantics.performClick(command.tag)) {
-          return Response.Error(command.id, "Node '${command.tag}' is not clickable")
+        if (!semantics.performClick(sel)) {
+          return Response.Error(command.id, "Node '${sel.raw}' is not clickable")
         }
         videoRecorder.captureNow()
         Response.Ok(command.id)
       }
 
       is Command.Input -> {
-        val node = semantics.findByTag(command.tag)
-          ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
+        val sel = activeSelector ?: return Response.Error(command.id, "Command has no selector")
+        val node = semantics.findBySelector(sel)
+          ?: return Response.Error(command.id, "No node found for selector '${sel.raw}'")
         videoRecorder.setVirtualCursor(
           xOnScreen = node.bounds.centerX.roundToInt(),
           yOnScreen = node.bounds.centerY.roundToInt()
         )
         videoRecorder.captureNow()
         delay(120)
-        if (!semantics.performSetText(command.tag, command.text)) {
-          return Response.Error(command.id, "Node '${command.tag}' does not support text input")
+        if (!semantics.performSetText(sel, command.text)) {
+          return Response.Error(command.id, "Node '${sel.raw}' does not support text input")
         }
         videoRecorder.captureNow()
         Response.Ok(command.id)
       }
 
       is Command.Scroll -> {
-        val node = semantics.findByTag(command.tag)
-          ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
+        val sel = activeSelector ?: return Response.Error(command.id, "Command has no selector")
+        val node = semantics.findBySelector(sel)
+          ?: return Response.Error(command.id, "No node found for selector '${sel.raw}'")
         videoRecorder.setVirtualCursor(
           xOnScreen = node.bounds.centerX.roundToInt(),
           yOnScreen = node.bounds.centerY.roundToInt()
         )
         videoRecorder.captureNow()
-        if (!semantics.performScrollBy(tag = command.tag, direction = command.direction)) {
-          return Response.Error(command.id, "Node '${command.tag}' is not scrollable")
+        if (!semantics.performScrollBy(selector = sel, direction = command.direction)) {
+          return Response.Error(command.id, "Node '${sel.raw}' is not scrollable")
         }
         delay(120)
         videoRecorder.captureNow()
@@ -211,10 +217,11 @@ private class RunningParikshanServer(
       }
 
       is Command.AssertVisible -> {
-        val node = semantics.findByTag(command.tag)
-          ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
+        val sel = activeSelector ?: return Response.Error(command.id, "Command has no selector")
+        val node = semantics.findBySelector(sel)
+          ?: return Response.Error(command.id, "No node found for selector '${sel.raw}'")
         if (!node.visible) {
-          return Response.Error(command.id, "Node '${command.tag}' exists but is not visible")
+          return Response.Error(command.id, "Node '${sel.raw}' exists but is not visible")
         }
         Response.NodeInfo(
           id = command.id,
@@ -225,23 +232,25 @@ private class RunningParikshanServer(
       }
 
       is Command.AssertText -> {
-        val node = semantics.findByTag(command.tag)
-          ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
+        val sel = activeSelector ?: return Response.Error(command.id, "Command has no selector")
+        val node = semantics.findBySelector(sel)
+          ?: return Response.Error(command.id, "No node found for selector '${sel.raw}'")
         val actual = node.text.orEmpty()
         if (actual != command.expected) {
           return Response.Error(
             id = command.id,
-            message = "Text mismatch for '${command.tag}'. expected='${command.expected}' actual='$actual'"
+            message = "Text mismatch for '${sel.raw}'. expected='${command.expected}' actual='$actual'"
           )
         }
         Response.Ok(command.id)
       }
 
       is Command.WaitFor -> {
-        val node = waitForTag(command.tag, command.timeoutMs)
+        val sel = activeSelector ?: return Response.Error(command.id, "Command has no selector")
+        val node = waitForSelector(sel, command.timeoutMs)
           ?: return Response.Error(
             command.id,
-            "Timed out waiting for '${command.tag}' after ${command.timeoutMs}ms"
+            "Timed out waiting for '${sel.raw}' after ${command.timeoutMs}ms"
           )
         videoRecorder.captureNow()
         Response.NodeInfo(
@@ -290,13 +299,13 @@ private class RunningParikshanServer(
     }
   }
 
-  private suspend fun waitForTag(
-    tag: String,
+  private suspend fun waitForSelector(
+    selector: io.github.aryapreetam.parikshan.protocol.Selector,
     timeoutMs: Long
   ): DesktopNode? {
     val deadline = System.currentTimeMillis() + timeoutMs
     while (System.currentTimeMillis() <= deadline) {
-      semantics.findByTag(tag)?.let { return it }
+      semantics.findBySelector(selector)?.let { return it }
       delay(config.waitPollIntervalMs)
     }
     return null

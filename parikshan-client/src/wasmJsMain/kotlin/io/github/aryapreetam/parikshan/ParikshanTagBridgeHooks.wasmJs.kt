@@ -131,15 +131,15 @@ internal actual object ParikshanTagBridgeHooks {
       ProtocolJson.instance.encodeToString(ListSerializer(NodeSnapshot.serializer()), combined)
     }
     GlobalThis.performClick = { tag -> 
-      io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performClick(tag) || performClick(tag) 
+      io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performClick(io.github.aryapreetam.parikshan.protocol.Selector.Auto(tag)) || performClick(tag) 
     }
     GlobalThis.performInput = { tag, text -> 
-      io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performInput(tag, text) || performInput(tag, text) 
+      io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performInput(io.github.aryapreetam.parikshan.protocol.Selector.Auto(tag), text) || performInput(tag, text) 
     }
     GlobalThis.performScroll = { tag, directionName ->
       val direction = ScrollDirection.entries.firstOrNull { it.name == directionName }
       if (direction != null) {
-        io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performScroll(tag, direction) || performScroll(tag, direction)
+        io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performScroll(io.github.aryapreetam.parikshan.protocol.Selector.Auto(tag), direction) || performScroll(tag, direction)
       } else false
     }
   }

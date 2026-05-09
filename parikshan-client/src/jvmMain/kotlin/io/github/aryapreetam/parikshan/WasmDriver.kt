@@ -12,6 +12,7 @@ import io.github.aryapreetam.parikshan.protocol.Command
 import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.ProtocolJson
 import io.github.aryapreetam.parikshan.protocol.Response
+import io.github.aryapreetam.parikshan.protocol.resolvedSelector
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -50,8 +51,20 @@ class WasmDriver private constructor(
     // Shared browser across tests. JVM shutdown hook will close it.
   }
 
-  private suspend fun handleCommand(command: Command): Response =
-    when (command) {
+  private suspend fun readNodeBySelector(selector: io.github.aryapreetam.parikshan.protocol.Selector): NodeSnapshot? {
+    if (selector is io.github.aryapreetam.parikshan.protocol.Selector.Tag || selector is io.github.aryapreetam.parikshan.protocol.Selector.Auto) {
+      readBridgeNode(selector.raw)?.let { return it }
+      readDomNode(selector.raw)?.let { return it }
+    }
+    val tree = readTree()
+    return runCatching { selector.resolveNode(tree).node }.getOrNull()
+  }
+
+  private suspend fun handleCommand(command: Command): Response {
+    val selector = command.resolvedSelector()
+      ?: io.github.aryapreetam.parikshan.protocol.Selector.Auto("")
+
+    return when (command) {
       is Command.Ping -> Response.Ok(command.id)
 
       is Command.GetTree ->
@@ -61,29 +74,29 @@ class WasmDriver private constructor(
         )
 
       is Command.AssertVisible -> {
-        val node = readNode(command.tag) ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
+        val node = readNodeBySelector(selector) ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
         if (!node.visible) {
-          return Response.Error(command.id, "Node '${command.tag}' exists but is not visible")
+          return Response.Error(command.id, "Node '${selector.raw}' exists but is not visible")
         }
         Response.NodeInfo(command.id, node.bounds, visible = true, text = node.text)
       }
 
       is Command.AssertText -> {
-        val node = readNode(command.tag) ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
+        val node = readNodeBySelector(selector) ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
         if (node.text != command.expected) {
           return Response.Error(
             command.id,
-            "Text mismatch for '${command.tag}'. expected='${command.expected}' actual='${node.text}'"
+            "Text mismatch for '${selector.raw}'. expected='${command.expected}' actual='${node.text}'"
           )
         }
         Response.Ok(command.id)
       }
 
       is Command.Click -> {
-        val node = readNode(command.tag)
-          ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
-        if (!invokeBridgeClick(command.tag)) {
-          if (!invokeDomClick(command.tag)) {
+        val node = readNodeBySelector(selector)
+          ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
+        if (!invokeBridgeClick(selector.raw)) {
+          if (!invokeDomClick(selector.raw)) {
             page.mouse().click(node.bounds.centerX, node.bounds.centerY)
           }
         }
@@ -92,9 +105,9 @@ class WasmDriver private constructor(
       }
 
       is Command.Input -> {
-        val node = readNode(command.tag)
-          ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
-        if (!invokeBridgeInput(command.tag, command.text)) {
+        val node = readNodeBySelector(selector)
+          ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
+        if (!invokeBridgeInput(selector.raw, command.text)) {
           page.mouse().click(node.bounds.centerX, node.bounds.centerY)
           page.keyboard().press("ControlOrMeta+A")
           page.keyboard().type(command.text)
@@ -104,9 +117,9 @@ class WasmDriver private constructor(
       }
 
       is Command.Scroll -> {
-        val node = readNode(command.tag)
-          ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
-        if (!invokeBridgeScroll(command.tag, command.direction)) {
+        val node = readNodeBySelector(selector)
+          ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
+        if (!invokeBridgeScroll(selector.raw, command.direction)) {
           page.mouse().move(node.bounds.centerX, node.bounds.centerY)
           val (deltaX, deltaY) =
             when (command.direction) {
@@ -124,13 +137,13 @@ class WasmDriver private constructor(
       is Command.WaitFor -> {
         val deadline = System.currentTimeMillis() + command.timeoutMs
         while (System.currentTimeMillis() <= deadline) {
-          val node = readNode(command.tag)
+          val node = readNodeBySelector(selector)
           if (node?.visible == true) {
             return Response.NodeInfo(command.id, node.bounds, visible = true, text = node.text)
           }
           delay(120)
         }
-        Response.Error(command.id, "Timed out waiting for '${command.tag}' after ${command.timeoutMs}ms")
+        Response.Error(command.id, "Timed out waiting for '${selector.raw}' after ${command.timeoutMs}ms")
       }
 
       is Command.Screenshot -> {
@@ -213,6 +226,7 @@ class WasmDriver private constructor(
         Response.Ok(command.id)
       }
     }
+  }
 
   private fun readNode(tag: String): NodeSnapshot? {
     return readBridgeNode(tag) ?: readDomNode(tag)

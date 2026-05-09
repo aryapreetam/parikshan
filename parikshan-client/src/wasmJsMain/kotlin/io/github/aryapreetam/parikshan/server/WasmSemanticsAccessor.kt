@@ -13,6 +13,8 @@ import androidx.compose.ui.semantics.getOrNull
 import io.github.aryapreetam.parikshan.protocol.Bounds
 import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
+import kotlinx.browser.window
+import androidx.compose.ui.text.AnnotatedString
 
 internal object WasmSemanticsAccessor {
   var globalSemanticsOwner: SemanticsOwner? = null
@@ -81,20 +83,42 @@ internal object WasmSemanticsAccessor {
     )
   }
 
-  fun performClick(tag: String): Boolean {
-    val node = findNodeByTag(tag) ?: return false
+  fun findBySelector(selector: io.github.aryapreetam.parikshan.protocol.Selector): SemanticsNode? {
+    val all = findAllNodes()
+    return when (selector) {
+      is io.github.aryapreetam.parikshan.protocol.Selector.Tag -> all.find {
+        it.config.getOrNull(SemanticsProperties.TestTag) == selector.value
+      }
+      is io.github.aryapreetam.parikshan.protocol.Selector.Text -> all.find { node ->
+        val textList = node.config.getOrNull(SemanticsProperties.Text)
+        val text = textList?.joinToString("") { it.text } ?: node.config.getOrNull(SemanticsProperties.EditableText)?.text
+        text?.contains(selector.value, ignoreCase = true) == true
+      }
+      is io.github.aryapreetam.parikshan.protocol.Selector.Auto -> {
+        all.find { it.config.getOrNull(SemanticsProperties.TestTag) == selector.raw }
+          ?: all.find { node ->
+            val textList = node.config.getOrNull(SemanticsProperties.Text)
+            val text = textList?.joinToString("") { it.text } ?: node.config.getOrNull(SemanticsProperties.EditableText)?.text
+            text?.contains(selector.raw, ignoreCase = true) == true
+          }
+      }
+    }
+  }
+
+  fun performClick(selector: io.github.aryapreetam.parikshan.protocol.Selector): Boolean {
+    val node = findBySelector(selector) ?: return false
     val action = node.config.getOrNull(SemanticsActions.OnClick) ?: return false
     return action.action?.invoke() ?: false
   }
 
-  fun performInput(tag: String, text: String): Boolean {
-    val node = findNodeByTag(tag) ?: return false
+  fun performInput(selector: io.github.aryapreetam.parikshan.protocol.Selector, text: String): Boolean {
+    val node = findBySelector(selector) ?: return false
     val action = node.config.getOrNull(SemanticsActions.SetText) ?: return false
-    return action.action?.invoke(androidx.compose.ui.text.AnnotatedString(text)) ?: false
+    return action.action?.invoke(AnnotatedString(text)) ?: false
   }
 
-  fun performScroll(tag: String, direction: ScrollDirection): Boolean {
-    val node = findNodeByTag(tag) ?: return false
+  fun performScroll(selector: io.github.aryapreetam.parikshan.protocol.Selector, direction: ScrollDirection): Boolean {
+    val node = findBySelector(selector) ?: return false
     val action = node.config.getOrNull(SemanticsActions.ScrollBy) ?: return false
     val x = if (direction == ScrollDirection.Left) -1000f else if (direction == ScrollDirection.Right) 1000f else 0f
     val y = if (direction == ScrollDirection.Up) -1000f else if (direction == ScrollDirection.Down) 1000f else 0f

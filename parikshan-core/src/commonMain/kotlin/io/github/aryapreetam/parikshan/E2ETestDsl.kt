@@ -4,10 +4,11 @@ import io.github.aryapreetam.parikshan.protocol.Command
 import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.Response
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
-import kotlin.random.Random
+import io.github.aryapreetam.parikshan.protocol.Selector
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
+import kotlin.random.Random
 
 interface TestDriver {
   suspend fun send(command: Command): Response
@@ -39,7 +40,7 @@ class E2ETestScope internal constructor(
     checkAmbiguity(resolved)
     expectOk(
       action = "click(${selector.raw})",
-      response = driver.send(Command.Click(id = nextId(), tag = resolved.tag))
+      response = driver.send(Command.Click(id = nextId(), tag = resolved.tag, selector = selector))
     )
     settleAfterCommand()
   }
@@ -60,7 +61,7 @@ class E2ETestScope internal constructor(
     checkAmbiguity(resolved)
     expectOk(
       action = "input(${selector.raw})",
-      response = driver.send(Command.Input(id = nextId(), tag = resolved.tag, text = text))
+      response = driver.send(Command.Input(id = nextId(), tag = resolved.tag, text = text, selector = selector))
     )
     settleAfterCommand()
   }
@@ -81,7 +82,7 @@ class E2ETestScope internal constructor(
     checkAmbiguity(resolved)
     expectOk(
       action = "scroll(${selector.raw})",
-      response = driver.send(Command.Scroll(id = nextId(), tag = resolved.tag, direction = direction))
+      response = driver.send(Command.Scroll(id = nextId(), tag = resolved.tag, direction = direction, selector = selector))
     )
     settleAfterCommand()
   }
@@ -89,9 +90,17 @@ class E2ETestScope internal constructor(
   suspend fun assertVisible(tag: String) {
     assertVisible(selector = tag.asAutoSelector())
   }
-
   suspend fun assertVisible(selector: Selector) {
     waitFor(selector = selector)
+    val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
+
+    val response = driver.send(Command.AssertVisible(id = nextId(), tag = resolved.tag, selector = selector))
+    if (response is Response.Error) {
+      throw AssertionError("assertVisible(${selector.raw}) failed: ${response.message}")
+    }
+    if (response !is Response.NodeInfo && response !is Response.Ok) {
+      throw AssertionError("assertVisible(${selector.raw}) returned unexpected response: $response")
+    }
     settleAfterCommand()
   }
 

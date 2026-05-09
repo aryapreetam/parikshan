@@ -2,6 +2,7 @@ package io.github.aryapreetam.parikshan
 
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
@@ -9,13 +10,11 @@ import androidx.test.uiautomator.UiDevice
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
-import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onRoot
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
@@ -24,6 +23,8 @@ import io.github.aryapreetam.parikshan.protocol.Command
 import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.Response
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
+import io.github.aryapreetam.parikshan.protocol.Selector
+import io.github.aryapreetam.parikshan.protocol.resolvedSelector
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.roundToInt
@@ -54,29 +55,146 @@ class AndroidDriver private constructor(
     // Lifecycle is owned by the Android test rule.
   }
 
+  private data class SelectorCandidate(
+    val node: SemanticsNode,
+    val score: Int,
+    val area: Float,
+    val depth: Int
+  )
+
+  private fun findFirstInteraction(command: Command): SemanticsNodeInteraction? =
+    findFirstNode(command)?.let { interactionFor(it) }
+
+  private fun findFirstNode(command: Command): SemanticsNode? {
+    val selector = command.resolvedSelector() ?: return null
+    return selectorCandidates(selector).firstOrNull()?.node
+  }
+
+  private fun selectorCandidates(selector: Selector): List<SelectorCandidate> {
+    if (selector.raw.isBlank()) return emptyList()
+    val matcher =
+      SemanticsMatcher("Parikshan selector '${selector.raw}'") { node ->
+        selectorScore(node = node, selector = selector) != null
+      }
+
+    return composeUiTest
+      .onAllNodes(matcher, useUnmergedTree = true)
+      .fetchSemanticsNodes(atLeastOneRootRequired = false)
+      .asSequence()
+      .filter { isVisible(it) }
+      .mapNotNull { node ->
+        selectorScore(node = node, selector = selector)?.let { score ->
+          SelectorCandidate(
+            node = node,
+            score = score,
+            area = nodeArea(node),
+            depth = nodeDepth(node)
+          )
+        }
+      }
+      .sortedWith(
+        compareBy<SelectorCandidate> { it.score }
+          .thenBy { it.area }
+          .thenByDescending { it.depth }
+      )
+      .toList()
+  }
+
+  private fun selectorScore(
+    node: SemanticsNode,
+    selector: Selector
+  ): Int? {
+    val raw = selector.raw.trim()
+    if (raw.isEmpty()) return null
+
+    val tag = node.config.getOrNull(SemanticsProperties.TestTag)?.trim()
+    val text = directTextOf(node)?.trim()
+
+    return when (selector) {
+      is Selector.Tag ->
+        if (tag == selector.value.trim()) 0 else null
+
+      is Selector.Text ->
+        textScore(text = text, raw = selector.value.trim())
+
+      is Selector.Auto ->
+        when {
+          tag == raw -> 0
+          text?.equals(raw, ignoreCase = true) == true -> 10
+          text?.contains(raw, ignoreCase = true) == true -> 20
+          else -> null
+        }
+    }
+  }
+
+  private fun textScore(
+    text: String?,
+    raw: String
+  ): Int? =
+    when {
+      raw.isEmpty() || text == null -> null
+      text.equals(raw, ignoreCase = true) -> 10
+      text.contains(raw, ignoreCase = true) -> 20
+      else -> null
+    }
+
+  private fun interactionFor(node: SemanticsNode): SemanticsNodeInteraction =
+    composeUiTest.onNode(
+      matcher = SemanticsMatcher("SemanticsNode(id=${node.id})") { it.id == node.id },
+      useUnmergedTree = true
+    )
+
+  private fun clickTargetFor(node: SemanticsNode): SemanticsNode? {
+    var current: SemanticsNode? = node
+    while (current != null) {
+      if (current.config.getOrNull(SemanticsActions.OnClick) != null) {
+        return current
+      }
+      current = current.parent
+    }
+    return null
+  }
+
+  private fun nodeArea(node: SemanticsNode): Float {
+    val bounds = node.boundsInRoot
+    return bounds.width * bounds.height
+  }
+
+  private fun nodeDepth(node: SemanticsNode): Int {
+    var depth = 0
+    var current = node.parent
+    while (current != null) {
+      depth += 1
+      current = current.parent
+    }
+    return depth
+  }
+
   private fun handleCommand(command: Command): Response {
     return when (command) {
       is Command.Click -> {
-        val interaction = findFirstInteraction(command.tag)
-          ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
-        interaction.performClick()
+        val matched = findFirstNode(command)
+          ?: return Response.Error(command.id, "No node found for selector '${command.selector?.raw ?: command.tag}'")
+        val target = clickTargetFor(matched)
+          ?: return Response.Error(command.id, "Node '${command.selector?.raw ?: command.tag}' is not clickable")
+        interactionFor(target).performClick()
         Response.Ok(command.id)
       }
 
       is Command.Input -> {
-        val interaction = findFirstInteraction(command.tag)
-          ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
+        val interaction = findFirstInteraction(command)
+          ?: return Response.Error(command.id, "No node found for selector '${command.selector?.raw ?: command.tag}'")
         interaction.performTextClearance()
         interaction.performTextInput(command.text)
         Response.Ok(command.id)
       }
 
       is Command.Scroll -> {
-        val node = findFirstNode(command.tag)
-          ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
+        val node = findFirstNode(command)
+          ?: return Response.Error(command.id, "No node found for selector '${command.selector?.raw ?: command.tag}'")
         val bridgeHandled =
           ParikshanTagBridgeHooks.performScroll(
-            tag = command.tag,
+            tag = command.tag, // keep fallback
             direction = command.direction,
             viewportHeightPx = node.boundsInRoot.height
           )
@@ -88,10 +206,10 @@ class AndroidDriver private constructor(
       }
 
       is Command.AssertVisible -> {
-        val node = findFirstNode(command.tag)
-          ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
+        val node = findFirstNode(command)
+          ?: return Response.Error(command.id, "No node found for selector '${command.selector?.raw ?: command.tag}'")
         if (!isVisible(node)) {
-          return Response.Error(command.id, "Node '${command.tag}' exists but is not visible")
+          return Response.Error(command.id, "Node '${command.selector?.raw ?: command.tag}' exists but is not visible")
         }
         Response.NodeInfo(
           id = command.id,
@@ -102,13 +220,13 @@ class AndroidDriver private constructor(
       }
 
       is Command.AssertText -> {
-        val node = findFirstNode(command.tag)
-          ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
+        val node = findFirstNode(command)
+          ?: return Response.Error(command.id, "No node found for selector '${command.selector?.raw ?: command.tag}'")
         val actual = snapshotTextOf(node).orEmpty()
         if (actual != command.expected) {
           return Response.Error(
             id = command.id,
-            message = "Text mismatch for '${command.tag}'. expected='${command.expected}' actual='$actual'"
+            message = "Text mismatch for '${command.selector?.raw ?: command.tag}'. expected='${command.expected}' actual='$actual'"
           )
         }
         Response.Ok(command.id)
@@ -118,7 +236,7 @@ class AndroidDriver private constructor(
         val success =
           runCatching {
             composeUiTest.waitUntil(timeoutMillis = command.timeoutMs) {
-              val node = findFirstNode(command.tag)
+              val node = findFirstNode(command)
               node != null && isVisible(node)
             }
             true
@@ -126,11 +244,11 @@ class AndroidDriver private constructor(
         if (!success) {
           return Response.Error(
             id = command.id,
-            message = "Timed out waiting for '${command.tag}' after ${command.timeoutMs}ms"
+            message = "Timed out waiting for '${command.selector?.raw ?: command.tag}' after ${command.timeoutMs}ms"
           )
         }
-        val node = findFirstNode(command.tag)
-          ?: return Response.Error(command.id, "No node found for tag '${command.tag}'")
+        val node = findFirstNode(command)
+          ?: return Response.Error(command.id, "No node found for selector '${command.selector?.raw ?: command.tag}'")
         Response.NodeInfo(
           id = command.id,
           bounds = boundsOf(node),
@@ -169,15 +287,6 @@ class AndroidDriver private constructor(
     }
   }
 
-  private fun findFirstInteraction(tag: String) =
-    composeUiTest.onAllNodes(hasTestTag(tag).or(hasText(tag, substring = true, ignoreCase = true)), useUnmergedTree = false)
-      .takeIf { it.fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
-      ?.onFirst()
-
-  private fun findFirstNode(tag: String): SemanticsNode? =
-    composeUiTest.onAllNodes(hasTestTag(tag).or(hasText(tag, substring = true, ignoreCase = true)), useUnmergedTree = false)
-      .fetchSemanticsNodes(atLeastOneRootRequired = false)
-      .firstOrNull()
 
   private fun snapshotTree(): List<NodeSnapshot> {
     val root =

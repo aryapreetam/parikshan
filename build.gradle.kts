@@ -16,4 +16,10 @@ apply(from = "gradle/check-template-setup.gradle.kts")
 allprojects {
   group = findProperty("parikshanGroup") ?: "io.github.aryapreetam"
   version = findProperty("parikshanVersion") ?: "0.0.1"
+
+  plugins.withId("maven-publish") {
+    tasks.named("publishToMavenLocal") {
+      dependsOn(gradle.includedBuild("parikshan-gradle-plugin").task(":publishToMavenLocal"))
+    }
+  }
 }

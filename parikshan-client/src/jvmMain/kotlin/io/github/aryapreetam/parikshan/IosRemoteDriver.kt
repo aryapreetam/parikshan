@@ -3,7 +3,9 @@ package io.github.aryapreetam.parikshan
 import io.github.aryapreetam.parikshan.protocol.Command
 import io.github.aryapreetam.parikshan.protocol.ProtocolJson
 import io.github.aryapreetam.parikshan.protocol.Response
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URI
 
@@ -154,6 +156,38 @@ class IosRemoteDriver private constructor(
     // No-op for in-app server
   }
 
+  override suspend fun relaunchApp() {
+    val udid = System.getProperty("parikshan.ios.udid")?.takeIf { it.isNotBlank() } ?: "booted"
+    val bundleId =
+      System.getProperty("parikshan.ios.bundleId")?.takeIf { it.isNotBlank() }
+        ?: error(
+          "Missing system property 'parikshan.ios.bundleId'. " +
+            "The Gradle plugin must forward the iOS bundle ID before relaunchApp() can run."
+        )
+
+    withContext(Dispatchers.IO) {
+      ProcessBuilder("xcrun", "simctl", "terminate", udid, bundleId).start().waitFor()
+      val launchProcess =
+        ProcessBuilder("xcrun", "simctl", "launch", udid, bundleId)
+          .apply {
+            environment()["SIMCTL_CHILD_PARIKSHAN_TOKEN"] = sessionToken
+            environment()["PARIKSHAN_TOKEN"] = sessionToken
+          }
+          .start()
+      val output = launchProcess.inputStream.bufferedReader().readText()
+      val errorOutput = launchProcess.errorStream.bufferedReader().readText()
+      val exitCode = launchProcess.waitFor()
+      if (exitCode != 0) {
+        error(
+          "Could not relaunch iOS app '$bundleId' on simulator '$udid' " +
+            "(exit code $exitCode). ${errorOutput.ifBlank { output }.trim()}"
+        )
+      }
+    }
+
+    waitForServerReadyAfterRelaunch()
+  }
+
   private fun httpPost(body: String): String {
     val url = URI(baseUrl).toURL()
     val conn = url.openConnection() as HttpURLConnection
@@ -171,6 +205,23 @@ class IosRemoteDriver private constructor(
     }
     
     return conn.inputStream.bufferedReader().readText()
+  }
+
+  private suspend fun waitForServerReadyAfterRelaunch() {
+    repeat(90) { attempt ->
+      try {
+        val response = send(Command.Ping(id = "ios-relaunch-ping"))
+        if (response is Response.Ok) {
+          return
+        }
+      } catch (_: Throwable) {
+        if (attempt == 89) {
+          throw IllegalStateException("Could not reconnect to Parikshan iOS server after relaunch")
+        }
+      }
+      delay(500)
+    }
+    throw IllegalStateException("Could not reconnect to Parikshan iOS server after relaunch")
   }
 
   companion object {

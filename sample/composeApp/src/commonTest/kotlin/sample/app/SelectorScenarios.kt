@@ -85,6 +85,17 @@ class SelectorScenarios {
     )
     assertVisible("done")
   }
+
+  @Test
+  fun testRelaunchAppReturnsToLaunchScreen() = e2eTest {
+    click("nav_input_form")
+    assertVisible("input_form_screen")
+
+    relaunchApp()
+
+    assertVisible("task_list_screen")
+    assertVisible("task_item_1")
+  }
 }
 
 private suspend fun E2ETestScope.openInputForm() {

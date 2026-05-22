@@ -1,5 +1,6 @@
 package io.github.aryapreetam.parikshan
 
+import android.content.Intent
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
@@ -280,11 +281,25 @@ class AndroidDriver private constructor(
         Response.Ok(command.id)
       }
 
+      is Command.RelaunchApp -> relaunchTargetApp(command.id)
       is Command.StartRecording -> Response.Ok(command.id)
       is Command.StopRecording -> Response.Ok(command.id)
       is Command.Shutdown -> Response.Ok(command.id)
       is Command.Ping -> Response.Ok(command.id)
     }
+  }
+
+  private fun relaunchTargetApp(commandId: String): Response {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+    val intent =
+      context.packageManager.getLaunchIntentForPackage(context.packageName)
+        ?: return Response.Error(commandId, "Could not find launch intent for package ${context.packageName}")
+    intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)
+    context.startActivity(intent)
+    instrumentation.waitForIdleSync()
+    composeUiTest.waitForIdle()
+    return Response.Ok(commandId)
   }
 
 

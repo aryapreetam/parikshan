@@ -13,6 +13,16 @@ import kotlin.random.Random
 interface TestDriver {
   suspend fun send(command: Command): Response
 
+  suspend fun relaunchApp() {
+    val response = send(Command.RelaunchApp(id = nextId()))
+    if (response is Response.Error) {
+      throw AssertionError("relaunchApp() failed: ${response.message}")
+    }
+    if (response !is Response.Ok) {
+      throw AssertionError("relaunchApp() returned unexpected response: $response")
+    }
+  }
+
   suspend fun close()
 
   fun resolveArtifactPath(relativePath: String): String =
@@ -316,6 +326,11 @@ class E2ETestScope internal constructor(
       action = "pressHome()",
       response = driver.send(Command.PressHome(id = nextId()))
     )
+    settleAfterCommand()
+  }
+
+  suspend fun relaunchApp() {
+    driver.relaunchApp()
     settleAfterCommand()
   }
 

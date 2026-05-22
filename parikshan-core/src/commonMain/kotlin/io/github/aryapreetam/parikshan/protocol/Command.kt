@@ -144,6 +144,13 @@ sealed class Command {
   ) : Command()
 
   @Serializable
+  @SerialName("relaunchapp")
+  data class RelaunchApp(
+    override val id: String,
+    override var token: String = ""
+  ) : Command()
+
+  @Serializable
   @SerialName("ping")
   data class Ping(
     override val id: String,

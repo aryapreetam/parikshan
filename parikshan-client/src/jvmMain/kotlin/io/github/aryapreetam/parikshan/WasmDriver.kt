@@ -51,6 +51,12 @@ class WasmDriver private constructor(
     // Shared browser across tests. JVM shutdown hook will close it.
   }
 
+  override suspend fun relaunchApp() {
+    withContext(Dispatchers.IO) {
+      relaunchSharedPage(ParikshanWasmConfig.fromSystemProperties())
+    }
+  }
+
   private suspend fun readNodeBySelector(selector: io.github.aryapreetam.parikshan.protocol.Selector): NodeSnapshot? {
     if (selector is io.github.aryapreetam.parikshan.protocol.Selector.Tag || selector is io.github.aryapreetam.parikshan.protocol.Selector.Auto) {
       readBridgeNode(selector.raw)?.let { return it }
@@ -154,6 +160,10 @@ class WasmDriver private constructor(
 
       is Command.PressBack -> Response.Ok(command.id)
       is Command.PressHome -> Response.Ok(command.id)
+      is Command.RelaunchApp -> {
+        relaunchSharedPage(ParikshanWasmConfig.fromSystemProperties())
+        Response.Ok(command.id)
+      }
       is Command.StartRecording -> {
         lastRequestedVideoPath = command.path
         Response.Ok(command.id)
@@ -516,6 +526,21 @@ class WasmDriver private constructor(
       }
 
       return WasmDriver()
+    }
+
+    private suspend fun relaunchSharedPage(config: ParikshanWasmConfig) {
+      connectMutex.withLock {
+        val page = sharedPage ?: error("WasmDriver shared page is not initialized")
+        if (page.isClosed()) {
+          error("WasmDriver shared page is closed")
+        }
+        page.navigate(config.appUrl)
+        page.waitForFunction(
+          "() => typeof window.__parikshan_getTreeJson === 'function'",
+          null,
+          Page.WaitForFunctionOptions().setTimeout(config.bridgeReadyTimeoutMs.toDouble())
+        )
+      }
     }
   }
 }

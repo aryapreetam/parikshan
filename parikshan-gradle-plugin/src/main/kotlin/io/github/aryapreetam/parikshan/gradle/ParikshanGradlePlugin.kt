@@ -6,6 +6,7 @@ import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.URL
 import java.time.Duration
+import java.util.Properties
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.jar.JarFile
@@ -90,6 +91,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
     val titleValue = extension.desktopWindowTitle
     val buildDirValue = project.layout.buildDirectory
     val tokenValue = sessionToken
+    val desktopLaunchManifestFile = project.layout.buildDirectory.file("parikshan/desktop-launch.properties")
 
     val startDesktopTask =
       project.tasks.register("startParikshanDesktopApp") {
@@ -108,6 +110,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
             jar = jar,
             token = tokenValue,
             logFile = File(buildDirValue.get().asFile, "parikshan/desktop-app.log"),
+            manifestFile = desktopLaunchManifestFile.get().asFile,
             appArgs = appArgsValue.get(),
             host = hostValue.get(),
             port = portValue.get(),
@@ -125,7 +128,8 @@ class ParikshanGradlePlugin : Plugin<Project> {
           ParikshanDesktopProcess.stop(
             host = hostValue.get(),
             port = portValue.get(),
-            token = tokenValue
+            token = tokenValue,
+            manifestFile = desktopLaunchManifestFile.get().asFile
           )
         }
       }
@@ -259,6 +263,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
         systemProperty("parikshan.port", extension.port.get().toString())
         systemProperty("parikshan.target", "desktop")
         systemProperty("parikshan.token", sessionToken)
+        systemProperty("parikshan.desktop.launchManifest", desktopLaunchManifestFile.get().asFile.absolutePath)
       }
 
       project.tasks.register<Test>("e2eWasmTest") {
@@ -302,6 +307,14 @@ class ParikshanGradlePlugin : Plugin<Project> {
       val iosDerivedData = project.layout.buildDirectory.dir("parikshan/ios-build").get().asFile
       var iosSimulatorUdid: String? = null
 
+      val iosPreflightTask = project.tasks.register("parikshanIosPreflight") {
+        group = "verification"
+        doLast {
+          val simulator = resolveIosSimulatorDevice(iosDevice, iosProjectDir)
+          iosLogger.lifecycle("Parikshan iOS: Found simulator '${simulator.name}' (${simulator.udid})")
+        }
+      }
+
       val stopIosAppTask = project.tasks.register("stopIosApp") {
         group = "verification"
         doLast {
@@ -319,6 +332,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
 
       val startIosAppTask = project.tasks.register("startIosApp") {
         group = "verification"
+        dependsOn(iosPreflightTask)
         prepareIosBootSourceTask?.let { dependsOn(it) }
         outputs.upToDateWhen { false }
         
@@ -437,19 +451,44 @@ class ParikshanGradlePlugin : Plugin<Project> {
         doFirst {
           val simulator = resolveIosSimulatorDevice(iosDevice, iosProjectDir)
           systemProperty("parikshan.ios.udid", simulator.udid)
+          systemProperty("parikshan.ios.bundleId", getIosBundleId())
         }
       }
 
       // --- Android E2E Test Task ---
 
       val androidProjectDir = project.projectDir
-      val androidApplicationId = ParikshanAndroidRecorder.resolveAndroidApplicationId(project)
+      val androidApplicationId =
+        ParikshanAndroidRecorder.resolveAndroidApplicationId(project)
+          ?: throw GradleException(
+            "Parikshan Android: Could not resolve the Android applicationId. " +
+              "Set defaultConfig.applicationId in the Android application module."
+          )
       val androidLogger = project.logger
+      fun resolveAndroidRuntimeProperty(name: String): String? =
+        project.providers.gradleProperty(name).orElse(project.providers.systemProperty(name)).orNull
+      val androidSerial = resolveAndroidRuntimeProperty("parikshan.android.serial")
+
+      val androidPreflightTask = project.tasks.register("parikshanAndroidPreflight") {
+        group = "verification"
+        doLast {
+          val serial = ParikshanAndroidRecorder.resolveDeviceSerial(androidLogger, androidProjectDir, androidSerial)
+          androidLogger.lifecycle("Parikshan Android: Found connected device/emulator '$serial'")
+        }
+      }
+
+      if (isE2EActive) {
+        project.tasks.matching {
+          it.name in setOf("preBuild", "preDebugBuild", "preDebugAndroidTestBuild")
+        }.configureEach {
+          dependsOn(androidPreflightTask)
+        }
+      }
 
       val stopAndroidAppTask = project.tasks.register("stopParikshanAndroidApp") {
           group = "verification"
           doLast {
-            val serial = ParikshanAndroidRecorder.resolveDeviceSerial(androidLogger, androidProjectDir, null)
+            val serial = ParikshanAndroidRecorder.resolveDeviceSerial(androidLogger, androidProjectDir, androidSerial)
             ProcessBuilder("adb", "-s", serial, "forward", "--remove", "tcp:9879").start().waitFor()
             ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", androidApplicationId).start().waitFor()
           }
@@ -457,9 +496,9 @@ class ParikshanGradlePlugin : Plugin<Project> {
 
       val startAndroidAppTask = project.tasks.register("startParikshanAndroidApp") {
         group = "verification"
-        dependsOn("installDebug", "installDebugAndroidTest")
+        dependsOn(androidPreflightTask, "installDebug", "installDebugAndroidTest")
         doLast {
-          val serial = ParikshanAndroidRecorder.resolveDeviceSerial(androidLogger, androidProjectDir, null)
+          val serial = ParikshanAndroidRecorder.resolveDeviceSerial(androidLogger, androidProjectDir, androidSerial)
           ProcessBuilder("adb", "-s", serial, "forward", "tcp:9879", "tcp:9879").start().waitFor()
           val testPackage = "$androidApplicationId.test"
           androidLogger.lifecycle("Parikshan Android: Starting instrumentation...")
@@ -483,12 +522,12 @@ class ParikshanGradlePlugin : Plugin<Project> {
         systemProperty("parikshan.port", "9879")
         systemProperty("parikshan.token", sessionToken)
         doFirst {
-           val serial = ParikshanAndroidRecorder.resolveDeviceSerial(androidLogger, androidProjectDir, null)
+           val serial = ParikshanAndroidRecorder.resolveDeviceSerial(androidLogger, androidProjectDir, androidSerial)
            systemProperty("parikshan.android.serial", serial)
         }
         
         doLast {
-           val serial = ParikshanAndroidRecorder.resolveDeviceSerial(androidLogger, androidProjectDir, null)
+           val serial = ParikshanAndroidRecorder.resolveDeviceSerial(androidLogger, androidProjectDir, androidSerial)
            val devicePath = "/sdcard/parikshan-screenshot.png"
            val hostPath = "build/parikshan/screenshots/android-failure.png"
            ProcessBuilder("adb", "-s", serial, "pull", devicePath, hostPath).start().waitFor()
@@ -533,9 +572,20 @@ private object ParikshanWasmServer {
 }
 
 private data class IosSimulatorDevice(val name: String, val udid: String, val runtime: String, val isBooted: Boolean)
+private data class AndroidDevice(val serial: String, val state: String)
 
 private fun resolveIosSimulatorDevice(requested: String, workingDir: File): IosSimulatorDevice {
-  val output = ProcessBuilder("xcrun", "simctl", "list", "devices", "available").directory(workingDir).start().inputStream.bufferedReader().readText()
+  val process = ProcessBuilder("xcrun", "simctl", "list", "devices", "available").directory(workingDir).start()
+  val output = process.inputStream.bufferedReader().readText()
+  val error = process.errorStream.bufferedReader().readText()
+  val exitCode = process.waitFor()
+  if (exitCode != 0) {
+    throw GradleException(
+      "Parikshan iOS: Could not list iOS Simulators using `xcrun simctl list devices available` " +
+        "(exit code $exitCode). ${error.ifBlank { output }.trim()}"
+    )
+  }
+
   var runtime = ""
   val devices = mutableListOf<IosSimulatorDevice>()
   output.lineSequence().forEach { line ->
@@ -547,7 +597,12 @@ private fun resolveIosSimulatorDevice(requested: String, workingDir: File): IosS
       if (requested == "booted" && state == "Booted" || requested == name || requested == udid) devices += IosSimulatorDevice(name, udid, runtime, state == "Booted")
     }
   }
-  return devices.firstOrNull { it.isBooted } ?: devices.firstOrNull() ?: throw GradleException("No simulator")
+  return devices.firstOrNull { it.isBooted } ?: devices.firstOrNull()
+    ?: throw GradleException(
+      "Parikshan iOS: No iOS Simulator found matching '$requested'. " +
+        "Run `xcrun simctl list devices available` to see available simulators, " +
+        "or set `-Pparikshan.ios.device=<name-or-udid>`."
+    )
 }
 
 private object ParikshanIosVideoRecorder {
@@ -556,8 +611,63 @@ private object ParikshanIosVideoRecorder {
 
 private object ParikshanAndroidRecorder {
   fun resolveDeviceSerial(logger: Logger, workingDir: File, explicit: String?): String {
-    val output = ProcessBuilder("adb", "devices").directory(workingDir).start().inputStream.bufferedReader().readText()
-    return output.lineSequence().drop(1).firstOrNull { it.isNotBlank() }?.split(Regex("\\s+"))?.get(0) ?: throw GradleException("No device")
+    val process = ProcessBuilder("adb", "devices").directory(workingDir).start()
+    val output = process.inputStream.bufferedReader().readText()
+    val error = process.errorStream.bufferedReader().readText()
+    val exitCode = process.waitFor()
+    logger.debug("Parikshan Android: `adb devices` output:\n$output")
+    if (exitCode != 0) {
+      throw GradleException(
+        "Parikshan Android: Could not list Android devices using `adb devices` " +
+          "(exit code $exitCode). ${error.ifBlank { output }.trim()}"
+      )
+    }
+
+    val devices =
+      output.lineSequence()
+        .drop(1)
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .mapNotNull { line ->
+          val parts = line.split(Regex("\\s+"))
+          if (parts.size >= 2) AndroidDevice(serial = parts[0], state = parts[1]) else null
+        }
+        .toList()
+
+    val requested = explicit?.trim().orEmpty()
+    if (requested.isNotEmpty()) {
+      val device = devices.firstOrNull { it.serial == requested }
+        ?: throw GradleException(
+          "Parikshan Android: Device/emulator '$requested' was not found. " +
+            "Run `adb devices` to check connected devices, or update `-Pparikshan.android.serial=<serial>`."
+        )
+      if (device.state != "device") {
+        throw GradleException(
+          "Parikshan Android: Device/emulator '$requested' is '${device.state}', not ready. " +
+            "Run `adb devices` and resolve the device state before running E2E tests."
+        )
+      }
+      return device.serial
+    }
+
+    val readyDevices = devices.filter { it.state == "device" }
+    if (readyDevices.size == 1) {
+      return readyDevices.single().serial
+    }
+    if (readyDevices.size > 1) {
+      val serials = readyDevices.joinToString { it.serial }
+      throw GradleException(
+        "Parikshan Android: Multiple Android devices/emulators are connected: $serials. " +
+          "Set `-Pparikshan.android.serial=<serial>` to choose one."
+      )
+    }
+
+    val deviceStateSummary = devices.joinToString { "${it.serial} (${it.state})" }.ifBlank { "none" }
+    throw GradleException(
+      "Parikshan Android: No ready Android device/emulator connected. " +
+        "Run `adb devices` to check devices, start an emulator, or connect a device with USB debugging enabled. " +
+        "Detected devices: $deviceStateSummary."
+    )
   }
   fun resolveAndroidApplicationId(project: Project): String? {
     val android = project.extensions.findByName("android") ?: return null
@@ -568,18 +678,44 @@ private object ParikshanAndroidRecorder {
 
 private object ParikshanDesktopProcess {
   private var process: Process? = null
-  fun start(jar: File, token: String, logFile: File, appArgs: List<String>, host: String, port: Int, timeoutMs: Long, pollMs: Long, title: String?) {
-    stop()
+  fun start(jar: File, token: String, logFile: File, manifestFile: File, appArgs: List<String>, host: String, port: Int, timeoutMs: Long, pollMs: Long, title: String?) {
+    stop(host = host, port = port, token = token, manifestFile = manifestFile)
+    val javaExecutable = System.getProperty("java.home") + "/bin/java"
     val mainClass = JarFile(jar).manifest.mainAttributes.getValue("Main-Class")
     logFile.parentFile.mkdirs()
-    val windowTitleProp = if (title != null) "-Dparikshan.desktop.windowTitle=$title" else ""
-    process = ProcessBuilder(listOfNotNull(System.getProperty("java.home") + "/bin/java", "-Dparikshan.host=$host", "-Dparikshan.port=$port", "-Dparikshan.token=$token", "-Dparikshan.desktop.appMainClass=$mainClass", windowTitleProp.takeIf { it.isNotEmpty() }, "-cp", jar.absolutePath, "io.github.aryapreetam.parikshan.server.ParikshanDesktopLauncher"))
+    val command =
+      buildList {
+        add(javaExecutable)
+        add("-Dparikshan.host=$host")
+        add("-Dparikshan.port=$port")
+        add("-Dparikshan.token=$token")
+        add("-Dparikshan.desktop.appMainClass=$mainClass")
+        title?.let { add("-Dparikshan.desktop.windowTitle=$it") }
+        add("-cp")
+        add(jar.absolutePath)
+        add("io.github.aryapreetam.parikshan.server.ParikshanDesktopLauncher")
+        addAll(appArgs)
+      }
+    val startedProcess = ProcessBuilder(command)
       .redirectErrorStream(true)
       .redirectOutput(logFile)
       .start()
+    process = startedProcess
+    writeLaunchManifest(
+      manifestFile = manifestFile,
+      pid = startedProcess.pid(),
+      javaExecutable = javaExecutable,
+      jar = jar,
+      appMainClass = mainClass,
+      token = token,
+      logFile = logFile,
+      appArgs = appArgs,
+      host = host,
+      port = port,
+      title = title
+    )
   }
-  fun stop(host: String = "127.0.0.1", port: Int = 9877, token: String = "") { 
-    val active = process ?: return
+  fun stop(host: String = "127.0.0.1", port: Int = 9877, token: String = "", manifestFile: File? = null) {
     runCatching {
       val json = """{"type":"stopRecording","id":"desktop-stop","sessionName":"any","token":"$token"}"""
       val url = URL("http://$host:$port/")
@@ -593,8 +729,72 @@ private object ParikshanDesktopProcess {
       conn.responseCode
     }
     Thread.sleep(500)
-    active.destroy()
-    process = null 
+    process?.let { active ->
+      if (active.isAlive) {
+        active.destroy()
+      }
+    }
+    manifestFile?.let { destroyManifestProcess(it) }
+    process = null
+  }
+
+  private fun writeLaunchManifest(
+    manifestFile: File,
+    pid: Long,
+    javaExecutable: String,
+    jar: File,
+    appMainClass: String,
+    token: String,
+    logFile: File,
+    appArgs: List<String>,
+    host: String,
+    port: Int,
+    title: String?
+  ) {
+    manifestFile.parentFile.mkdirs()
+    val properties =
+      Properties().apply {
+        setProperty("pid", pid.toString())
+        setProperty("javaExecutable", javaExecutable)
+        setProperty("jar", jar.absolutePath)
+        setProperty("appMainClass", appMainClass)
+        setProperty("token", token)
+        setProperty("host", host)
+        setProperty("port", port.toString())
+        setProperty("logFile", logFile.absolutePath)
+        title?.let { setProperty("windowTitle", it) }
+        setProperty("appArgCount", appArgs.size.toString())
+        appArgs.forEachIndexed { index, value ->
+          setProperty("appArg.$index", value)
+        }
+      }
+    manifestFile.outputStream().use { output ->
+      properties.store(output, "Parikshan desktop launch state")
+    }
+  }
+
+  private fun destroyManifestProcess(manifestFile: File) {
+    if (!manifestFile.exists()) {
+      return
+    }
+    val pid =
+      Properties()
+        .also { properties -> manifestFile.inputStream().use(properties::load) }
+        .getProperty("pid")
+        ?.toLongOrNull()
+        ?: return
+    val handle = ProcessHandle.of(pid).orElse(null) ?: return
+    if (!handle.isAlive) {
+      return
+    }
+    handle.destroy()
+    runCatching {
+      handle.onExit().get(10, TimeUnit.SECONDS)
+    }.onFailure {
+      if (handle.isAlive) {
+        handle.destroyForcibly()
+      }
+    }
   }
 }
 
@@ -650,8 +850,8 @@ private fun Project.resolveHostTestTaskName(override: String?): String {
       @Suppress("UNCHECKED_CAST")
       val targets = kmp.javaClass.getMethod("getTargets").invoke(kmp) as org.gradle.api.NamedDomainObjectCollection<Any>
       
-      println("DEBUG: Found ${targets.size} targets in KMP")
-      targets.forEach { println("DEBUG: Target name=${(it as org.gradle.api.Named).name}, class=${it.javaClass.name}") }
+      logger.debug("Parikshan: Found ${targets.size} Kotlin Multiplatform targets")
+      targets.forEach { logger.debug("Parikshan: Target name=${(it as org.gradle.api.Named).name}, class=${it.javaClass.name}") }
 
       val jvmTargets = targets.filter { target ->
           val targetName = (target as org.gradle.api.Named).name
@@ -659,7 +859,7 @@ private fun Project.resolveHostTestTaskName(override: String?): String {
           val match = className.contains("KotlinJvmTarget", ignoreCase = true) || 
                     targetName.contains("jvm", ignoreCase = true) || 
                     targetName.contains("desktop", ignoreCase = true)
-          if (match) println("DEBUG: Matched target=$targetName as JVM target")
+          if (match) logger.debug("Parikshan: Matched target=$targetName as JVM test host target")
           match
       }
       
@@ -669,13 +869,13 @@ private fun Project.resolveHostTestTaskName(override: String?): String {
       if (target != null) {
           val name = (target as org.gradle.api.Named).name
           val taskName = "${name}Test"
-          println("DEBUG: Resolved hostTestTaskName=$taskName")
+          logger.debug("Parikshan: Resolved hostTestTaskName=$taskName")
           return taskName
       }
   } catch (e: Exception) { 
-      println("DEBUG: Exception in resolveHostTestTaskName: ${e.message}")
+      logger.debug("Parikshan: Exception while resolving host test task name", e)
   }
-  println("DEBUG: Falling back to jvmTest")
+  logger.debug("Parikshan: Falling back to jvmTest")
   return "jvmTest"
 }
 
@@ -695,16 +895,163 @@ private fun Project.resolveWasmDistributionTaskName(override: String?): String {
 }
 
 private fun Project.discoverE2eTestClasses(): List<String> {
-  val classes = mutableListOf<String>()
-  layout.projectDirectory.dir("src").asFile.walkTopDown().filter { it.name.endsWith("Test.kt") || it.name.endsWith("Scenarios.kt") }.forEach { file ->
-    val text = file.readText()
-    if (text.contains("e2eTest")) {
-      val pkg = Regex("""package\s+([a-zA-Z0-9_.]+)""").find(text)?.groupValues?.get(1) ?: ""
-      val cls = Regex("""(?:class|object)\s+([a-zA-Z0-9_]+)""").find(text)?.groupValues?.get(1) ?: file.nameWithoutExtension
-      classes.add(if (pkg.isNotEmpty()) "$pkg.$cls" else cls)
+  val commonTestKotlin = layout.projectDirectory.dir("src/commonTest/kotlin").asFile
+  if (!commonTestKotlin.exists()) {
+    return emptyList()
+  }
+
+  return commonTestKotlin
+    .walkTopDown()
+    .filter { it.isFile && it.extension == "kt" }
+    .flatMap { file -> discoverE2eTestClassesInFile(file).asSequence() }
+    .distinct()
+    .sorted()
+    .toList()
+}
+
+private fun discoverE2eTestClassesInFile(file: File): List<String> {
+  val raw = file.readText()
+  val source = raw.maskKotlinCommentsAndLiterals()
+  if (!E2E_TEST_INVOCATION_REGEX.containsMatchIn(source)) {
+    return emptyList()
+  }
+
+  val pkg = PACKAGE_REGEX.find(source)?.groupValues?.get(1).orEmpty()
+  return CLASS_OR_OBJECT_REGEX
+    .findAll(source)
+    .mapNotNull { match ->
+      val className = match.groupValues[1]
+      val bodyStart = source.indexOf('{', startIndex = match.range.last + 1)
+      if (bodyStart < 0) {
+        return@mapNotNull null
+      }
+      val bodyEnd = source.findMatchingBrace(bodyStart)
+      if (bodyEnd < 0) {
+        return@mapNotNull null
+      }
+      val body = source.substring(bodyStart + 1, bodyEnd)
+      if (!E2E_TEST_INVOCATION_REGEX.containsMatchIn(body)) {
+        return@mapNotNull null
+      }
+      if (pkg.isNotEmpty()) "$pkg.$className" else className
+    }
+    .toList()
+}
+
+private val PACKAGE_REGEX = Regex("""\bpackage\s+([a-zA-Z_][a-zA-Z0-9_.]*)""")
+private val CLASS_OR_OBJECT_REGEX = Regex("""\b(?:class|object)\s+([a-zA-Z_][a-zA-Z0-9_]*)""")
+private val E2E_TEST_INVOCATION_REGEX = Regex("""(?<!\w)e2eTest\s*(?:\(|\{)""")
+
+private fun String.findMatchingBrace(openIndex: Int): Int {
+  var depth = 0
+  for (index in openIndex until length) {
+    when (this[index]) {
+      '{' -> depth += 1
+      '}' -> {
+        depth -= 1
+        if (depth == 0) return index
+      }
     }
   }
-  return classes
+  return -1
+}
+
+private fun String.maskKotlinCommentsAndLiterals(): String {
+  val output = StringBuilder(length)
+  var index = 0
+
+  fun appendMasked(char: Char) {
+    output.append(if (char == '\n' || char == '\r') char else ' ')
+  }
+
+  fun startsWithAt(value: String, startIndex: Int): Boolean =
+    startIndex + value.length <= length && regionMatches(startIndex, value, 0, value.length)
+
+  while (index < length) {
+    when {
+      startsWithAt("//", index) -> {
+        appendMasked(this[index])
+        appendMasked(this[index + 1])
+        index += 2
+        while (index < length && this[index] != '\n') {
+          appendMasked(this[index])
+          index += 1
+        }
+      }
+      startsWithAt("/*", index) -> {
+        appendMasked(this[index])
+        appendMasked(this[index + 1])
+        index += 2
+        while (index < length) {
+          if (startsWithAt("*/", index)) {
+            appendMasked(this[index])
+            appendMasked(this[index + 1])
+            index += 2
+            break
+          }
+          appendMasked(this[index])
+          index += 1
+        }
+      }
+      startsWithAt("\"\"\"", index) -> {
+        repeat(3) {
+          appendMasked(this[index])
+          index += 1
+        }
+        while (index < length) {
+          if (startsWithAt("\"\"\"", index)) {
+            repeat(3) {
+              appendMasked(this[index])
+              index += 1
+            }
+            break
+          }
+          appendMasked(this[index])
+          index += 1
+        }
+      }
+      this[index] == '"' -> {
+        appendMasked(this[index])
+        index += 1
+        var escaped = false
+        while (index < length) {
+          val char = this[index]
+          appendMasked(char)
+          index += 1
+          if (escaped) {
+            escaped = false
+          } else if (char == '\\') {
+            escaped = true
+          } else if (char == '"') {
+            break
+          }
+        }
+      }
+      this[index] == '\'' -> {
+        appendMasked(this[index])
+        index += 1
+        var escaped = false
+        while (index < length) {
+          val char = this[index]
+          appendMasked(char)
+          index += 1
+          if (escaped) {
+            escaped = false
+          } else if (char == '\\') {
+            escaped = true
+          } else if (char == '\'') {
+            break
+          }
+        }
+      }
+      else -> {
+        output.append(this[index])
+        index += 1
+      }
+    }
+  }
+
+  return output.toString()
 }
 
 private fun Test.configureE2eHostTestExecution(

@@ -36,6 +36,11 @@ class ProtocolSerializationTest {
         val getTreeCmd = ProtocolJson.decodeCommand(getTreeJson)
         assertTrue(getTreeCmd is Command.GetTree)
         assertEquals("t1", getTreeCmd.id)
+
+        val relaunchJson = """{"type": "relaunchapp", "id": "r1"}"""
+        val relaunchCmd = ProtocolJson.decodeCommand(relaunchJson)
+        assertTrue(relaunchCmd is Command.RelaunchApp)
+        assertEquals("r1", relaunchCmd.id)
     }
 
     @Test

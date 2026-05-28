@@ -161,12 +161,19 @@ private fun resolveByText(
     )
   if (matches.isEmpty()) throw SelectorResolutionException(selector.textNotFoundMessage())
 
-  if (matches.size > 1) throw SelectorResolutionException(selector.ambiguousTextMessage(matches))
+  val targetIndex = when {
+    selector.index != null && selector.index!! >= 0 -> selector.index!!
+    selector.index != null && selector.index!! < 0 -> matches.size + selector.index!!
+    else -> 0
+  }
+
+  val targetNode = matches.getOrNull(targetIndex)
+    ?: throw SelectorResolutionException("Selector ${selector.describe()} index ${selector.index} is out of bounds (found ${matches.size} matches).")
 
   return ResolvedSelector(
     selector = selector,
     matchType = ResolvedSelector.MatchType.Text,
-    node = matches.first(),
+    node = targetNode,
     allMatches = matches
   )
 }
@@ -176,21 +183,29 @@ private fun Selector.resolveSingleTagMatch(
   requireVisible: Boolean,
   selector: Selector
 ): ResolvedSelector {
-  val match =
-    if (requireVisible) {
-      tagMatches.firstOrNull { it.visible } ?: tagMatches.firstOrNull()
-    } else {
-      tagMatches.firstOrNull()
-    }
-      ?: throw SelectorResolutionException(tagNotFoundMessage(selector))
-  if (requireVisible && !match.visible) {
+  if (tagMatches.isEmpty()) throw SelectorResolutionException(tagNotFoundMessage(selector))
+  
+  val visibleMatches = if (requireVisible) tagMatches.filter { it.visible } else tagMatches
+  if (requireVisible && visibleMatches.isEmpty()) {
     throw SelectorResolutionException(tagNotVisibleMessage(selector))
   }
+
+  val matchesToUse = if (requireVisible) visibleMatches else tagMatches
+
+  val targetIndex = when {
+    selector.index != null && selector.index!! >= 0 -> selector.index!!
+    selector.index != null && selector.index!! < 0 -> matchesToUse.size + selector.index!!
+    else -> 0
+  }
+
+  val targetNode = matchesToUse.getOrNull(targetIndex)
+    ?: throw SelectorResolutionException("Selector ${selector.describe()} index ${selector.index} is out of bounds (found ${matchesToUse.size} matches).")
+
   return ResolvedSelector(
     selector = selector,
     matchType = ResolvedSelector.MatchType.Tag,
-    node = match,
-    allMatches = tagMatches
+    node = targetNode,
+    allMatches = matchesToUse
   )
 }
 

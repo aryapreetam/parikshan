@@ -381,6 +381,7 @@ class E2ETestScope internal constructor(
     }
 
   private fun checkAmbiguity(resolved: ResolvedSelector) {
+    if (resolved.selector.index != null) return
     if (resolved.allMatches.size > 1) {
       throw AssertionError(resolved.selector.ambiguousTextMessage(resolved.allMatches))
     }

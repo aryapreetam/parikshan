@@ -22,7 +22,8 @@ data class NodeSnapshot(
   val tag: String,
   val bounds: Bounds,
   val visible: Boolean,
-  val text: String? = null
+  val text: String? = null,
+  val zOrder: Int = 0
 )
 
 @Serializable

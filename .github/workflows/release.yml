@@ -181,7 +181,8 @@ jobs:
           name: ${{ github.ref_name }}
           files: |
             all-artifacts/sample-app-android-unsigned.apk
-            all-artifacts/sample-app-desktop-*.dmg
+            all-artifacts/sample-app-desktop-x64.dmg
+            all-artifacts/sample-app-desktop-aarch64.dmg
             all-artifacts/sample-app-windows.msi
             all-artifacts/sample-app-wasm.zip
         env:
@@ -276,5 +277,8 @@ jobs:
         with:
           path: site
       - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+Pages
         id: deployment
         uses: actions/deploy-pages@v4

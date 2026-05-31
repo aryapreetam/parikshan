@@ -111,7 +111,14 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew :sample:androidApp:e2eAndroidTest --no-configuration-cache
+          script: ./gradlew :sample:composeApp:e2eAndroidTest -Dparikshan.video.enabled=true --no-configuration-cache
+      - name: Upload Android Videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parikshan-android-videos
+          path: sample/composeApp/build/parikshan/videos/android/
+          if-no-files-found: ignore
 
   e2e-desktop:
     name: E2E Desktop
@@ -127,8 +134,19 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
+      - name: Install Desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgbm1 xvfb
       - name: Run Parikshan Desktop E2E tests
-        run: ./gradlew :sample:composeApp:e2eDesktopTest --no-configuration-cache
+        run: xvfb-run ./gradlew :sample:composeApp:e2eDesktopTest -Dparikshan.video.enabled=true --no-configuration-cache
+      - name: Upload Desktop Videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parikshan-desktop-videos
+          path: sample/composeApp/build/parikshan/videos/desktop/
+          if-no-files-found: ignore
 
   e2e-wasm:
     name: E2E Wasm
@@ -148,10 +166,20 @@ jobs:
           node-version: '20'
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-      - name: Install Playwright Browsers
-        run: npx playwright install --with-deps chromium
+      - name: Install Playwright and dependencies
+        run: |
+          npx playwright install chromium
+          sudo npx playwright install-deps chromium
+          sudo apt-get install -y xvfb
       - name: Run Parikshan Wasm E2E tests
-        run: ./gradlew :sample:composeApp:e2eWasmTest --no-configuration-cache
+        run: xvfb-run ./gradlew :sample:composeApp:e2eWasmTest -Dparikshan.video.enabled=true --no-configuration-cache
+      - name: Upload Wasm Videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parikshan-wasm-videos
+          path: sample/composeApp/build/parikshan/videos/wasm/
+          if-no-files-found: ignore
 
   e2e-ios:
     name: E2E iOS (Simulator)
@@ -165,9 +193,22 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: ${{ env.JAVA_VERSION }}
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml', '**/gradle-wrapper.properties') }}
+          restore-keys: konan-${{ runner.os }}-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
       - name: Run Parikshan iOS E2E tests
         run: |
           # The plugin handles simulator booting and xcodebuild internally
-          ./gradlew :sample:composeApp:e2eIosTest --no-configuration-cache
+          ./gradlew :sample:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache
+      - name: Upload iOS Videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parikshan-ios-videos
+          path: sample/composeApp/build/parikshan/videos/ios/
+          if-no-files-found: ignore

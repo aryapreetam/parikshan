@@ -542,18 +542,20 @@ class ParikshanGradlePlugin : Plugin<Project> {
         val isE2eTask = name in setOf("e2eDesktopTest", "e2eWasmTest", "e2eIosTest", "e2eAndroidTest")
         if (isE2eTask) return@configureEach
 
-        if (this is org.gradle.api.tasks.testing.Test) {
-          filter { e2eTestClasses.forEach { excludeTestsMatching(it) } }
-        } else if (name.endsWith("BrowserTest") || name.endsWith("NodeJsTest")) {
-          // Target Kotlin/JS and Wasm test tasks via duck-typing
-          try {
-            val filterMethod = javaClass.methods.find { it.name == "getFilter" }
-            val filter = filterMethod?.invoke(this)
-            val excludeMethod = filter?.javaClass?.methods?.find {
-              it.name == "excludeTestsMatching" && it.parameterCount == 1
-            }
-            e2eTestClasses.forEach { excludeMethod?.invoke(filter, it) }
-          } catch (_: Exception) { }
+        // Robustly find any task that has a test filter (Test, KotlinJsTest, KotlinNativeTest, etc.)
+        try {
+          val filterMethod = javaClass.methods.find { it.name == "getFilter" }
+          val filter = filterMethod?.invoke(this) ?: return@configureEach
+          
+          val excludeMethod = filter.javaClass.methods.find {
+            it.name == "excludeTestsMatching" && it.parameterCount == 1
+          }
+          
+          if (excludeMethod != null) {
+            e2eTestClasses.forEach { excludeMethod.invoke(filter, it) }
+          }
+        } catch (_: Exception) {
+          // Task doesn't support filtering, skip
         }
       }
     }
@@ -580,9 +582,13 @@ private object ParikshanWasmServer {
                 ex.responseHeaders.add("Content-Type", contentType)
                 ex.sendResponseHeaders(200, file.length())
                 file.inputStream().use { it.copyTo(ex.responseBody) }
-            } else ex.sendResponseHeaders(404, 0)
+            } else {
+                println("[ParikshanWasmServer] 404: ${ex.requestURI.path} (Looked in: ${file.absolutePath})")
+                ex.sendResponseHeaders(404, 0)
+            }
             ex.close()
         }
+
         s.start(); server = s
     }
     fun stop() { server?.stop(0); server = null }
@@ -750,7 +756,7 @@ private object ParikshanDesktopProcess {
       conn.outputStream.use { it.write(json.toByteArray()) }
       conn.responseCode
     }
-    Thread.sleep(500)
+    Thread.sleep(3000)
     process?.let { active ->
       if (active.isAlive) {
         active.destroy()
@@ -1130,6 +1136,7 @@ private fun Test.configureE2eHostTestExecution(
     "parikshan.video.showCursor",
     "parikshan.video.stepDelayMs",
     "parikshan.video.postRollMs",
+    "parikshan.video.strategy",
     "parikshan.video.width",
     "parikshan.video.height",
     "parikshan.wasm.url",

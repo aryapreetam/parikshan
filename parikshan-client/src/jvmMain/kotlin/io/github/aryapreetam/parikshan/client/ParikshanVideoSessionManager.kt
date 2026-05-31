@@ -17,6 +17,7 @@ internal object ParikshanVideoSessionManager {
   private val lock = Mutex()
   @Volatile private var activeClassName: String? = null
   @Volatile private var activeDriver: TestDriver? = null
+  @Volatile private var sessionRecordingStarted = false
   private val shutdownHookInstalled = AtomicBoolean(false)
 
   suspend fun beforeScenario(
@@ -34,8 +35,6 @@ internal object ParikshanVideoSessionManager {
         val target = System.getProperty("parikshan.target")?.lowercase()
 
         // Wasm target manages its own video lifecycle via WasmDriver's shutdown hook.
-        // Sending StopRecording to WasmDriver is a no-op, and running coroutines
-        // or HTTP I/O during JVM shutdown is unreliable — skip entirely.
         if (target == "wasm" || target == "web") {
           return@Thread
         }
@@ -46,6 +45,11 @@ internal object ParikshanVideoSessionManager {
         activeDriver = null
 
         if (clsName == null || drv == null) return@Thread
+
+        // Apply post-roll if enabled
+        if (config.postRollMs > 0) {
+            runCatching { Thread.sleep(config.postRollMs) }
+        }
 
         if (target == "desktop" || target == null || target == "") {
            runCatching {
@@ -72,6 +76,15 @@ internal object ParikshanVideoSessionManager {
 
     lock.withLock {
       activeDriver = driver
+      
+      if (config.strategy == VideoStrategy.SESSION) {
+          if (!sessionRecordingStarted) {
+              sendStart(driver = driver, className = "e2e_session", config = config)
+              sessionRecordingStarted = true
+          }
+          return
+      }
+
       if (activeClassName == className) {
         return
       }

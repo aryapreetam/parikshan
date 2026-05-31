@@ -52,6 +52,11 @@ class DesktopDriver(
     val manifestFile = desktopLaunchManifestFile()
     val properties = manifestFile.loadProperties()
 
+    // Staff+ Video Safety: Finalize any active recording before killing the process
+    runCatching {
+        httpPost(ProtocolJson.encodeCommand(Command.StopRecording(id = "relaunch-stop", sessionName = "relaunch", token = sessionToken)))
+    }
+
     destroyProcessFromManifest(properties)
     val process = launchDesktopProcess(properties)
     properties["pid"] = process.pid().toString()

@@ -6,9 +6,9 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.runComposeUiTest
 import kotlin.test.Test
 
+@OptIn(ExperimentalTestApi::class)
 class SampleUITest {
 
-  @OptIn(ExperimentalTestApi::class, kotlin.js.ExperimentalWasmJsInterop::class)
   @Test
   fun sampleUiTest() = runComposeUiTest {
     setContent { App() }

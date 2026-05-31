@@ -538,9 +538,22 @@ class ParikshanGradlePlugin : Plugin<Project> {
         }
       }
 
-      project.tasks.withType(Test::class.java).configureEach {
-        if (name !in setOf("e2eDesktopTest", "e2eWasmTest", "e2eIosTest", "e2eAndroidTest")) {
+      project.tasks.configureEach {
+        val isE2eTask = name in setOf("e2eDesktopTest", "e2eWasmTest", "e2eIosTest", "e2eAndroidTest")
+        if (isE2eTask) return@configureEach
+
+        if (this is org.gradle.api.tasks.testing.Test) {
           filter { e2eTestClasses.forEach { excludeTestsMatching(it) } }
+        } else if (name.endsWith("BrowserTest") || name.endsWith("NodeJsTest")) {
+          // Target Kotlin/JS and Wasm test tasks via duck-typing
+          try {
+            val filterMethod = javaClass.methods.find { it.name == "getFilter" }
+            val filter = filterMethod?.invoke(this)
+            val excludeMethod = filter?.javaClass?.methods?.find {
+              it.name == "excludeTestsMatching" && it.parameterCount == 1
+            }
+            e2eTestClasses.forEach { excludeMethod?.invoke(filter, it) }
+          } catch (_: Exception) { }
         }
       }
     }

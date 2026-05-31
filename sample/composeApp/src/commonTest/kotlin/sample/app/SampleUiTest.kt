@@ -8,7 +8,7 @@ import kotlin.test.Test
 
 class SampleUITest {
 
-  @OptIn(ExperimentalTestApi::class)
+  @OptIn(ExperimentalTestApi::class, kotlin.js.ExperimentalWasmJsInterop::class)
   @Test
   fun sampleUiTest() = runComposeUiTest {
     setContent { App() }

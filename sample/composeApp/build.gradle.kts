@@ -1,24 +1,23 @@
 @file:OptIn(ExperimentalWasmDsl::class)
-@file:Suppress("DEPRECATION")
 
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
-import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
-import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSetTree
 
 plugins {
   alias(libs.plugins.multiplatform)
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.compose)
-  alias(libs.plugins.android.application)
+  alias(libs.plugins.android.library)
   id("io.github.aryapreetam.parikshan")
-  }
+}
 kotlin {
   jvmToolchain(17)
 
-  androidTarget {
-    @OptIn(ExperimentalKotlinGradlePluginApi::class)
-    instrumentedTestVariant.sourceSetTree.set(KotlinSourceSetTree.test)
+  androidLibrary {
+    namespace = "sample.app.shared"
+    compileSdk = 35
+    minSdk = 26
+    withHostTest {}
   }
   jvm()
   wasmJs {
@@ -62,34 +61,13 @@ kotlin {
   }
 }
 
-android {
-  namespace = "sample.app"
-  compileSdk = 35
-
-  defaultConfig {
-    minSdk = 26
-    targetSdk = 35
-
-    applicationId = "sample.app"
-    versionCode = 1
-    versionName = "1.0.0"
-  }
-
-  packaging {
-    resources {
-      excludes += "META-INF/INDEX.LIST"
-      pickFirsts += "META-INF/io.netty.versions.properties"
-    }
-  }
-}
-
 compose.desktop {
   application {
     mainClass = "MainKt"
 
     nativeDistributions {
       targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-      packageName = "sample"
+      packageName = findProperty("libArtifactId")?.toString()?.let { "sample-$it" } ?: "sample"
       packageVersion = "1.0.0"
     }
   }

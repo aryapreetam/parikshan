@@ -1,8 +1,8 @@
-<h1 align="center">Compose Multiplatform Library Template</h1>
+<h1 align="center">Parikshan - Compose Multiplatform E2E Testing Library</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Compose%20Multiplatform-v1.9.0-4285F4?logo=jetpackcompose" alt="Compose Multiplatform Version">
-  <img src="https://img.shields.io/badge/Kotlin-v2.2.20-blueviolet?logo=kotlin" alt="Kotlin Version">
+  <img src="https://img.shields.io/badge/Compose%20Multiplatform-v1.10.1-4285F4?logo=jetpackcompose" alt="Compose Multiplatform Version">
+  <img src="https://img.shields.io/badge/Kotlin-v2.3.21-blueviolet?logo=kotlin" alt="Kotlin Version">
 </p>
 
 <p align="center">
@@ -241,7 +241,7 @@ This repo ships with an opinionated CI/CD that builds, tests, packages, releases
 ```mermaid
 flowchart TD
     A["Lint"] --> B["Build & Test - Library + Sample (all targets)"]
-    B --> C["Android UI tests (emulator) & Maestro E2E tests(iOS & Android)"]
+    B --> C["Android UI tests (emulator) & Parikshan E2E tests"]
     C --> D["Build artifacts - all targets APK • DMG • iOS Simulator zip • wasm bundle"]
     D --> E["Create GitHub Release and upload artifacts"]
     E --> F["Publish to Maven Central"]
@@ -259,7 +259,7 @@ Key points:
 
 ### Publish to MavenLocal
 
-1) Run `./gradlew :lib:publishToMavenLocal`
+1) Run `./gradlew :parikshan:publishToMavenLocal`
 2) Open `~/.m2/repository/parikshan/`
 
 ### Publish to MavenCentral
@@ -285,7 +285,7 @@ But if you want to verify publishing from your local machine, you can follow bel
    # this will copy it for pasting in github actions secrets.
    gpg --export-secret-keys --armor <key id> | pbcopy
    ```
-2) Run `./gradlew :lib:publishAndReleaseToMavenCentral --no-configuration-cache`
+2) Run `./gradlew :parikshan:publishAndReleaseToMavenCentral --no-configuration-cache`
    
 Now check the deployments here https://central.sonatype.com/publishing/deployments 
 

@@ -12,13 +12,14 @@ parikshan/
 │   ├── ci.yml             # Reusable CI (lint, tests, build)
 │   ├── push-ci.yml        # Runs on every push/PR
 │   └── release.yml        # Runs on version tags (v*)
-├── lib/                   # The actual library code
+├── parikshan/             # The actual library code
 │   ├── src/
 │   │   ├── commonMain/    # Shared Kotlin code
 │   │   └── commonTest/    # Shared tests
 │   └── build.gradle.kts   # Library build config + publishing
 ├── sample/                # Sample app demonstrating library usage
-│   ├── composeApp/        # Multiplatform sample app
+│   ├── composeApp/        # Multiplatform sample app (library module)
+│   ├── androidApp/        # Standard Android executable launcher
 │   └── iosApp/            # iOS wrapper for Compose app
 ├── docs/                  # Documentation
 ├── readme_images/         # Images used in README
@@ -55,10 +56,10 @@ parikshan/
    ./gradlew test
    
    # Platform-specific tests
-   ./gradlew :lib:jvmTest
-   ./gradlew :lib:iosSimulatorArm64Test
-   ./gradlew :lib:wasmJsBrowserTest
-   ./gradlew :lib:testDebugUnitTest  # Android unit tests
+   ./gradlew :parikshan:jvmTest
+   ./gradlew :parikshan:iosSimulatorArm64Test
+   ./gradlew :parikshan:wasmJsBrowserTest
+   ./gradlew :parikshan-client:testAndroid  # Android unit tests
    ```
 
 ---
@@ -67,20 +68,20 @@ parikshan/
 
 ### Working on the Library
 
-1. Make changes in `lib/src/commonMain/kotlin/`
-2. Write tests in `lib/src/commonTest/kotlin/`
-3. Run tests: `./gradlew :lib:test`
+1. Make changes in `parikshan/src/commonMain/kotlin/`
+2. Write tests in `parikshan/src/commonTest/kotlin/`
+3. Run tests: `./gradlew :parikshan:test`
 4. Check code style: `./gradlew lintRelease`
 
 ### Testing Changes in Sample App
 
-1. Make changes in `lib/`
-2. The sample app automatically uses the local library via `implementation(project(":lib"))`
+1. Make changes in `parikshan/`
+2. The sample app automatically resolves the local library project via dependency injection
 3. Run the sample app on your target platform:
 
    **Android:**
    ```bash
-   ./gradlew :sample:composeApp:assembleDebug
+   ./gradlew :sample:androidApp:assembleDebug
    # Or open in Android Studio and run
    ```
 
@@ -106,7 +107,7 @@ parikshan/
 Test your library locally before publishing to Maven Central:
 
 ```bash
-./gradlew :lib:publishToMavenLocal
+./gradlew :parikshan:publishToMavenLocal
 ```
 
 Then in another project, add:
@@ -117,7 +118,7 @@ repositories {
 }
 
 dependencies {
-    implementation("io.github.aryapreetam:parikshan:0.0.3")
+    implementation("io.github.aryapreetam:parikshan:0.0.1")
 }
 ```
 
@@ -171,22 +172,22 @@ dependencies {
 
 ### Release Process
 
-1. **Update version in `lib/build.gradle.kts`**
-   ```kotlin
-   coordinates("io.github.aryapreetam", "parikshan", "0.0.4") // Bump this
+1. **Update version in `gradle.properties`**
+   ```properties
+   libVersion=0.0.1 // Bump this
    ```
 
 2. **Commit and push**
    ```bash
    git add .
-   git commit -m "Release v0.0.4"
+   git commit -m "Release v0.0.1"
    git push
    ```
 
 3. **Create and push tag**
    ```bash
-   git tag v0.0.4
-   git push origin v0.0.4
+   git tag v0.0.1
+   git push origin v0.0.1
    ```
 
 4. **Monitor GitHub Actions**
@@ -210,17 +211,17 @@ dependencies {
 ./gradlew test
 
 # Specific platforms
-./gradlew :lib:jvmTest
-./gradlew :lib:iosSimulatorArm64Test
-./gradlew :lib:wasmJsBrowserTest
-./gradlew :lib:testDebugUnitTest  # Android
+./gradlew :parikshan:jvmTest
+./gradlew :parikshan:iosSimulatorArm64Test
+./gradlew :parikshan:wasmJsBrowserTest
+./gradlew :parikshan-client:testAndroid  # Android
 ```
 
 ### UI Tests
 
 ```bash
 # Android (requires emulator)
-./gradlew :sample:composeApp:connectedAndroidTest
+./gradlew :sample:androidApp:connectedAndroidTest
 ```
 
 ### Lint
@@ -235,7 +236,7 @@ dependencies {
 
 ### Adding a New Platform (e.g., tvOS)
 
-1. **Add target in `lib/build.gradle.kts`**
+1. **Add target in `parikshan/build.gradle.kts`**
    ```kotlin
    kotlin {
      // ...existing targets...
@@ -259,7 +260,7 @@ dependencies {
 
 4. **Test locally**
    ```bash
-   ./gradlew :lib:tvosSimulatorArm64Test
+   ./gradlew :parikshan:tvosSimulatorArm64Test
    ```
 
 ---
@@ -272,9 +273,7 @@ API documentation is generated automatically via Dokka:
 
 ```bash
 # Generate locally
-./gradlew :lib:dokkaGeneratePublicationHtml
-
-# View at: lib/build/dokka/html/index.html
+./gradlew :parikshan:dokkaGeneratePublicationHtmlCustom
 ```
 
 On release, docs are automatically published to: `https://yourusername.github.io/repo-name/api/`
@@ -289,7 +288,7 @@ Edit `README.MD` - it's automatically converted to the homepage via Docsify.
 
 ### Common Issues
 
-**Issue: "Task :lib:signKotlinMultiplatformPublication not found"**
+**Issue: "Task :parikshan:signKotlinMultiplatformPublication not found"**
 - Ensure GPG key is properly configured
 - Check `signing.keyId` is set (local) or `signingInMemoryKey` (CI)
 
@@ -349,4 +348,3 @@ Edit `README.MD` - it's automatically converted to the homepage via Docsify.
 ## 📄 License
 
 By contributing, you agree that your contributions will be licensed under the MIT License.
-

@@ -14,8 +14,8 @@ plugins {
 apply(from = "gradle/check-template-setup.gradle.kts")
 
 allprojects {
-  group = findProperty("parikshanGroup") ?: "io.github.aryapreetam"
-  version = findProperty("parikshanVersion") ?: "0.0.1"
+  group = findProperty("libGroup") ?: "io.github.aryapreetam"
+  version = findProperty("libVersion") ?: "0.0.1"
 
   plugins.withId("maven-publish") {
     tasks.named("publishToMavenLocal") {

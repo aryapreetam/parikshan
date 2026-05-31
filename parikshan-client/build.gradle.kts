@@ -1,9 +1,8 @@
 @file:OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
-@file:Suppress("DEPRECATION")
 
 plugins {
   alias(libs.plugins.multiplatform)
-  alias(libs.plugins.android.library.legacy)
+  alias(libs.plugins.android.library)
   alias(libs.plugins.serialization)
   alias(libs.plugins.compose)
   alias(libs.plugins.compose.compiler)
@@ -12,7 +11,12 @@ plugins {
 
 kotlin {
   jvmToolchain(17)
-  androidTarget()
+  androidLibrary {
+    namespace = "io.github.aryapreetam.parikshan.client"
+    compileSdk = 35
+    minSdk = 24
+    withHostTest {}
+  }
   jvm()
   wasmJs {
     browser()
@@ -43,20 +47,11 @@ kotlin {
     }
 
     androidMain.dependencies {
-      implementation("androidx.compose.ui:ui-test-junit4-android:1.9.0")
-      implementation("androidx.test.espresso:espresso-core:3.6.1")
-      implementation("androidx.test.uiautomator:uiautomator:2.3.0")
-      implementation("androidx.test:runner:1.6.2")
+      implementation(libs.androidx.compose.ui.test.junit4.android)
+      implementation(libs.androidx.espresso.core)
+      implementation(libs.androidx.uiautomator)
+      implementation(libs.androidx.test.runner)
     }
-  }
-}
-
-android {
-  namespace = "io.github.aryapreetam.parikshan.client"
-  compileSdk = 35
-
-  defaultConfig {
-    minSdk = 24
   }
 }
 

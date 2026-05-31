@@ -8,7 +8,7 @@ on:
       - 'v*'
     paths:
       # Run CI only when these files/directories change
-      - 'lib/**'
+      - 'parikshan/**'
       - 'sample/**'
       - 'parikshan-core/**'
       - 'parikshan-client/**'
@@ -20,11 +20,10 @@ on:
       - 'build.gradle.kts'
       - '.github/workflows/ci.yml'
       - '.github/workflows/push-ci.yml'
-      - 'maestro-e2e/**'
   pull_request:
     paths:
       # Same path filters for PRs
-      - 'lib/**'
+      - 'parikshan/**'
       - 'sample/**'
       - 'parikshan-core/**'
       - 'parikshan-client/**'
@@ -36,7 +35,6 @@ on:
       - 'build.gradle.kts'
       - '.github/workflows/ci.yml'
       - '.github/workflows/push-ci.yml'
-      - 'maestro-e2e/**'
 
 permissions:
   contents: read

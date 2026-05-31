@@ -496,7 +496,11 @@ class ParikshanGradlePlugin : Plugin<Project> {
 
       val startAndroidAppTask = project.tasks.register("startParikshanAndroidApp") {
         group = "verification"
-        dependsOn(androidPreflightTask, "installDebug", "installDebugAndroidTest")
+        val appProject = project.findAndroidAppProject() ?: project
+        val installTask = if (appProject == project) "installDebug" else "${appProject.path}:installDebug"
+        val testInstallTask = if (appProject == project) "installDebugAndroidTest" else "${appProject.path}:installDebugAndroidTest"
+
+        dependsOn(androidPreflightTask, installTask, testInstallTask)
         doLast {
           val serial = ParikshanAndroidRecorder.resolveDeviceSerial(androidLogger, androidProjectDir, androidSerial)
           ProcessBuilder("adb", "-s", serial, "forward", "tcp:9879", "tcp:9879").start().waitFor()
@@ -670,9 +674,14 @@ private object ParikshanAndroidRecorder {
     )
   }
   fun resolveAndroidApplicationId(project: Project): String? {
-    val android = project.extensions.findByName("android") ?: return null
-    val defaultConfig = android.javaClass.methods.firstOrNull { it.name == "getDefaultConfig" }?.invoke(android) ?: return null
-    return defaultConfig.javaClass.methods.firstOrNull { it.name == "getApplicationId" }?.invoke(defaultConfig) as? String
+    val appProject = project.findAndroidAppProject() ?: return null
+    val android = appProject.extensions.findByName("android") ?: return null
+    return try {
+      val defaultConfig = android.javaClass.methods.firstOrNull { it.name == "getDefaultConfig" }?.invoke(android)
+      defaultConfig?.javaClass?.methods?.firstOrNull { it.name == "getApplicationId" }?.invoke(defaultConfig) as? String
+    } catch (e: Exception) {
+      null
+    }
   }
 }
 
@@ -804,7 +813,7 @@ private fun Project.configureParikshanDependencies(isE2EActive: Boolean) {
   val pluginVersion = ParikshanGradlePlugin::class.java.`package`.implementationVersion ?: "0.0.1"
 
   // Test DSL is always available in commonTest
-  addParikshanDependency("commonTestImplementation", ":lib", "io.github.aryapreetam:parikshan:$pluginVersion")
+  addParikshanDependency("commonTestImplementation", ":parikshan", "io.github.aryapreetam:parikshan:$pluginVersion")
   addParikshanDependency("commonTestImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client:$pluginVersion")
 
   // The client engine is only injected into the production binary during active E2E tasks.
@@ -892,6 +901,11 @@ private fun Project.resolveWasmDistributionTaskName(override: String?): String {
       }
   } catch (_: Exception) { }
   return "wasmJsBrowserDevelopmentWebpack"
+}
+
+private fun Project.findAndroidAppProject(): Project? {
+    if (pluginManager.hasPlugin("com.android.application")) return this
+    return rootProject.subprojects.find { it.pluginManager.hasPlugin("com.android.application") }
 }
 
 private fun Project.discoverE2eTestClasses(): List<String> {

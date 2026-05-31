@@ -27,7 +27,8 @@ if [ -f "$CONFIG_FILE" ]; then
   echo "Current configuration:"
   cat "$CONFIG_FILE"
   echo ""
-  read -p "Do you want to reconfigure? (y/n): " RECONFIGURE
+  read -p "Do you want to reconfigure? (y/n) [y]: " RECONFIGURE
+  RECONFIGURE=${RECONFIGURE:-y}
   if [ "$RECONFIGURE" != "y" ] && [ "$RECONFIGURE" != "Y" ]; then
     echo -e "${GREEN}Setup cancelled. No changes made.${NC}"
     exit 0
@@ -128,7 +129,8 @@ echo "Package path:         $PACKAGE_PATH"
 echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
 echo ""
 
-read -p "Proceed with this configuration? (y/n): " CONFIRM
+read -p "Proceed with this configuration? (y/n) [y]: " CONFIRM
+CONFIRM=${CONFIRM:-y}
 if [ "$CONFIRM" != "y" ] && [ "$CONFIRM" != "Y" ]; then
   echo -e "${RED}Setup cancelled.${NC}"
   exit 1
@@ -173,17 +175,17 @@ echo -e "${GREEN}✓${NC} Updating settings.gradle.kts..."
 sed -i.bak "s/rootProject.name = \"$OLD_REPO\"/rootProject.name = \"$REPO_NAME\"/" settings.gradle.kts
 rm -f settings.gradle.kts.bak
 
-# Replace in lib/build.gradle.kts
-echo -e "${GREEN}✓${NC} Updating lib/build.gradle.kts..."
-sed -i.bak "s|namespace = \"$OLD_NAMESPACE\"|namespace = \"$GROUP_ID.$PACKAGE_NAME\"|" lib/build.gradle.kts
-sed -i.bak "s|coordinates(\"$OLD_GROUP\", \"$OLD_ARTIFACT\", \"$OLD_VERSION\"|coordinates(\"$GROUP_ID\", \"$ARTIFACT_NAME\", \"$VERSION\"|" lib/build.gradle.kts
-sed -i.bak "s|name = \"$OLD_LIB_NAME\"|name = \"$LIBRARY_NAME\"|" lib/build.gradle.kts
-sed -i.bak "s|description = \"$OLD_DESCRIPTION\"|description = \"$LIBRARY_DESCRIPTION\"|" lib/build.gradle.kts
-sed -i.bak "s|url = \"https://$OLD_ORG.github.io/$OLD_REPO\"|url = \"https://$GITHUB_ORG.github.io/$REPO_NAME\"|" lib/build.gradle.kts
-sed -i.bak "s|id = \"$OLD_ORG\"|id = \"$GITHUB_ORG\"|" lib/build.gradle.kts
-sed -i.bak "s|name = \"$OLD_DEVELOPER\"|name = \"$DEVELOPER_NAME\"|" lib/build.gradle.kts
-sed -i.bak "s|url = \"https://github.com/$OLD_ORG/$OLD_REPO\"|url = \"https://github.com/$GITHUB_ORG/$REPO_NAME\"|" lib/build.gradle.kts
-rm -f lib/build.gradle.kts.bak
+# Replace in parikshan/build.gradle.kts
+echo -e "${GREEN}✓${NC} Updating parikshan/build.gradle.kts..."
+sed -i.bak "s|namespace = \"$OLD_NAMESPACE\"|namespace = \"$GROUP_ID.$PACKAGE_NAME\"|" parikshan/build.gradle.kts
+sed -i.bak "s|coordinates(\"$OLD_GROUP\", \"$OLD_ARTIFACT\", \"$OLD_VERSION\"|coordinates(\"$GROUP_ID\", \"$ARTIFACT_NAME\", \"$VERSION\"|" parikshan/build.gradle.kts
+sed -i.bak "s|name = \"$OLD_LIB_NAME\"|name = \"$LIBRARY_NAME\"|" parikshan/build.gradle.kts
+sed -i.bak "s|description = \"$OLD_DESCRIPTION\"|description = \"$LIBRARY_DESCRIPTION\"|" parikshan/build.gradle.kts
+sed -i.bak "s|url = \"https://$OLD_ORG.github.io/$OLD_REPO\"|url = \"https://$GITHUB_ORG.github.io/$REPO_NAME\"|" parikshan/build.gradle.kts
+sed -i.bak "s|id = \"$OLD_ORG\"|id = \"$GITHUB_ORG\"|" parikshan/build.gradle.kts
+sed -i.bak "s|name = \"$OLD_DEVELOPER\"|name = \"$DEVELOPER_NAME\"|" parikshan/build.gradle.kts
+sed -i.bak "s|url = \"https://github.com/$OLD_ORG/$OLD_REPO\"|url = \"https://github.com/$GITHUB_ORG/$REPO_NAME\"|" parikshan/build.gradle.kts
+rm -f parikshan/build.gradle.kts.bak
 
 # Replace in CONTRIBUTING.md
 echo -e "${GREEN}✓${NC} Updating CONTRIBUTING.md..."
@@ -219,12 +221,12 @@ sed -i.bak "s|<title>Compose Multiplatform Library Template</title>|<title>$REPO
 rm -f .github/workflows/release.yml.bak
 
 # Create new package directory structure
-echo -e "${GREEN}✓${NC} Creating package structure: lib/src/commonMain/kotlin/$PACKAGE_PATH"
-mkdir -p "lib/src/commonMain/kotlin/$PACKAGE_PATH"
-mkdir -p "lib/src/commonTest/kotlin/$PACKAGE_PATH"
+echo -e "${GREEN}✓${NC} Creating package structure: parikshan/src/commonMain/kotlin/$PACKAGE_PATH"
+mkdir -p "parikshan/src/commonMain/kotlin/$PACKAGE_PATH"
+mkdir -p "parikshan/src/commonTest/kotlin/$PACKAGE_PATH"
 
 # Create README in new package directory
-cat > "lib/src/commonMain/kotlin/$PACKAGE_PATH/README.md" << EOF
+cat > "parikshan/src/commonMain/kotlin/$PACKAGE_PATH/README.md" << EOF
 # Your Library Code Goes Here
 
 This is your library's main package: \`$GROUP_ID.$PACKAGE_NAME\`
@@ -236,7 +238,7 @@ Add your library code in this directory. The example \`fiblib\` package is kept 
 ## Package Structure
 
 \`\`\`
-lib/src/
+parikshan/src/
 ├── commonMain/kotlin/
 │   ├── $PACKAGE_PATH/          # Your library code (THIS DIRECTORY)
 │   └── fiblib/                  # Example code (can be deleted)
@@ -250,7 +252,7 @@ lib/src/
 1. Add your library code here
 2. Update the sample app to use your library
 3. Delete the \`fiblib\` example when ready
-4. Write tests in \`lib/src/commonTest/kotlin/$PACKAGE_PATH/\`
+4. Write tests in \`parikshan/src/commonTest/kotlin/$PACKAGE_PATH/\`
 EOF
 
 echo -e "${GREEN}✓${NC} Created package structure with README"
@@ -263,7 +265,7 @@ echo ""
 echo -e "${BLUE}What's next?${NC}"
 echo ""
 echo "1. Your new package is ready at:"
-echo -e "   ${YELLOW}lib/src/commonMain/kotlin/$PACKAGE_PATH/${NC}"
+echo -e "   ${YELLOW}parikshan/src/commonMain/kotlin/$PACKAGE_PATH/${NC}"
 echo ""
 echo "2. The example 'fiblib' code is still available for reference"
 echo "   You can delete it when you're ready"

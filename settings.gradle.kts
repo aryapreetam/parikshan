@@ -1,4 +1,4 @@
-rootProject.name = "parikshan"
+rootProject.name = "parikshan-root"
 
 pluginManagement {
   includeBuild("parikshan-gradle-plugin")
@@ -35,9 +35,10 @@ plugins {
   id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
-include(":lib")
+include(":parikshan")
 include(":parikshan-core")
 include(":parikshan-server")
 include(":parikshan-client")
 // include(":parikshan-gradle-plugin") // Now an included build
 include(":sample:composeApp")
+include(":sample:androidApp")

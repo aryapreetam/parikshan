@@ -38,7 +38,11 @@ dependencies {
 
 mavenPublishing {
   publishToMavenCentral()
-  coordinates(project.group.toString(), "parikshan", project.version.toString())
+  coordinates(
+    findProperty("libGroup")?.toString() ?: project.group.toString(),
+    findProperty("libArtifactId")?.toString() ?: "parikshan",
+    findProperty("libVersion")?.toString() ?: project.version.toString()
+  )
 
   pom {
     name = "Parikshan - Compose Multiplatform E2E Testing"

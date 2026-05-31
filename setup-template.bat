@@ -19,7 +19,8 @@ if exist "%CONFIG_FILE%" (
     echo Current configuration:
     type "%CONFIG_FILE%"
     echo.
-    set /p RECONFIGURE="Do you want to reconfigure? (y/n): "
+    set /p RECONFIGURE="Do you want to reconfigure? (y/n) [y]: "
+    if "!RECONFIGURE!"=="" set RECONFIGURE=y
     if /i not "!RECONFIGURE!"=="y" (
         echo Setup cancelled. No changes made.
         exit /b 0
@@ -129,7 +130,8 @@ echo Package path:         !PACKAGE_PATH!
 echo ============================================================
 echo.
 
-set /p CONFIRM="Proceed with this configuration? (y/n): "
+set /p CONFIRM="Proceed with this configuration? (y/n) [y]: "
+if "!CONFIRM!"=="" set CONFIRM=y
 if /i not "!CONFIRM!"=="y" (
     echo Setup cancelled.
     exit /b 1
@@ -173,9 +175,9 @@ REM Replace in settings.gradle.kts
 echo [OK] Updating settings.gradle.kts...
 powershell -Command "(Get-Content 'settings.gradle.kts') -replace 'rootProject.name = \"%OLD_REPO%\"', 'rootProject.name = \"!REPO_NAME!\"' | Set-Content 'settings.gradle.kts'"
 
-REM Replace in lib/build.gradle.kts
-echo [OK] Updating lib/build.gradle.kts...
-powershell -Command "$content = Get-Content 'lib/build.gradle.kts' -Raw; $content = $content -replace 'namespace = \"%OLD_NAMESPACE%\"', 'namespace = \"!GROUP_ID!.!PACKAGE_NAME!\"'; $content = $content -replace 'coordinates\(\"%OLD_GROUP%\", \"%OLD_ARTIFACT%\", \"%OLD_VERSION%\"', 'coordinates(\"!GROUP_ID!\", \"!ARTIFACT_NAME!\", \"!VERSION!\"'; $content = $content -replace 'name = \"%OLD_LIB_NAME%\"', 'name = \"!LIBRARY_NAME!\"'; $content = $content -replace 'description = \"%OLD_DESCRIPTION%\"', 'description = \"!LIBRARY_DESCRIPTION!\"'; $content = $content -replace 'url = \"https://%OLD_ORG%.github.io/%OLD_REPO%\"', 'url = \"https://!GITHUB_ORG!.github.io/!REPO_NAME!\"'; $content = $content -replace 'id = \"%OLD_ORG%\"', 'id = \"!GITHUB_ORG!\"'; $content = $content -replace 'name = \"%OLD_DEVELOPER%\"', 'name = \"!DEVELOPER_NAME!\"'; $content = $content -replace 'url = \"https://github.com/%OLD_ORG%/%OLD_REPO%\"', 'url = \"https://github.com/!GITHUB_ORG!/!REPO_NAME!\"'; Set-Content 'lib/build.gradle.kts' $content"
+REM Replace in parikshan/build.gradle.kts
+echo [OK] Updating parikshan/build.gradle.kts...
+powershell -Command "$content = Get-Content 'parikshan/build.gradle.kts' -Raw; $content = $content -replace 'namespace = \"%OLD_NAMESPACE%\"', 'namespace = \"!GROUP_ID!.!PACKAGE_NAME!\"'; $content = $content -replace 'coordinates\(\"%OLD_GROUP%\", \"%OLD_ARTIFACT%\", \"%OLD_VERSION%\"', 'coordinates(\"!GROUP_ID!\", \"!ARTIFACT_NAME!\", \"!VERSION!\"'; $content = $content -replace 'name = \"%OLD_LIB_NAME%\"', 'name = \"!LIBRARY_NAME!\"'; $content = $content -replace 'description = \"%OLD_DESCRIPTION%\"', 'description = \"!LIBRARY_DESCRIPTION!\"'; $content = $content -replace 'url = \"https://%OLD_ORG%.github.io/%OLD_REPO%\"', 'url = \"https://!GITHUB_ORG!.github.io/!REPO_NAME!\"'; $content = $content -replace 'id = \"%OLD_ORG%\"', 'id = \"!GITHUB_ORG!\"'; $content = $content -replace 'name = \"%OLD_DEVELOPER%\"', 'name = \"!DEVELOPER_NAME!\"'; $content = $content -replace 'url = \"https://github.com/%OLD_ORG%/%OLD_REPO%\"', 'url = \"https://github.com/!GITHUB_ORG!/!REPO_NAME!\"'; Set-Content 'parikshan/build.gradle.kts' $content"
 
 REM Replace in CONTRIBUTING.md
 echo [OK] Updating CONTRIBUTING.md...
@@ -198,9 +200,9 @@ echo [OK] Updating .github/workflows/release.yml...
 powershell -Command "(Get-Content '.github/workflows/release.yml') -replace 'name: ''%OLD_REPO%''', 'name: ''!REPO_NAME!''' -replace 'repo: ''https://github.com/%OLD_ORG%/%OLD_REPO%''', 'repo: ''https://github.com/!GITHUB_ORG!/!REPO_NAME!''' -replace '<title>Compose Multiplatform Library Template</title>', '<title>!REPO_NAME!</title>' | Set-Content '.github/workflows/release.yml'"
 
 REM Create new package directory structure
-echo [OK] Creating package structure: lib/src/commonMain/kotlin/!PACKAGE_PATH!
-mkdir "lib\src\commonMain\kotlin\!PACKAGE_PATH!" 2>nul
-mkdir "lib\src\commonTest\kotlin\!PACKAGE_PATH!" 2>nul
+echo [OK] Creating package structure: parikshan/src/commonMain/kotlin/!PACKAGE_PATH!
+mkdir "parikshan\src\commonMain\kotlin\!PACKAGE_PATH!" 2>nul
+mkdir "parikshan\src\commonTest\kotlin\!PACKAGE_PATH!" 2>nul
 
 REM Create README in new package directory
 (
@@ -215,7 +217,7 @@ echo.
 echo ## Package Structure
 echo.
 echo ```
-echo lib/src/
+echo parikshan/src/
 echo ├── commonMain/kotlin/
 echo │   ├── !PACKAGE_PATH!/          # Your library code ^(THIS DIRECTORY^)
 echo │   └── fiblib/                  # Example code ^(can be deleted^)
@@ -229,8 +231,8 @@ echo.
 echo 1. Add your library code here
 echo 2. Update the sample app to use your library
 echo 3. Delete the `fiblib` example when ready
-echo 4. Write tests in `lib/src/commonTest/kotlin/!PACKAGE_PATH!/`
-) > "lib\src\commonMain\kotlin\!PACKAGE_PATH!\README.md"
+echo 4. Write tests in `parikshan/src/commonTest/kotlin/!PACKAGE_PATH!/`
+) > "parikshan\src\commonMain\kotlin\!PACKAGE_PATH!\README.md"
 
 echo [OK] Created package structure with README
 
@@ -242,7 +244,7 @@ echo.
 echo What's next?
 echo.
 echo 1. Your new package is ready at:
-echo    lib/src/commonMain/kotlin/!PACKAGE_PATH!/
+echo    parikshan/src/commonMain/kotlin/!PACKAGE_PATH!/
 echo.
 echo 2. The example 'fiblib' code is still available for reference
 echo    You can delete it when you're ready

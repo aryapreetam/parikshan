@@ -87,7 +87,7 @@ jobs:
       - name: Build APK and wasm
         if: steps.check-apk.outputs.exists == 'false'
         run: |
-          ./gradlew :sample:composeApp:assembleRelease
+          ./gradlew :sample:androidApp:assembleRelease
           ./gradlew :sample:composeApp:wasmJsBrowserDistribution
       - name: Build wasm only (APK reused)
         if: steps.check-apk.outputs.exists == 'true'
@@ -102,7 +102,7 @@ jobs:
             cp "${{ github.workspace }}/ci-artifacts/sample-app-android-unsigned.apk" "$GITHUB_WORKSPACE/release-upload/sample-app-android-unsigned.apk"
           else
             echo "Using freshly built APK"
-            APK_SRC=$(find sample/composeApp/build/outputs/apk -type f -name '*-release-*.apk' | head -n1)
+            APK_SRC=$(find sample/androidApp/build/outputs/apk -type f -name '*-release-*.apk' | head -n1)
             if [ -n "$APK_SRC" ]; then
               cp "$APK_SRC" "$GITHUB_WORKSPACE/release-upload/sample-app-android-unsigned.apk"
             fi
@@ -366,7 +366,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
       - name: Publish to MavenCentral
-        run: ./gradlew :lib:publishAndReleaseToMavenCentral --no-configuration-cache
+        run: ./gradlew :parikshan:publishAndReleaseToMavenCentral --no-configuration-cache
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
@@ -482,15 +482,15 @@ jobs:
 
       # API docs (Dokka) into site/api
       - name: Generate API Docs (Dokka)
-        run: ./gradlew :lib:dokkaGeneratePublicationHtml --stacktrace --warning-mode=all
+        run: ./gradlew :parikshan:dokkaGeneratePublicationHtml --stacktrace --warning-mode=all
       - name: Prepare API Docs Folder
         run: |
           mkdir -p site/api
-          if [ -d lib/build/dokka/html ]; then
-            cp -r lib/build/dokka/html/* site/api/
+          if [ -d parikshan/build/dokka/html ]; then
+            cp -r parikshan/build/dokka/html/* site/api/
           else
             # Fallback: copy whatever dokka produced
-            cp -r lib/build/dokka/* site/api/
+            cp -r parikshan/build/dokka/* site/api/
           fi
       # Configure and deploy GitHub Pages (no gh-pages branch needed)
       - name: Configure Pages

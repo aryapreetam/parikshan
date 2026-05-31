@@ -34,8 +34,8 @@ jobs:
       - name: Check code style (lint)
         run: ./gradlew lintRelease
 
-  lib-tests:
-    name: Library+Sample tests (${{ matrix.target }})
+  unit-tests:
+    name: Unit Tests (${{ matrix.target }})
     needs: [ lint ]
     strategy:
       fail-fast: true
@@ -47,23 +47,18 @@ jobs:
             os: macos-latest
           - target: wasm
             os: ubuntu-latest
+          - target: android
+            os: ubuntu-latest
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - name: Cache Gradle Wrapper
         uses: actions/cache@v4
         with:
           path: ~/.gradle/wrapper/dists
           key: gradle-wrapper-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: gradle-wrapper-${{ runner.os }}-
-      - name: Setup Node.js (for wasm)
-        if: matrix.target == 'wasm'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
@@ -71,264 +66,32 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-      - name: Check for preinstalled Chrome/Chromium
-        if: matrix.target == 'wasm'
-        id: chromecheck
-        run: |
-          if command -v google-chrome >/dev/null 2>&1; then
-            echo "found=true" >> $GITHUB_OUTPUT
-            echo "path=$(command -v google-chrome)" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          if command -v chromium-browser >/dev/null 2>&1; then
-            echo "found=true" >> $GITHUB_OUTPUT
-            echo "path=$(command -v chromium-browser)" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          if command -v chromium >/dev/null 2>&1; then
-            echo "found=true" >> $GITHUB_OUTPUT
-            echo "path=$(command -v chromium)" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          echo "found=false" >> $GITHUB_OUTPUT
-      - name: Setup Chrome for wasm tests
-        if: matrix.target == 'wasm' && steps.chromecheck.outputs.found == 'false'
-        uses: browser-actions/setup-chrome@v1
-        with:
-          chrome-version: stable
-      - name: Export CHROME_BIN for wasm tests
-        if: matrix.target == 'wasm'
-        run: |
-          if [ "${{ steps.chromecheck.outputs.found }}" = "true" ]; then
-            echo "CHROME_BIN=${{ steps.chromecheck.outputs.path }}" >> $GITHUB_ENV
-          elif [ -n "$CHROME_PATH" ]; then
-            echo "CHROME_BIN=$CHROME_PATH" >> $GITHUB_ENV
-          fi
-      - name: Cache Kotlin/Native (~/.konan)
-        if: matrix.target == 'ios'
-        uses: actions/cache@v4
-        with:
-          path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml', '**/gradle-wrapper.properties') }}
-          restore-keys: konan-${{ runner.os }}-
-      - name: Cache Kotlin JS Store
-        if: matrix.target == 'wasm'
-        uses: actions/cache@v4
-        with:
-          path: kotlin-js-store
-          key: kjs-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml', '**/gradle-wrapper.properties') }}
-          restore-keys: kjs-${{ runner.os }}-
-      - name: Grant Gradlew execute permission
-        run: chmod +x gradlew
-      - name: Run library + sample target tests
+      - name: Run unit tests
         shell: bash
         run: |
           set -e
           case "${{ matrix.target }}" in
             jvm)
-              ./gradlew :parikshan:jvmTest :sample:composeApp:jvmTest
+              ./gradlew :parikshan-server:test :parikshan-core:jvmTest :parikshan-client:jvmTest :sample:composeApp:jvmTest
               ;;
             ios)
-              ./gradlew :parikshan:iosSimulatorArm64Test :sample:composeApp:iosSimulatorArm64Test
+              ./gradlew :parikshan-core:iosSimulatorArm64Test :parikshan-client:iosSimulatorArm64Test :sample:composeApp:iosSimulatorArm64Test
               ;;
             wasm)
-              ./gradlew :parikshan:wasmJsBrowserTest :sample:composeApp:wasmJsBrowserTest
+              ./gradlew :parikshan-core:wasmJsBrowserTest :parikshan-client:wasmJsBrowserTest :sample:composeApp:wasmJsBrowserTest
+              ;;
+            android)
+              ./gradlew :parikshan-client:testAndroid :sample:androidApp:testDebugUnitTest
               ;;
           esac
 
-  test-android-unit:
-    name: Android unit tests (lib + sample)
+  e2e-android:
+    name: E2E Android (emulator)
     runs-on: ubuntu-latest
-    needs: [ lint ]
+    needs: [ unit-tests ]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Cache Gradle Wrapper
-        uses: actions/cache@v4
-        with:
-          path: ~/.gradle/wrapper/dists
-          key: gradle-wrapper-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: gradle-wrapper-${{ runner.os }}-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: ${{ env.JAVA_VERSION }}
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-      - name: Run Android unit tests
-        run: ./gradlew :parikshan-client:testAndroid :sample:androidApp:testDebugUnitTest
-
-  build-android-apk:
-    name: Build Android APK for E2E
-    runs-on: ubuntu-latest
-    needs: [ lib-tests, test-android-unit ]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Cache Gradle Wrapper
-        uses: actions/cache@v4
-        with:
-          path: ~/.gradle/wrapper/dists
-          key: gradle-wrapper-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: gradle-wrapper-${{ runner.os }}-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: ${{ env.JAVA_VERSION }}
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-      - name: Build debug APK
-        run: ./gradlew :sample:androidApp:assembleDebug
-      - name: Prepare APK artifact
-        run: |
-          mkdir -p ${{ github.workspace }}/e2e-artifacts
-          APK_SRC=$(find sample/androidApp/build/outputs/apk -type f -name '*.apk' | head -n1)
-          if [ -n "$APK_SRC" ]; then
-            cp "$APK_SRC" "${{ github.workspace }}/e2e-artifacts/sample-app-android-unsigned.apk"
-            echo "APK prepared: sample-app-android-unsigned.apk"
-          else
-            echo "Error: No APK found!"
-            exit 1
-          fi
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-apk
-          path: ${{ github.workspace }}/e2e-artifacts/sample-app-android-unsigned.apk
-          retention-days: 7
-
-  build-ios-app:
-    name: Build iOS app for E2E
-    runs-on: macos-latest
-    needs: [ lib-tests ]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Cache Gradle Wrapper
-        uses: actions/cache@v4
-        with:
-          path: ~/.gradle/wrapper/dists
-          key: gradle-wrapper-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: gradle-wrapper-${{ runner.os }}-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: ${{ env.JAVA_VERSION }}
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-      - name: Cache Kotlin/Native (~/.konan)
-        uses: actions/cache@v4
-        with:
-          path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml', '**/gradle-wrapper.properties') }}
-          restore-keys: konan-${{ runner.os }}-
-      - name: Build iOS framework
-        run: ./gradlew :sample:composeApp:linkDebugFrameworkIosSimulatorArm64
-      - name: Build iOS app with xcodebuild
-        run: |
-          cd sample/iosApp
-          # Find an available iOS simulator dynamically
-          SIMULATOR_ID=$(xcrun simctl list devices available | grep -m1 -Eo '[A-F0-9-]{36}')
-          if [ -z "$SIMULATOR_ID" ]; then 
-            echo "No available iOS Simulator found!"
-            echo "Available devices:"
-            xcrun simctl list devices
-            exit 1
-          fi
-          echo "Using simulator: $SIMULATOR_ID"
-          
-          xcodebuild build \
-            -project iosApp.xcodeproj \
-            -scheme iosApp \
-            -configuration Debug \
-            -destination "id=$SIMULATOR_ID" \
-            -derivedDataPath build \
-            CONFIGURATION_BUILD_DIR=$PWD/build/Build/Products/Debug-iphonesimulator
-      - name: Prepare iOS app artifact
-        run: |
-          mkdir -p ${{ github.workspace }}/e2e-artifacts
-          cd sample/iosApp/build/Build/Products/Debug-iphonesimulator
-          
-          # Find the actual .app file (could be "SampleApp.app" or "iosApp.app")
-          APP_FILE=$(find . -maxdepth 1 -name "*.app" -type d | head -n1)
-          
-          if [ -z "$APP_FILE" ]; then
-            echo "Error: No .app file found in build output!"
-            echo "Contents of directory:"
-            ls -la
-            exit 1
-          fi
-          
-          echo "Found iOS app: $APP_FILE"
-          
-          # Rename to a consistent name
-          mv "$APP_FILE" "sample-app-ios-simulator.app"
-          
-          echo "Renamed to: sample-app-ios-simulator.app"
-          ls -la sample-app-ios-simulator.app
-          
-          # Zip the .app for artifact upload
-          zip -r "${{ github.workspace }}/e2e-artifacts/sample-app-ios-simulator.zip" "sample-app-ios-simulator.app"
-          echo "Created zip: sample-app-ios-simulator.zip"
-      - name: Upload iOS app artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-app
-          path: ${{ github.workspace }}/e2e-artifacts/sample-app-ios-simulator.zip
-          retention-days: 7
-
-  android-ui-tests:
-    name: Sample app Android UI tests (emulator)
-    runs-on: ubuntu-latest
-    needs: [ lib-tests, test-android-unit ]
-    strategy:
-      fail-fast: true
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Cache Gradle Wrapper
-        uses: actions/cache@v4
-        with:
-          path: ~/.gradle/wrapper/dists
-          key: gradle-wrapper-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: gradle-wrapper-${{ runner.os }}-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: ${{ env.JAVA_VERSION }}
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-      - name: Run Android UI tests
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 29
-          force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
-          script: ./gradlew :sample:androidApp:connectedAndroidTest
-
-  parikshan-e2e-android:
-    name: Parikshan E2E (Android emulator)
-    runs-on: ubuntu-latest
-    needs: [ lib-tests, test-android-unit ]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Cache Gradle Wrapper
-        uses: actions/cache@v4
-        with:
-          path: ~/.gradle/wrapper/dists
-          key: gradle-wrapper-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: gradle-wrapper-${{ runner.os }}-
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
@@ -349,12 +112,62 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: ./gradlew :sample:androidApp:e2eAndroidTest --no-configuration-cache
-      - name: Upload test reports
-        if: always()
-        uses: actions/upload-artifact@v4
+
+  e2e-desktop:
+    name: E2E Desktop
+    runs-on: ubuntu-latest
+    needs: [ unit-tests ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
         with:
-          name: parikshan-android-e2e-results
-          path: |
-            sample/androidApp/build/reports/androidTests/
-            sample/androidApp/build/outputs/androidTest-results/
-          retention-days: 7
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+      - name: Run Parikshan Desktop E2E tests
+        run: ./gradlew :sample:composeApp:e2eDesktopTest --no-configuration-cache
+
+  e2e-wasm:
+    name: E2E Wasm
+    runs-on: ubuntu-latest
+    needs: [ unit-tests ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+      - name: Run Parikshan Wasm E2E tests
+        run: ./gradlew :sample:composeApp:e2eWasmTest --no-configuration-cache
+
+  e2e-ios:
+    name: E2E iOS (Simulator)
+    runs-on: macos-latest
+    needs: [ unit-tests ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+      - name: Run Parikshan iOS E2E tests
+        run: |
+          # The plugin handles simulator booting and xcodebuild internally
+          ./gradlew :sample:composeApp:e2eIosTest --no-configuration-cache

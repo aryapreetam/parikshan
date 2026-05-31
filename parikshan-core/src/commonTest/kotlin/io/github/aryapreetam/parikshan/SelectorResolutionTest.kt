@@ -48,21 +48,18 @@ class SelectorResolutionTest {
   }
 
   @Test
-  fun auto_reports_ambiguous_visible_text_matches() {
-    val error =
-      assertFailsWith<IllegalArgumentException> {
-        Selector.Auto("Submit").resolveNode(
-          nodes =
-            listOf(
-              node(tag = "submit_primary", text = "Submit", bounds = Bounds(0.0, 0.0, 100.0, 40.0)),
-              node(tag = "submit_secondary", text = "Submit", bounds = Bounds(0.0, 50.0, 100.0, 90.0))
-            )
-        )
-      }
+  fun auto_picks_first_of_multiple_visible_text_matches() {
+    val resolved =
+      Selector.Auto("Submit").resolveNode(
+        nodes =
+          listOf(
+            node(tag = "submit_primary", text = "Submit", bounds = Bounds(0.0, 0.0, 100.0, 40.0)),
+            node(tag = "submit_secondary", text = "Submit", bounds = Bounds(0.0, 50.0, 100.0, 90.0))
+          )
+      )
 
-    assertContains(error.message.orEmpty(), "multiple visible text nodes")
-    assertContains(error.message.orEmpty(), "submit_primary")
-    assertContains(error.message.orEmpty(), "submit_secondary")
+    assertEquals("submit_primary", resolved.tag)
+    assertEquals(2, resolved.allMatches.size)
   }
 
   @Test

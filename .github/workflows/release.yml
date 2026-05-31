@@ -73,8 +73,8 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        mac-arch: [ macos-13, macos-latest ]
-    runs-on: ${{ matrix.mac-arch }}
+        arch: [ x64, aarch64 ]
+    runs-on: macos-latest
     needs: [ ci ]
     steps:
       - name: Checkout repository
@@ -86,6 +86,7 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: ${{ env.JAVA_VERSION }}
+          architecture: ${{ matrix.arch }}
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
       - name: Build Desktop DMG
@@ -93,15 +94,15 @@ jobs:
       - name: Collect DMG artifacts
         run: |
           mkdir -p $GITHUB_WORKSPACE/release-upload
-          if [[ "${{ matrix.mac-arch }}" == "macos-13" ]]; then ARCH_SUFFIX="x64"; else ARCH_SUFFIX="arm64"; fi
+          ARCH_SUFFIX="${{ matrix.arch }}"
           DMG_SRC=$(find sample/composeApp/build/compose/binaries -type f -name '*.dmg' | head -n1)
           if [ -n "$DMG_SRC" ]; then
             cp "$DMG_SRC" "$GITHUB_WORKSPACE/release-upload/sample-app-desktop-$ARCH_SUFFIX.dmg"
           fi
-      - name: Upload artifacts (macOS ${{ matrix.mac-arch }})
+      - name: Upload artifacts (macOS ${{ matrix.arch }})
         uses: actions/upload-artifact@v4
         with:
-          name: release-upload-${{ matrix.mac-arch }}
+          name: release-upload-${{ matrix.arch }}
           path: ${{ github.workspace }}/release-upload/*
 
   build-windows:
@@ -277,8 +278,5 @@ jobs:
         with:
           path: site
       - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-Pages
         id: deployment
         uses: actions/deploy-pages@v4

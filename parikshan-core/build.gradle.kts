@@ -4,6 +4,15 @@ plugins {
   alias(libs.plugins.multiplatform)
   alias(libs.plugins.serialization)
   alias(libs.plugins.maven.publish)
+  alias(libs.plugins.dokka)
+}
+
+dokka {
+  moduleName.set("parikshan-core")
+  dokkaSourceSets.configureEach {
+    includes.from("src/commonMain/kotlin/Module.md")
+    includes.from("src/commonMain/kotlin/io/github/aryapreetam/parikshan/package.md")
+  }
 }
 
 kotlin {

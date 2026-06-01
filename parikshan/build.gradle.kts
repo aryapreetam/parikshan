@@ -34,6 +34,16 @@ kotlin {
 
 dependencies {
   dokkaPlugin(libs.android.documentation.plugin)
+  dokka(project(":parikshan-core"))
+  dokka(project(":parikshan-client"))
+  dokka(project(":parikshan-server"))
+}
+
+dokka {
+  moduleName.set("parikshan")
+  dokkaPublications.html {
+    includes.from("src/commonMain/kotlin/Module.md")
+  }
 }
 
 mavenPublishing {

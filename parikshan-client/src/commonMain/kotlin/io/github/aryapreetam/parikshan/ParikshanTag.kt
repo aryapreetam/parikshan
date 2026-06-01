@@ -55,38 +55,6 @@ fun Modifier.parikshanBridge(
     }
   }
 
-@Deprecated(
-  message =
-    "Use Modifier.testTag(...) for stable selector identity. " +
-      "parikshanTag is now a compatibility wrapper around testTag + parikshanBridge.",
-  replaceWith =
-    ReplaceWith(
-      expression = "this.testTag(tag).parikshanBridge(tag, text, visible, onClick, onInput, onScroll, scrollState)",
-      imports = [
-        "androidx.compose.ui.platform.testTag",
-        "io.github.aryapreetam.parikshan.parikshanBridge"
-      ]
-    )
-)
-fun Modifier.parikshanTag(
-  tag: String,
-  text: String? = null,
-  visible: Boolean = true,
-  onClick: (() -> Unit)? = null,
-  onInput: ((String) -> Unit)? = null,
-  onScroll: ((ScrollDirection) -> Unit)? = null,
-  scrollState: ScrollState? = null
-): Modifier =
-  testTag(tag).parikshanBridge(
-    tag = tag,
-    text = text,
-    visible = visible,
-    onClick = onClick,
-    onInput = onInput,
-    onScroll = onScroll,
-    scrollState = scrollState
-  )
-
 internal expect object ParikshanTagBridgeHooks {
   fun onTagMetadata(
     tag: String,

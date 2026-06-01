@@ -7,6 +7,15 @@ plugins {
   alias(libs.plugins.compose)
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.maven.publish)
+  alias(libs.plugins.dokka)
+}
+
+dokka {
+  moduleName.set("parikshan-client")
+  dokkaSourceSets.configureEach {
+    includes.from("src/commonMain/kotlin/Module.md")
+    includes.from("src/commonMain/kotlin/io/github/aryapreetam/parikshan/package.md")
+  }
 }
 
 kotlin {

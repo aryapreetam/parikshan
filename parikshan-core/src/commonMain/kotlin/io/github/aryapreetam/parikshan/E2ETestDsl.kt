@@ -36,14 +36,31 @@ data class E2ETestConfig(
   val captureScreenshotOnFailure: Boolean = true
 )
 
+/**
+ * The primary execution scope for a Parikshan end-to-end test.
+ *
+ * This scope provides an intent-based DSL for interacting with your Compose Multiplatform
+ * application across all supported platforms.
+ */
 class E2ETestScope internal constructor(
   private val driver: TestDriver,
   private val config: E2ETestConfig
 ) {
+  /**
+   * Executes a physical tap or click on the UI element matching the provided [tag].
+   *
+   * This method automatically waits for the element to become visible before attempting the click.
+   * If the [tag] matches multiple visible nodes, it will pick the most specific one or the first match.
+   */
   suspend fun click(tag: String) {
     click(selector = tag.asAutoSelector())
   }
 
+  /**
+   * Executes a physical tap or click on the UI element matching the [selector].
+   *
+   * Automatically waits for visibility.
+   */
   suspend fun click(selector: Selector) {
     waitFor(selector = selector)
     val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
@@ -55,6 +72,11 @@ class E2ETestScope internal constructor(
     settleAfterCommand()
   }
 
+  /**
+   * Clears any existing text and inputs the provided [text] into the element matching the [tag].
+   *
+   * Automatically waits for visibility.
+   */
   suspend fun input(
     tag: String,
     text: String
@@ -62,6 +84,11 @@ class E2ETestScope internal constructor(
     input(selector = Selector.Tag(tag), text = text)
   }
 
+  /**
+   * Clears any existing text and inputs the provided [text] into the element matching the [selector].
+   *
+   * Automatically waits for visibility.
+   */
   suspend fun input(
     selector: Selector,
     text: String
@@ -76,6 +103,11 @@ class E2ETestScope internal constructor(
     settleAfterCommand()
   }
 
+  /**
+   * Performs a scroll action on the element matching the [tag] in the specified [direction].
+   *
+   * Useful for scrolling Lists or LazyColumns.
+   */
   suspend fun scroll(
     tag: String,
     direction: ScrollDirection
@@ -83,6 +115,9 @@ class E2ETestScope internal constructor(
     scroll(selector = Selector.Tag(tag), direction = direction)
   }
 
+  /**
+   * Performs a scroll action on the element matching the [selector] in the specified [direction].
+   */
   suspend fun scroll(
     selector: Selector,
     direction: ScrollDirection
@@ -97,9 +132,20 @@ class E2ETestScope internal constructor(
     settleAfterCommand()
   }
 
+  /**
+   * Asserts that an element matching the [tag] is present and visible in the UI.
+   *
+   * This method has built-in waiting and will poll until the element appears or the timeout is reached.
+   */
   suspend fun assertVisible(tag: String) {
     assertVisible(selector = tag.asAutoSelector())
   }
+
+  /**
+   * Asserts that an element matching the [selector] is present and visible in the UI.
+   *
+   * Polling is built-in.
+   */
   suspend fun assertVisible(selector: Selector) {
     waitFor(selector = selector)
     val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
@@ -114,10 +160,18 @@ class E2ETestScope internal constructor(
     settleAfterCommand()
   }
 
+  /**
+   * Asserts that an element matching the [tag] is NOT visible in the UI.
+   *
+   * This is a polling assertion that waits for the element to disappear if it is currently present.
+   */
   suspend fun assertNotVisible(tag: String, message: String? = null) {
     assertNotVisible(selector = tag.asAutoSelector(), message = message)
   }
 
+  /**
+   * Asserts that an element matching the [selector] is NOT visible in the UI.
+   */
   suspend fun assertNotVisible(
     selector: Selector,
     message: String? = null,
@@ -138,6 +192,11 @@ class E2ETestScope internal constructor(
     throw AssertionError(message ?: "Expected '${selector.raw}' to be not visible after ${timeoutMs}ms")
   }
 
+  /**
+   * Asserts that the element matching the [tag] contains the [expected] text.
+   *
+   * This assertion includes built-in waiting for the text to appear or match.
+   */
   suspend fun assertText(
     tag: String,
     expected: String
@@ -145,6 +204,9 @@ class E2ETestScope internal constructor(
     assertText(selector = tag.asAutoSelector(), expected = expected)
   }
 
+  /**
+   * Asserts that the element matching the [selector] contains the [expected] text.
+   */
   suspend fun assertText(
     selector: Selector,
     expected: String
@@ -155,6 +217,11 @@ class E2ETestScope internal constructor(
     settleAfterCommand()
   }
 
+  /**
+   * Blocks execution until an element matching the [tag] becomes visible.
+   *
+   * Fails with an [AssertionError] if the [timeoutMs] is reached.
+   */
   suspend fun waitFor(
     tag: String,
     timeoutMs: Long = config.defaultWaitTimeoutMs
@@ -162,6 +229,9 @@ class E2ETestScope internal constructor(
     waitFor(selector = tag.asAutoSelector(), timeoutMs = timeoutMs)
   }
 
+  /**
+   * Blocks execution until an element matching the [selector] becomes visible.
+   */
   suspend fun waitFor(
     selector: Selector,
     timeoutMs: Long = config.defaultWaitTimeoutMs
@@ -194,8 +264,7 @@ class E2ETestScope internal constructor(
     )
   }
 
-  @Deprecated("Use assertText() instead, which now has built-in waiting.", ReplaceWith("assertText(tag, expected)"))
-  suspend fun waitForVisibleText(
+  private suspend fun waitForVisibleText(
     tag: String,
     expected: String,
     timeoutMs: Long = config.defaultWaitTimeoutMs
@@ -203,8 +272,7 @@ class E2ETestScope internal constructor(
     waitForVisibleText(selector = tag.asAutoSelector(), expected = expected, timeoutMs = timeoutMs)
   }
 
-  @Deprecated("Use assertText() instead, which now has built-in waiting.", ReplaceWith("assertText(selector, expected)"))
-  suspend fun waitForVisibleText(
+  private suspend fun waitForVisibleText(
     selector: Selector,
     expected: String,
     timeoutMs: Long = config.defaultWaitTimeoutMs

@@ -196,6 +196,7 @@ jobs:
     permissions:
       pages: write
       id-token: write
+      contents: read
     environment:
       name: github-pages
       url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
@@ -262,13 +263,16 @@ jobs:
           mkdir -p site/api
           cp -r parikshan/build/dokka/html/* site/api/
 
-      # 3. Add Demo Site (Wasm)
-      - name: Build Wasm Demo
-        run: ./gradlew :sample:composeApp:wasmJsBrowserDistribution
+      # 3. Add Demo Site (Wasm - Reuses pre-built Wasm artifact from build-linux)
+      - name: Download Wasm Demo Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-upload-linux
+          path: linux-artifacts
       - name: Prepare Demo Site
         run: |
           mkdir -p site/demo
-          cp -r sample/composeApp/build/dist/wasmJs/productionExecutable/* site/demo/
+          unzip -o linux-artifacts/sample-app-wasm.zip -d site/demo
 
       # 4. Deploy to GitHub Pages
       - name: Configure Pages

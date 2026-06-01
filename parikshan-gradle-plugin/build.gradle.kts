@@ -3,7 +3,17 @@ import java.util.Properties
 plugins {
   `kotlin-dsl`
   `java-gradle-plugin`
+  id("com.gradle.plugin-publish") version "2.1.1"
   id("com.vanniktech.maven.publish") version "0.36.0"
+  id("org.jetbrains.dokka") version "2.2.0"
+}
+
+dokka {
+  moduleName.set("parikshan-gradle-plugin")
+  dokkaSourceSets.configureEach {
+    includes.from("src/main/kotlin/Module.md")
+    includes.from("src/main/kotlin/io/github/aryapreetam/parikshan/gradle/package.md")
+  }
 }
 
 repositories {
@@ -32,12 +42,15 @@ tasks.withType<Jar> {
 }
 
 gradlePlugin {
+  website.set("https://github.com/aryapreetam/parikshan")
+  vcsUrl.set("https://github.com/aryapreetam/parikshan")
   plugins {
     create("parikshan") {
       id = "io.github.aryapreetam.parikshan"
       implementationClass = "io.github.aryapreetam.parikshan.gradle.ParikshanGradlePlugin"
       displayName = "Parikshan Gradle Plugin"
       description = "Visible end-to-end UI automation engine for Compose Multiplatform"
+      tags.set(listOf("compose", "multiplatform", "testing", "e2e"))
     }
   }
 }

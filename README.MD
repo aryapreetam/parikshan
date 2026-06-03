@@ -25,16 +25,14 @@
   <img src="https://img.shields.io/badge/Web(wasm)-4285F4?logo=google-chrome&logoColor=white" alt="Web">
 </p>
 
-Parikshan is a testing framework designed specifically for **Compose Multiplatform**. It provides a unified, cross-platform DSL to write end-to-end (E2E) UI tests that run on Android, iOS, Desktop, and Web (Wasm) using a single codebase.
+Parikshan is an E2E testing framework for **Compose Multiplatform**.
 
-### Why Parikshan?
+### Features
 
-Writing E2E tests for multiplatform apps often requires juggling multiple tools like Appium, Maestro, and Playwright, each with its own configuration and production code "pollution." Parikshan aims to simplify this:
-
-- **Zero-Pollution**: No testing code or "test-only" modules are included in your production builds.
-- **Unified DSL**: Write once in Kotlin and run across all supported platforms.
-- **Architecture-Aware**: Automatically discovers your app modules and orchestrates the installation and execution lifecycle.
-- **Built-in Recording**: Automatically generates videos of your test runs (even in headless CI environments).
+- Write one test in Kotlin, run it on Android, iOS, Desktop, and Web (Wasm).
+- No testing dependencies are included in your production builds.
+- Automatically handles app installation and lifecycle during test execution.
+- Captures screenshots and generates videos of test runs out-of-the-box (even in headless CI).
 
 [**📖 Full Documentation & API Reference**](https://aryapreetam.github.io/parikshan/api/) | [**🌐 Wasm Demo**](https://aryapreetam.github.io/parikshan/demo/)
 
@@ -47,7 +45,7 @@ In your **shared library** (e.g., `:composeApp`) `build.gradle.kts`:
 
 ```kotlin
 plugins {
-    id("io.github.aryapreetam.parikshan") version "0.0.1"
+    id("io.github.aryapreetam.parikshan") version "0.0.2"
 }
 ```
 
@@ -58,11 +56,9 @@ Create a test in `src/commonTest/kotlin`:
 class MyE2ETest {
     @Test
     fun testLoginFlow() = e2eTest {
-        // Simple, intent-based DSL
-        waitFor("login_button")
+        // Intent-based DSL
         inputText("username_field", "admin")
         click("login_button")
-        
         assertVisible("dashboard_screen")
         screenshot("login-success")
     }
@@ -79,27 +75,12 @@ class MyE2ETest {
 
 ---
 
-## 📦 Try the Sample App
+## 📦 Examples
 
-Validate the library on your platform by downloading the pre-built sample application:
-
-| Platform | Download Link |
-|----------|--------------|
-| 🍏 **macOS (Intel)** | [Download x64 DMG](https://github.com/aryapreetam/parikshan/releases/latest/download/sample-app-desktop-x64.dmg) |
-| 🍎 **macOS (Apple Silicon)** | [Download arm64 DMG](https://github.com/aryapreetam/parikshan/releases/latest/download/sample-app-desktop-aarch64.dmg) |
-| 🪟 **Windows** | [Download MSI](https://github.com/aryapreetam/parikshan/releases/latest/download/sample-app-windows.msi) |
-| 🤖 **Android** | [Download APK](https://github.com/aryapreetam/parikshan/releases/latest/download/sample-app-android-unsigned.apk) |
-| 🌐 **Web (Wasm)** | [Download ZIP](https://github.com/aryapreetam/parikshan/releases/latest/download/sample-app-wasm.zip) |
-|  **iOS Simulator** | [Download ZIP](https://github.com/aryapreetam/parikshan/releases/latest/download/sample-app-ios-simulator.zip) |
+See the [sample project tests](https://github.com/aryapreetam/parikshan/tree/main/sample/composeApp/src/commonTest/kotlin/sample/app) for working examples of how to write E2E tests using the Parikshan DSL.
 
 ---
 
 ## License
 
-MIT License © 2026 aryapreetam and contributors. See [LICENSE](./LICENSE) for details.
-
----
-
-## 🙏 Acknowledgments
-
-This library was built with inspiration from the excellent work of the Kotlin and Compose Multiplatform communities, including [terrakok's KMP Web Wizard](https://terrakok.github.io/kmp-web-wizard/) and the many developers pushing the boundaries of cross-platform testing.
+MIT License © 2026 aryapreetam. See [LICENSE](./LICENSE) for details.

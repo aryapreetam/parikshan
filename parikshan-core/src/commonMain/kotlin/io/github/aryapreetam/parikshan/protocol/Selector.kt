@@ -14,7 +14,7 @@ sealed interface Selector {
   val index: Int?
 
   /**
-   * Smart selector that attempts to match by [Modifier.testTag] first, 
+   * Selector that attempts to match by [Modifier.testTag] first, 
    * and falls back to matching by visible text substrings.
    */
   @Serializable

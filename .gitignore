@@ -28,3 +28,6 @@ Pods/
 .agent/
 graphify-out/
 .graphifyignore
+# AI Agent Onboarding
+AGENTS.md
+TODO.md

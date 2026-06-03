@@ -20,9 +20,9 @@ env:
   JAVA_VERSION: '21'
 
 jobs:
-  # Reuse CI (lint + tests + e2e dogfooding)
+  # Reuse CI (lint + tests + e2e)
   ci:
-    name: CI (lint, build+tests, 4-pillar e2e)
+    name: CI (lint, build+tests, e2e)
     uses: ./.github/workflows/ci.yml
 
   # Build artifacts in parallel after all tests succeed
@@ -165,30 +165,6 @@ jobs:
           GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
           GRADLE_PUBLISH_SECRET: ${{ secrets.GRADLE_PUBLISH_SECRET }}
 
-  create-github-release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    needs: [ publish-library ]
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: all-artifacts
-          merge-multiple: true
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          files: |
-            all-artifacts/sample-app-android-unsigned.apk
-            all-artifacts/sample-app-desktop-x64.dmg
-            all-artifacts/sample-app-desktop-aarch64.dmg
-            all-artifacts/sample-app-windows.msi
-            all-artifacts/sample-app-wasm.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   deploy-site:
     name: Deploy GitHub Pages (Landing, API, Demo)
     runs-on: ubuntu-latest
@@ -263,16 +239,13 @@ jobs:
           mkdir -p site/api
           cp -r parikshan/build/dokka/html/* site/api/
 
-      # 3. Add Demo Site (Wasm - Reuses pre-built Wasm artifact from build-linux)
-      - name: Download Wasm Demo Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: release-upload-linux
-          path: linux-artifacts
+      # 3. Add Demo Site (Wasm)
+      - name: Build Wasm Demo
+        run: ./gradlew :sample:composeApp:wasmJsBrowserDistribution
       - name: Prepare Demo Site
         run: |
           mkdir -p site/demo
-          unzip -o linux-artifacts/sample-app-wasm.zip -d site/demo
+          cp -r sample/composeApp/build/dist/wasmJs/productionExecutable/* site/demo/
 
       # 4. Deploy to GitHub Pages
       - name: Configure Pages

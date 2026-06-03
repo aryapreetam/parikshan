@@ -1,9 +1,9 @@
 # Module parikshan-gradle-plugin
 
-The Gradle plugin is the automation engine of Parikshan. It handles the complex task of preparing your environment, installing apps, and running tests across all 4 pillars.
+The Gradle plugin automates environment preparation, app installation, and test execution.
 
 ## Key Components
 
-- **Task Orchestration**: Registers tasks like `e2eAndroidTest` and `e2eIosTest` that manage the full lifecycle of an E2E run.
-- **Boot Source Generation**: Automatically injects the Parikshan bridge into your application at build-time.
-- **CI Stabilization**: Provides built-in support for headless environments, XVFB, and automated video retention.
+- **Task Orchestration**: Registers tasks like `e2eAndroidTest` and `e2eIosTest` that manage the E2E execution lifecycle.
+- **Boot Source Generation**: Injects the Parikshan bridge initialization into your application during debug builds.
+- **CI Support**: Configures headless execution environments (e.g., XVFB) and manages video artifact retention.

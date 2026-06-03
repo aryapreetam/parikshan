@@ -1,4 +1,4 @@
-name: Reusable CI (lint, build+tests, android UI)
+name: Reusable CI (lint, build+tests, e2e)
 
 on:
   workflow_call:

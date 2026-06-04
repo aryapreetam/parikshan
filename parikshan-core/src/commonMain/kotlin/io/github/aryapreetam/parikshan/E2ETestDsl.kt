@@ -81,7 +81,7 @@ class E2ETestScope internal constructor(
     tag: String,
     text: String
   ) {
-    input(selector = Selector.Tag(tag), text = text)
+    input(selector = tag.asAutoSelector(), text = text)
   }
 
   /**
@@ -112,7 +112,7 @@ class E2ETestScope internal constructor(
     tag: String,
     direction: ScrollDirection
   ) {
-    scroll(selector = Selector.Tag(tag), direction = direction)
+    scroll(selector = tag.asAutoSelector(), direction = direction)
   }
 
   /**

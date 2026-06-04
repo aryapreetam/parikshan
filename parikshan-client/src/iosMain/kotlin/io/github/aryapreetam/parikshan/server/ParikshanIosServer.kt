@@ -222,17 +222,20 @@ object ParikshanIosServer {
 
     return when (command) {
       is Command.Click -> {
-        if (!IosSemanticsAccessor.performClick(command.tag, selector)) return Response.Error(command.id, "Click failed")
+        val res = IosSemanticsAccessor.performClickResult(command.tag, selector)
+        if (res != "OK") return Response.Error(command.id, "Click failed: $res")
         pumpRunLoop(iterations = 5, intervalSeconds = 0.05)
         Response.Ok(command.id)
       }
       is Command.Input -> {
-        if (!IosSemanticsAccessor.performInput(command.tag, selector, command.text)) return Response.Error(command.id, "Input failed")
+        val res = IosSemanticsAccessor.performInputResult(command.tag, selector, command.text)
+        if (res != "OK") return Response.Error(command.id, "Input failed: $res")
         pumpRunLoop(iterations = 5, intervalSeconds = 0.05)
         Response.Ok(command.id)
       }
       is Command.Scroll -> {
-        if (!IosSemanticsAccessor.performScroll(command.tag, selector, command.direction)) return Response.Error(command.id, "Scroll failed")
+        val res = IosSemanticsAccessor.performScrollResult(command.tag, selector, command.direction)
+        if (res != "OK") return Response.Error(command.id, "Scroll failed: $res")
         pumpRunLoop(iterations = 3, intervalSeconds = 0.05)
         Response.Ok(command.id)
       }

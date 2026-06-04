@@ -127,19 +127,37 @@ internal actual object ParikshanTagBridgeHooks {
     GlobalThis.getTreeJson = {
       val semanticsTree = io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.snapshotTree()
       val trackedTree = nodes.entries.map { (tag, node) -> node.toSnapshot(tag) }
-      val combined = (semanticsTree + trackedTree).distinctBy { it.tag }
-      ProtocolJson.instance.encodeToString(ListSerializer(NodeSnapshot.serializer()), combined)
+      val combined = semanticsTree + trackedTree
+      val tagged = combined.filter { it.tag.isNotEmpty() }.distinctBy { it.tag }
+      val untagged = combined.filter { it.tag.isEmpty() }
+      val finalTree = tagged + untagged
+      ProtocolJson.instance.encodeToString(ListSerializer(NodeSnapshot.serializer()), finalTree)
     }
-    GlobalThis.performClick = { tag -> 
-      io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performClick(io.github.aryapreetam.parikshan.protocol.Selector.Auto(tag)) || performClick(tag) 
+    GlobalThis.performClick = { tag ->
+      io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performClick(io.github.aryapreetam.parikshan.protocol.Selector.Auto(tag)) || performClick(tag)
     }
-    GlobalThis.performInput = { tag, text -> 
-      io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performInput(io.github.aryapreetam.parikshan.protocol.Selector.Auto(tag), text) || performInput(tag, text) 
+    GlobalThis.performInput = { tag, text ->
+      io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performInput(io.github.aryapreetam.parikshan.protocol.Selector.Auto(tag), text) || performInput(tag, text)
     }
     GlobalThis.performScroll = { tag, directionName ->
       val direction = ScrollDirection.entries.firstOrNull { it.name == directionName }
       if (direction != null) {
         io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performScroll(io.github.aryapreetam.parikshan.protocol.Selector.Auto(tag), direction) || performScroll(tag, direction)
+      } else false
+    }
+    GlobalThis.performClickIndexed = { tag, index ->
+      val selector = io.github.aryapreetam.parikshan.protocol.Selector.Auto(tag, index = index)
+      io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performClick(selector) || performClick(tag)
+    }
+    GlobalThis.performInputIndexed = { tag, text, index ->
+      val selector = io.github.aryapreetam.parikshan.protocol.Selector.Auto(tag, index = index)
+      io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performInput(selector, text) || performInput(tag, text)
+    }
+    GlobalThis.performScrollIndexed = { tag, directionName, index ->
+      val direction = ScrollDirection.entries.firstOrNull { it.name == directionName }
+      if (direction != null) {
+        val selector = io.github.aryapreetam.parikshan.protocol.Selector.Auto(tag, index = index)
+        io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performScroll(selector, direction) || performScroll(tag, direction)
       } else false
     }
   }
@@ -161,4 +179,13 @@ private external object GlobalThis {
 
   @JsName("__parikshan_scroll")
   var performScroll: (String, String) -> Boolean
+
+  @JsName("__parikshan_click_indexed")
+  var performClickIndexed: (String, Int) -> Boolean
+
+  @JsName("__parikshan_input_indexed")
+  var performInputIndexed: (String, String, Int) -> Boolean
+
+  @JsName("__parikshan_scroll_indexed")
+  var performScrollIndexed: (String, String, Int) -> Boolean
 }

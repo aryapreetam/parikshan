@@ -17,6 +17,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 enum class SampleScreen {
   TaskList,
   InputForm,
@@ -45,14 +49,21 @@ fun App() {
     activeScreen.value = SampleScreen.SubtextDemo
   }
 
+  val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+  val coroutineScope = rememberCoroutineScope()
+
   MaterialTheme {
-    BoxWithConstraints(
-      modifier =
-        Modifier
-          .fillMaxSize()
-          .background(Color(0xFFF5F1E8))
-          .padding(12.dp)
-    ) {
+    androidx.compose.material3.Scaffold(
+      snackbarHost = { androidx.compose.material3.SnackbarHost(snackbarHostState) }
+    ) { paddingValues ->
+      BoxWithConstraints(
+        modifier =
+          Modifier
+            .fillMaxSize()
+            .background(Color(0xFFF5F1E8))
+            .padding(paddingValues)
+            .padding(12.dp)
+      ) {
       if (maxWidth < 700.dp) {
         Column(modifier = Modifier.fillMaxSize()) {
           CompactNavigation(
@@ -73,7 +84,12 @@ fun App() {
             onTagPriorityAction = { selectorResultMessage.value = "Tag selector won" },
             onUniqueTextAction = { selectorResultMessage.value = "Unique text clicked" },
             showScrollSuccess = showScrollSuccess.value,
-            onBottomAction = { showScrollSuccess.value = true }
+            onBottomAction = { showScrollSuccess.value = true },
+            onFinalSubmit = {
+              kotlinx.coroutines.GlobalScope.launch {
+                snackbarHostState.showSnackbar("Final Form Submitted Successfully!")
+              }
+            }
           )
         }
       } else {
@@ -96,10 +112,16 @@ fun App() {
             onTagPriorityAction = { selectorResultMessage.value = "Tag selector won" },
             onUniqueTextAction = { selectorResultMessage.value = "Unique text clicked" },
             showScrollSuccess = showScrollSuccess.value,
-            onBottomAction = { showScrollSuccess.value = true }
+            onBottomAction = { showScrollSuccess.value = true },
+            onFinalSubmit = {
+              kotlinx.coroutines.GlobalScope.launch {
+                snackbarHostState.showSnackbar("Final Form Submitted Successfully!")
+              }
+            }
           )
         }
       }
+    }
     }
   }
 }
@@ -232,7 +254,8 @@ private fun ContentSurface(
   onTagPriorityAction: () -> Unit,
   onUniqueTextAction: () -> Unit,
   showScrollSuccess: Boolean,
-  onBottomAction: () -> Unit
+  onBottomAction: () -> Unit,
+  onFinalSubmit: () -> Unit
 ) {
   Box(
     modifier =
@@ -252,7 +275,8 @@ private fun ContentSurface(
           showSuccess = showFormSuccess,
           selectorResultMessage = selectorResultMessage,
           onTagPriorityAction = onTagPriorityAction,
-          onUniqueTextAction = onUniqueTextAction
+          onUniqueTextAction = onUniqueTextAction,
+          onFinalSubmit = onFinalSubmit
         )
 
       SampleScreen.ScrollDemo ->
@@ -302,7 +326,8 @@ private fun InputFormScreen(
   showSuccess: Boolean,
   selectorResultMessage: String?,
   onTagPriorityAction: () -> Unit,
-  onUniqueTextAction: () -> Unit
+  onUniqueTextAction: () -> Unit,
+  onFinalSubmit: () -> Unit
 ) {
   Column(
     modifier =
@@ -387,6 +412,94 @@ private fun InputFormScreen(
         Text("Duplicate Action")
       }
     }
+    
+    // Duplicate inputs for parity tests
+    val duplicate1 = remember { mutableStateOf("") }
+    OutlinedTextField(
+      value = duplicate1.value,
+      onValueChange = { duplicate1.value = it },
+      label = { Text("Duplicate Input") },
+      modifier = Modifier.fillMaxWidth().testTag("duplicate_input_1")
+    )
+    
+    val duplicate2 = remember { mutableStateOf("") }
+    OutlinedTextField(
+      value = duplicate2.value,
+      onValueChange = { duplicate2.value = it },
+      label = { Text("Duplicate Input") },
+      modifier = Modifier.fillMaxWidth().testTag("duplicate_input_2")
+    )
+
+    // Long form elements
+    val email = remember { mutableStateOf("") }
+    OutlinedTextField(
+      value = email.value,
+      onValueChange = { email.value = it },
+      label = { Text("Email Address") },
+      modifier = Modifier.fillMaxWidth()
+    )
+
+    val phone = remember { mutableStateOf("") }
+    OutlinedTextField(
+      value = phone.value,
+      onValueChange = { phone.value = it },
+      label = { Text("Phone Number") },
+      modifier = Modifier.fillMaxWidth()
+    )
+
+    val address = remember { mutableStateOf("") }
+    OutlinedTextField(
+      value = address.value,
+      onValueChange = { address.value = it },
+      label = { Text("Shipping Address") },
+      modifier = Modifier.fillMaxWidth(),
+      minLines = 3
+    )
+
+    val password = remember { mutableStateOf("") }
+    OutlinedTextField(
+      value = password.value,
+      onValueChange = { password.value = it },
+      label = { Text("Password") },
+      modifier = Modifier.fillMaxWidth()
+    )
+
+    val confirmPassword = remember { mutableStateOf("") }
+    OutlinedTextField(
+      value = confirmPassword.value,
+      onValueChange = { confirmPassword.value = it },
+      label = { Text("Confirm Password") },
+      modifier = Modifier.fillMaxWidth()
+    )
+
+    val agreed = remember { mutableStateOf(false) }
+    Row(
+      verticalAlignment = Alignment.CenterVertically,
+      modifier = Modifier
+        .fillMaxWidth()
+        .toggleable(
+          value = agreed.value,
+          onValueChange = { agreed.value = it },
+          role = Role.Checkbox
+        )
+        .padding(vertical = 8.dp)
+    ) {
+      androidx.compose.material3.Checkbox(
+        checked = agreed.value,
+        onCheckedChange = null
+      )
+      Spacer(Modifier.width(8.dp))
+      Text("I agree to the terms and conditions")
+    }
+
+    Button(
+      onClick = onFinalSubmit,
+      modifier = Modifier.fillMaxWidth().testTag("final_submit_button")
+    ) {
+      Text("Final Submit")
+    }
+    
+    Spacer(modifier = Modifier.height(24.dp))
   }
 }
 

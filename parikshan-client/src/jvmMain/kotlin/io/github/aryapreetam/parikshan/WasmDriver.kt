@@ -120,92 +120,7 @@ class WasmDriver private constructor(
 
         val context = sharedBrowser!!.newContext(contextOptions)
         
-        val initScript = """
-          window.__parikshan_utils = {
-            extractText: function(element) {
-              if (!element) return null;
-              const candidates = [
-                element.innerText, element.textContent, element.getAttribute?.('aria-label'),
-                element.getAttribute?.('title'), element.getAttribute?.('value'), element.value, element.placeholder
-              ];
-              for (const candidate of candidates) {
-                const normalized = candidate?.trim?.();
-                if (normalized) return normalized;
-              }
-              const labeledDescendant = element.querySelector?.('[aria-label]');
-              const labeledText = labeledDescendant?.getAttribute?.('aria-label')?.trim?.();
-              if (labeledText) return labeledText;
-              return null;
-            },
-            findNode: function(tag) {
-              const queue = [document.documentElement, document.body].filter(Boolean);
-              const visited = new Set();
-              let element = null;
-              let i = 0;
-              while (i < queue.length && element == null) {
-                const current = queue[i++];
-                if (!current || visited.has(current)) continue;
-                visited.add(current);
-                if (current.id === tag) { element = current; break; }
-                const descendants = current.querySelectorAll?.(`[id="${'$'}{tag}"]`) ?? [];
-                if (descendants.length > 0) { element = descendants[0]; break; }
-                if (current.shadowRoot) queue.push(current.shadowRoot);
-                const children = current.children ?? current.childNodes ?? [];
-                for (const child of children) queue.push(child);
-              }
-              return element;
-            },
-            readNode: function(tag) {
-              const element = this.findNode(tag);
-              if (!element) return null;
-              const rect = element.getBoundingClientRect();
-              const style = window.getComputedStyle(element);
-              const text = this.extractText(element);
-              const visible = style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
-              return JSON.stringify({
-                tag,
-                bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
-                visible, text
-              });
-            },
-            readTree: function() {
-              const nodes = [];
-              const queue = [document.documentElement, document.body].filter(Boolean);
-              const visited = new Set();
-              let i = 0;
-              while (i < queue.length) {
-                const current = queue[i++];
-                if (!current || visited.has(current)) continue;
-                visited.add(current);
-                if (current.id) {
-                  const rect = current.getBoundingClientRect();
-                  const style = window.getComputedStyle(current);
-                  const text = this.extractText(current);
-                  nodes.push({
-                    tag: current.id,
-                    bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
-                    visible: style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0,
-                    text
-                  });
-                }
-                if (current.shadowRoot) queue.push(current.shadowRoot);
-                const children = current.children ?? current.childNodes ?? [];
-                for (const child of children) queue.push(child);
-              }
-              return JSON.stringify(nodes);
-            },
-            invokeClick: function(tag) {
-              const current = this.findNode(tag);
-              if (current) {
-                current.click?.();
-                current.dispatchEvent?.(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }));
-                return true;
-              }
-              return false;
-            }
-          };
-        """.trimIndent()
-        context.addInitScript(initScript)
+        context.addInitScript(PARIKSHAN_UTILS_INIT_SCRIPT)
         
         sharedContext = context
         val page = context.newPage()
@@ -226,7 +141,7 @@ class WasmDriver private constructor(
   }
 
   private suspend fun readNodeBySelector(selector: io.github.aryapreetam.parikshan.protocol.Selector): NodeSnapshot? {
-    if (selector is io.github.aryapreetam.parikshan.protocol.Selector.Tag || selector is io.github.aryapreetam.parikshan.protocol.Selector.Auto) {
+    if ((selector is io.github.aryapreetam.parikshan.protocol.Selector.Tag || selector is io.github.aryapreetam.parikshan.protocol.Selector.Auto) && selector.index == null) {
       readBridgeNode(selector.raw)?.let { return it }
       readDomNode(selector.raw)?.let { return it }
     }
@@ -269,8 +184,8 @@ class WasmDriver private constructor(
       is Command.Click -> {
         val node = readNodeBySelector(selector)
           ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
-        if (!invokeBridgeClick(selector.raw)) {
-          if (!invokeDomClick(selector.raw)) {
+        if (!invokeBridgeClick(selector)) {
+          if (!invokeDomClick(selector)) {
             page.mouse().click(node.bounds.centerX, node.bounds.centerY)
           }
         }
@@ -281,7 +196,7 @@ class WasmDriver private constructor(
       is Command.Input -> {
         val node = readNodeBySelector(selector)
           ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
-        if (!invokeBridgeInput(selector.raw, command.text)) {
+        if (!invokeBridgeInput(selector, command.text)) {
           page.mouse().click(node.bounds.centerX, node.bounds.centerY)
           page.keyboard().press("ControlOrMeta+A")
           page.keyboard().type(command.text)
@@ -293,7 +208,7 @@ class WasmDriver private constructor(
       is Command.Scroll -> {
         val node = readNodeBySelector(selector)
           ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
-        if (!invokeBridgeScroll(selector.raw, command.direction)) {
+        if (!invokeBridgeScroll(selector, command.direction)) {
           page.mouse().move(node.bounds.centerX, node.bounds.centerY)
           val (deltaX, deltaY) =
             when (command.direction) {
@@ -429,25 +344,128 @@ class WasmDriver private constructor(
     return ProtocolJson.instance.decodeFromString(ListSerializer(NodeSnapshot.serializer()), payload)
   }
 
-  private fun invokeBridgeClick(tag: String): Boolean =
-    runCatching {
-      page.evaluate("tag => (window.__parikshan_click ? window.__parikshan_click(tag) : false)", tag) as? Boolean ?: false
+  private fun invokeBridgeClick(selector: io.github.aryapreetam.parikshan.protocol.Selector): Boolean {
+    val tag = selector.raw
+    val index = selector.index
+    return runCatching {
+      if (index != null) {
+        page.evaluate("([tag, index]) => (window.__parikshan_click_indexed ? window.__parikshan_click_indexed(tag, index) : false)", listOf<Any>(tag, index)) as? Boolean ?: false
+      } else {
+        page.evaluate("tag => (window.__parikshan_click ? window.__parikshan_click(tag) : false)", tag) as? Boolean ?: false
+      }
     }.getOrDefault(false)
+  }
 
-  private fun invokeDomClick(tag: String): Boolean =
-    runCatching {
+  private fun invokeDomClick(selector: io.github.aryapreetam.parikshan.protocol.Selector): Boolean {
+    val tag = selector.raw
+    if (selector.index != null) return false
+    return runCatching {
       page.evaluate("tag => window.__parikshan_utils.invokeClick(tag)", tag) as? Boolean ?: false
     }.getOrDefault(false)
+  }
 
-  private fun invokeBridgeInput(tag: String, text: String): Boolean =
-    runCatching {
-      page.evaluate("([tag, text]) => (window.__parikshan_input ? window.__parikshan_input(tag, text) : false)", arrayOf(tag, text)) as? Boolean ?: false
+  private fun invokeBridgeInput(selector: io.github.aryapreetam.parikshan.protocol.Selector, text: String): Boolean {
+    val tag = selector.raw
+    val index = selector.index
+    return runCatching {
+      if (index != null) {
+        page.evaluate("([tag, text, index]) => (window.__parikshan_input_indexed ? window.__parikshan_input_indexed(tag, text, index) : false)", listOf<Any>(tag, text, index)) as? Boolean ?: false
+      } else {
+        page.evaluate("([tag, text]) => (window.__parikshan_input ? window.__parikshan_input(tag, text) : false)", listOf<Any>(tag, text)) as? Boolean ?: false
+      }
     }.getOrDefault(false)
+  }
 
-  private fun invokeBridgeScroll(tag: String, direction: io.github.aryapreetam.parikshan.protocol.ScrollDirection): Boolean =
+  private fun invokeBridgeScroll(selector: io.github.aryapreetam.parikshan.protocol.Selector, direction: io.github.aryapreetam.parikshan.protocol.ScrollDirection): Boolean =
     false // Force fallback to native Playwright mouse wheel which works perfectly for Wasm Canvas
 
   companion object {
+    private val PARIKSHAN_UTILS_INIT_SCRIPT: String = """
+      window.__parikshan_utils = {
+        extractText: function(element) {
+          if (!element) return null;
+          const candidates = [
+            element.innerText, element.textContent, element.getAttribute?.('aria-label'),
+            element.getAttribute?.('title'), element.getAttribute?.('value'), element.value, element.placeholder
+          ];
+          for (const candidate of candidates) {
+            const normalized = candidate?.trim?.();
+            if (normalized) return normalized;
+          }
+          const labeledDescendant = element.querySelector?.('[aria-label]');
+          const labeledText = labeledDescendant?.getAttribute?.('aria-label')?.trim?.();
+          if (labeledText) return labeledText;
+          return null;
+        },
+        findNode: function(tag) {
+          const queue = [document.documentElement, document.body].filter(Boolean);
+          const visited = new Set();
+          let element = null;
+          let i = 0;
+          while (i < queue.length && element == null) {
+            const current = queue[i++];
+            if (!current || visited.has(current)) continue;
+            visited.add(current);
+            if (current.id === tag) { element = current; break; }
+            const descendants = current.querySelectorAll?.(`[id="${'$'}{tag}"]`) ?? [];
+            if (descendants.length > 0) { element = descendants[0]; break; }
+            if (current.shadowRoot) queue.push(current.shadowRoot);
+            const children = current.children ?? current.childNodes ?? [];
+            for (const child of children) queue.push(child);
+          }
+          return element;
+        },
+        readNode: function(tag) {
+          const element = this.findNode(tag);
+          if (!element) return null;
+          const rect = element.getBoundingClientRect();
+          const style = window.getComputedStyle(element);
+          const text = this.extractText(element);
+          const visible = style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+          return JSON.stringify({
+            tag,
+            bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
+            visible, text
+          });
+        },
+        readTree: function() {
+          const nodes = [];
+          const queue = [document.documentElement, document.body].filter(Boolean);
+          const visited = new Set();
+          let i = 0;
+          while (i < queue.length) {
+            const current = queue[i++];
+            if (!current || visited.has(current)) continue;
+            visited.add(current);
+            if (current.id) {
+              const rect = current.getBoundingClientRect();
+              const style = window.getComputedStyle(current);
+              const text = this.extractText(current);
+              nodes.push({
+                tag: current.id,
+                bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
+                visible: style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0,
+                text
+              });
+            }
+            if (current.shadowRoot) queue.push(current.shadowRoot);
+            const children = current.children ?? current.childNodes ?? [];
+            for (const child of children) queue.push(child);
+          }
+          return JSON.stringify(nodes);
+        },
+        invokeClick: function(tag) {
+          const current = this.findNode(tag);
+          if (current) {
+            current.click?.();
+            current.dispatchEvent?.(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }));
+            return true;
+          }
+          return false;
+        }
+      };
+    """.trimIndent()
+
     private val connectMutex = Mutex()
     private var sharedPlaywright: Playwright? = null
     private var sharedBrowser: Browser? = null
@@ -568,92 +586,7 @@ class WasmDriver private constructor(
 
         val context = sharedBrowser!!.newContext(contextOptions)
         
-        val initScript = """
-          window.__parikshan_utils = {
-            extractText: function(element) {
-              if (!element) return null;
-              const candidates = [
-                element.innerText, element.textContent, element.getAttribute?.('aria-label'),
-                element.getAttribute?.('title'), element.getAttribute?.('value'), element.value, element.placeholder
-              ];
-              for (const candidate of candidates) {
-                const normalized = candidate?.trim?.();
-                if (normalized) return normalized;
-              }
-              const labeledDescendant = element.querySelector?.('[aria-label]');
-              const labeledText = labeledDescendant?.getAttribute?.('aria-label')?.trim?.();
-              if (labeledText) return labeledText;
-              return null;
-            },
-            findNode: function(tag) {
-              const queue = [document.documentElement, document.body].filter(Boolean);
-              const visited = new Set();
-              let element = null;
-              let i = 0;
-              while (i < queue.length && element == null) {
-                const current = queue[i++];
-                if (!current || visited.has(current)) continue;
-                visited.add(current);
-                if (current.id === tag) { element = current; break; }
-                const descendants = current.querySelectorAll?.(`[id="${'$'}{tag}"]`) ?? [];
-                if (descendants.length > 0) { element = descendants[0]; break; }
-                if (current.shadowRoot) queue.push(current.shadowRoot);
-                const children = current.children ?? current.childNodes ?? [];
-                for (const child of children) queue.push(child);
-              }
-              return element;
-            },
-            readNode: function(tag) {
-              const element = this.findNode(tag);
-              if (!element) return null;
-              const rect = element.getBoundingClientRect();
-              const style = window.getComputedStyle(element);
-              const text = this.extractText(element);
-              const visible = style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
-              return JSON.stringify({
-                tag,
-                bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
-                visible, text
-              });
-            },
-            readTree: function() {
-              const nodes = [];
-              const queue = [document.documentElement, document.body].filter(Boolean);
-              const visited = new Set();
-              let i = 0;
-              while (i < queue.length) {
-                const current = queue[i++];
-                if (!current || visited.has(current)) continue;
-                visited.add(current);
-                if (current.id) {
-                  const rect = current.getBoundingClientRect();
-                  const style = window.getComputedStyle(current);
-                  const text = this.extractText(current);
-                  nodes.push({
-                    tag: current.id,
-                    bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
-                    visible: style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0,
-                    text
-                  });
-                }
-                if (current.shadowRoot) queue.push(current.shadowRoot);
-                const children = current.children ?? current.childNodes ?? [];
-                for (const child of children) queue.push(child);
-              }
-              return JSON.stringify(nodes);
-            },
-            invokeClick: function(tag) {
-              const current = this.findNode(tag);
-              if (current) {
-                current.click?.();
-                current.dispatchEvent?.(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }));
-                return true;
-              }
-              return false;
-            }
-          };
-        """.trimIndent()
-        context.addInitScript(initScript)
+        context.addInitScript(PARIKSHAN_UTILS_INIT_SCRIPT)
         
         sharedContext = context
 

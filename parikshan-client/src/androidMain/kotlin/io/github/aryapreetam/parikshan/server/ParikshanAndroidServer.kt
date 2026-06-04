@@ -181,11 +181,19 @@ object ParikshanAndroidServer {
     (command as? Command.HasSelector)?.let { it.selector?.raw ?: it.tag }.orEmpty()
 
   private fun findFirstInteraction(command: Command): SemanticsNodeInteraction? =
-    findFirstNode(command)?.let { interactionFor(it) }
+    resolveTargetNode(command)?.let { interactionFor(it) }
 
-  private fun findFirstNode(command: Command): SemanticsNode? {
+  private fun resolveTargetNode(command: Command): SemanticsNode? {
     val selector = command.resolvedSelector() ?: return null
-    return selectorCandidates(selector).firstOrNull()?.node
+    val candidates = selectorCandidates(selector)
+    if (candidates.isEmpty()) return null
+    
+    val targetIndex = when {
+      selector.index != null && selector.index!! >= 0 -> selector.index!!
+      selector.index != null && selector.index!! < 0 -> candidates.size + selector.index!!
+      else -> 0
+    }
+    return candidates.getOrNull(targetIndex)?.node
   }
 
   private fun selectorCandidates(selector: Selector): List<SelectorCandidate> {
@@ -356,7 +364,7 @@ object ParikshanAndroidServer {
   private fun handleCommand(command: Command): Response {
     return when (command) {
       is Command.Click -> {
-        val matched = findFirstNode(command)
+        val matched = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${selectorLabel(command)}'")
         val target = clickTargetFor(matched)
           ?: return Response.Error(command.id, "Node '${selectorLabel(command)}' is not clickable")
@@ -367,7 +375,7 @@ object ParikshanAndroidServer {
       }
 
       is Command.Input -> {
-        val matched = findFirstNode(command)
+        val matched = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${selectorLabel(command)}'")
         val target = inputTargetFor(matched)
           ?: return Response.Error(command.id, "Node '${selectorLabel(command)}' does not accept text input")
@@ -379,7 +387,7 @@ object ParikshanAndroidServer {
       }
 
       is Command.Scroll -> {
-        val matched = findFirstNode(command)
+        val matched = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${selectorLabel(command)}'")
         val interaction = interactionFor(scrollTargetFor(matched) ?: matched)
         try {
@@ -398,7 +406,7 @@ object ParikshanAndroidServer {
       }
 
       is Command.AssertVisible -> {
-        val nodeInfo = findFirstNode(command)
+        val nodeInfo = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${selectorLabel(command)}'")
         if (!isVisible(nodeInfo)) {
           return Response.Error(command.id, "Node '${selectorLabel(command)}' exists but is not visible")
@@ -413,7 +421,7 @@ object ParikshanAndroidServer {
       }
 
       is Command.AssertText -> {
-        val nodeInfo = findFirstNode(command)
+        val nodeInfo = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${selectorLabel(command)}'")
         val actual = snapshotTextOf(nodeInfo).orEmpty()
         if (actual != command.expected) {
@@ -427,9 +435,9 @@ object ParikshanAndroidServer {
 
       is Command.WaitFor -> {
         composeRule.waitUntil(timeoutMillis = command.timeoutMs) {
-          findFirstNode(command)?.let { isVisible(it) } == true
+          resolveTargetNode(command)?.let { isVisible(it) } == true
         }
-        val nodeInfo = findFirstNode(command)
+        val nodeInfo = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${selectorLabel(command)}'")
         val bounds = nodeInfo.boundsInWindow
         Response.NodeInfo(

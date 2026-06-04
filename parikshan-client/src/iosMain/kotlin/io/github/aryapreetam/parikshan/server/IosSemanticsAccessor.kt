@@ -1,4 +1,5 @@
 @file:Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE", "CANNOT_OVERRIDE_INVISIBLE_MEMBER")
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
 package io.github.aryapreetam.parikshan.server
 
 import androidx.compose.ui.geometry.Rect
@@ -15,6 +16,7 @@ import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import io.github.aryapreetam.parikshan.protocol.Selector
 import androidx.compose.ui.text.AnnotatedString
+import kotlinx.cinterop.useContents
 
 internal object IosSemanticsAccessor {
   var globalSemanticsOwner: SemanticsOwner? = null
@@ -48,19 +50,62 @@ internal object IosSemanticsAccessor {
     return findAllNodes().map { toNodeSnapshot(it) }
   }
 
+  private fun SemanticsNode.hasAction(name: String): Boolean {
+    return config.any { it.key.name == name }
+  }
+
+  @Suppress("UNCHECKED_CAST")
+  private fun <T> SemanticsNode.getAction(name: String): T? {
+    val entry = config.firstOrNull { it.key.name == name } ?: return null
+    val accessibilityAction = entry.value as? androidx.compose.ui.semantics.AccessibilityAction<*> ?: return null
+    return accessibilityAction.action as? T
+  }
+
+  private fun SemanticsNode.getTestTag(): String? {
+    val entry = config.firstOrNull { it.key.name == "TestTag" } ?: return null
+    return entry.value as? String
+  }
+
+  private fun SemanticsNode.getEditableText(): String? {
+    val entry = config.firstOrNull { it.key.name == "EditableText" } ?: return null
+    return (entry.value as? AnnotatedString)?.text
+  }
+
+  @Suppress("UNCHECKED_CAST")
+  private fun SemanticsNode.getTextList(): List<AnnotatedString>? {
+    val entry = config.firstOrNull { it.key.name == "Text" } ?: return null
+    return entry.value as? List<AnnotatedString>
+  }
+
+  @Suppress("UNCHECKED_CAST")
+  private fun SemanticsNode.getContentDescription(): List<String>? {
+    val entry = config.firstOrNull { it.key.name == "ContentDescription" } ?: return null
+    return entry.value as? List<String>
+  }
+
   private fun toNodeSnapshot(node: SemanticsNode): NodeSnapshot {
-    val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: ""
-    val textList = node.config.getOrNull(SemanticsProperties.Text)
-    val text = textList?.joinToString("") { it.text } 
-      ?: node.config.getOrNull(SemanticsProperties.EditableText)?.text
+    val tag = node.getTestTag() ?: ""
+    val text = directTextOf(node)
     
     val bounds = node.boundsInWindow
     val hasArea = bounds.width > 0f && bounds.height > 0f
 
+    val screenBounds = platform.UIKit.UIScreen.mainScreen.bounds
+    val scale = platform.UIKit.UIScreen.mainScreen.scale.toFloat()
+    val physicalScreenWidth = screenBounds.useContents { size.width }.toFloat() * scale
+    val physicalScreenHeight = screenBounds.useContents { size.height }.toFloat() * scale
+
+    val centerX = bounds.left + (bounds.width / 2f)
+    val centerY = bounds.top + (bounds.height / 2f)
+
+    val isPhysicallyVisible = hasArea && node.layoutInfo.isPlaced &&
+      centerX >= 0f && centerX <= physicalScreenWidth &&
+      centerY >= 0f && centerY <= physicalScreenHeight
+
     return NodeSnapshot(
       tag = tag,
       text = text,
-      visible = hasArea,
+      visible = isPhysicallyVisible,
       bounds = Bounds(
         left = bounds.left.toDouble(),
         top = bounds.top.toDouble(),
@@ -77,8 +122,17 @@ internal object IosSemanticsAccessor {
     val depth: Int
   )
 
-  fun findBySelector(selector: Selector): SemanticsNode? =
-    selectorCandidates(selector).firstOrNull()?.node
+  fun findBySelector(selector: Selector): SemanticsNode? {
+    val candidates = selectorCandidates(selector)
+    if (candidates.isEmpty()) return null
+    
+    val targetIndex = when {
+      selector.index != null && selector.index!! >= 0 -> selector.index!!
+      selector.index != null && selector.index!! < 0 -> candidates.size + selector.index!!
+      else -> 0
+    }
+    return candidates.getOrNull(targetIndex)?.node
+  }
 
   fun findNode(tag: String, selector: Selector?): SemanticsNode? {
     val activeSelector = selector ?: tag.takeIf { it.isNotBlank() }?.let { Selector.Auto(it) }
@@ -110,10 +164,7 @@ internal object IosSemanticsAccessor {
   }
 
   private fun selectorSearchNodes(): List<SemanticsNode> {
-    val owner = globalSemanticsOwner ?: return emptyList()
-    val unmerged = owner.getAllSemanticsNodes(mergingEnabled = false)
-    val merged = owner.getAllSemanticsNodes(mergingEnabled = true)
-    return (unmerged + merged).distinctBy { it.id }
+    return findAllNodes()
   }
 
   private fun selectorScore(
@@ -123,7 +174,7 @@ internal object IosSemanticsAccessor {
     val raw = selector.raw.trim()
     if (raw.isEmpty()) return null
 
-    val tag = node.config.getOrNull(SemanticsProperties.TestTag)?.trim()
+    val tag = node.getTestTag()?.trim()
     val text = directTextOf(node)?.trim()
 
     return when (selector) {
@@ -155,13 +206,18 @@ internal object IosSemanticsAccessor {
     }
 
   private fun directTextOf(node: SemanticsNode): String? {
-    node.config.getOrNull(SemanticsProperties.EditableText)?.text
+    node.getEditableText()
       ?.takeIf { it.isNotBlank() }
       ?.let { return it }
 
-    val values = node.config.getOrNull(SemanticsProperties.Text).orEmpty()
+    val values = node.getTextList().orEmpty()
     if (values.isNotEmpty()) {
       return values.joinToString("") { it.text }.takeIf { it.isNotBlank() }
+    }
+
+    val contentDescription = node.getContentDescription().orEmpty()
+    if (contentDescription.isNotEmpty()) {
+      return contentDescription.joinToString("").takeIf { it.isNotBlank() }
     }
     return null
   }
@@ -189,7 +245,7 @@ internal object IosSemanticsAccessor {
   private fun clickTargetFor(node: SemanticsNode): SemanticsNode? {
     var current: SemanticsNode? = node
     while (current != null) {
-      if (current.config.getOrNull(SemanticsActions.OnClick) != null) {
+      if (current.hasAction("OnClick")) {
         return current
       }
       current = current.parent
@@ -200,7 +256,7 @@ internal object IosSemanticsAccessor {
   private fun inputTargetFor(node: SemanticsNode): SemanticsNode? {
     var current: SemanticsNode? = node
     while (current != null) {
-      if (current.config.getOrNull(SemanticsActions.SetText) != null) {
+      if (current.hasAction("SetText")) {
         return current
       }
       current = current.parent
@@ -211,7 +267,7 @@ internal object IosSemanticsAccessor {
   private fun scrollTargetFor(node: SemanticsNode): SemanticsNode? {
     var current: SemanticsNode? = node
     while (current != null) {
-      if (current.config.getOrNull(SemanticsActions.ScrollBy) != null) {
+      if (current.hasAction("ScrollBy")) {
         return current
       }
       current = current.parent
@@ -219,26 +275,69 @@ internal object IosSemanticsAccessor {
     return null
   }
 
+  fun formatNodeDiagnostics(selector: Selector): String {
+    val all = findAllNodes()
+    val sb = StringBuilder()
+    sb.append("Node not found for selector: ").append(selector).append("\n")
+    sb.append("Total nodes in tree: ").append(all.size).append("\n")
+    for (i in 0 until all.size) {
+      val node = all[i]
+      val tag = node.getTestTag()
+      val text = directTextOf(node)
+      val bounds = node.boundsInWindow
+      val area = nodeArea(node)
+      val depth = nodeDepth(node)
+      val score = selectorScore(node, selector) ?: -1
+      val placed = node.layoutInfo.isPlaced
+      sb.append("  [").append(i).append("] id=").append(node.id)
+        .append(" tag='").append(tag).append("'")
+        .append(" text='").append(text).append("'")
+        .append(" bounds=(L:").append(bounds.left).append(", T:").append(bounds.top)
+        .append(", R:").append(bounds.right).append(", B:").append(bounds.bottom).append(")")
+        .append(" area=").append(area).append(" depth=").append(depth)
+        .append(" score=").append(score).append(" placed=").append(placed).append("\n")
+    }
+    return sb.toString()
+  }
+
+  fun performClickResult(tag: String, selector: Selector?): String {
+    val activeSelector = selector ?: tag.takeIf { it.isNotBlank() }?.let { Selector.Auto(it) } ?: Selector.Auto("")
+    val node = findNode(tag, selector) ?: return formatNodeDiagnostics(activeSelector)
+    val target = clickTargetFor(node) ?: return "Click target not found"
+    val action = target.getAction<() -> Boolean>("OnClick") ?: return "OnClick action not found on target"
+    val success = action.invoke()
+    return if (success) "OK" else "OnClick action invoke returned false"
+  }
+
+  fun performInputResult(tag: String, selector: Selector?, text: String): String {
+    val activeSelector = selector ?: tag.takeIf { it.isNotBlank() }?.let { Selector.Auto(it) } ?: Selector.Auto("")
+    val node = findNode(tag, selector) ?: return formatNodeDiagnostics(activeSelector)
+    val target = inputTargetFor(node) ?: return "Input target not found"
+    val action = target.getAction<(AnnotatedString) -> Boolean>("SetText") ?: return "SetText action not found on target"
+    val success = action.invoke(AnnotatedString(text))
+    return if (success) "OK" else "SetText action invoke returned false"
+  }
+
+  fun performScrollResult(tag: String, selector: Selector?, direction: ScrollDirection): String {
+    val activeSelector = selector ?: tag.takeIf { it.isNotBlank() }?.let { Selector.Auto(it) } ?: Selector.Auto("")
+    val node = findNode(tag, selector) ?: return formatNodeDiagnostics(activeSelector)
+    val target = scrollTargetFor(node) ?: return "Scroll target not found"
+    val action = target.getAction<(Float, Float) -> Boolean>("ScrollBy") ?: return "ScrollBy action not found"
+    val x = if (direction == ScrollDirection.Left) -200f else if (direction == ScrollDirection.Right) 200f else 0f
+    val y = if (direction == ScrollDirection.Up) -200f else if (direction == ScrollDirection.Down) 200f else 0f
+    val success = action.invoke(x, y)
+    return if (success) "OK" else "ScrollBy action invoke returned false"
+  }
+
   fun performClick(tag: String, selector: Selector?): Boolean {
-    val node = findNode(tag, selector) ?: return false
-    val target = clickTargetFor(node) ?: return false
-    val action = target.config.getOrNull(SemanticsActions.OnClick) ?: return false
-    return action.action?.invoke() ?: false
+    return performClickResult(tag, selector) == "OK"
   }
 
   fun performInput(tag: String, selector: Selector?, text: String): Boolean {
-    val node = findNode(tag, selector) ?: return false
-    val target = inputTargetFor(node) ?: return false
-    val action = target.config.getOrNull(SemanticsActions.SetText) ?: return false
-    return action.action?.invoke(AnnotatedString(text)) ?: false
+    return performInputResult(tag, selector, text) == "OK"
   }
 
   fun performScroll(tag: String, selector: Selector?, direction: ScrollDirection): Boolean {
-    val node = findNode(tag, selector) ?: return false
-    val target = scrollTargetFor(node) ?: return false
-    val action = target.config.getOrNull(SemanticsActions.ScrollBy) ?: return false
-    val x = if (direction == ScrollDirection.Left) -200f else if (direction == ScrollDirection.Right) 200f else 0f
-    val y = if (direction == ScrollDirection.Up) -200f else if (direction == ScrollDirection.Down) 200f else 0f
-    return action.action?.invoke(x, y) ?: false
+    return performScrollResult(tag, selector, direction) == "OK"
   }
 }

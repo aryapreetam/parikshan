@@ -145,7 +145,7 @@ private fun matchingTextNodes(
     if (!isDuplicate) deduplicated.add(node)
   }
 
-  return deduplicated
+  return deduplicated.sortedBy { it.zOrder }
 }
 
 private fun resolveByText(
@@ -187,7 +187,7 @@ private fun Selector.resolveSingleTagMatch(
   
   val visibleMatches = if (requireVisible) tagMatches.filter { it.visible } else tagMatches
   if (requireVisible && visibleMatches.isEmpty()) {
-    throw SelectorResolutionException(tagNotVisibleMessage(selector))
+    throw SelectorResolutionException(tagNotVisibleMessage(selector, tagMatches))
   }
 
   val matchesToUse = if (requireVisible) visibleMatches else tagMatches
@@ -221,8 +221,12 @@ private fun Selector.textNotFoundMessage(): String =
 private fun tagNotFoundMessage(selector: Selector): String =
   "No node matched exact tag '${selector.normalizedRaw()}'."
 
-private fun tagNotVisibleMessage(selector: Selector): String =
-  "Selector ${selector.describe()} matched tag '${selector.normalizedRaw()}', but the node is not visible."
+private fun tagNotVisibleMessage(selector: Selector, tagMatches: List<NodeSnapshot>): String {
+  val matchDetails = tagMatches.joinToString { node ->
+    "node[tag='${node.tag}', text='${node.text}', visible=${node.visible}, bounds=(L:${node.bounds.left}, T:${node.bounds.top}, R:${node.bounds.right}, B:${node.bounds.bottom})]"
+  }
+  return "Selector ${selector.describe()} matched tag '${selector.normalizedRaw()}', but the node is not visible. Matched nodes: $matchDetails"
+}
 
 private fun Selector.describe(): String =
   when (this) {

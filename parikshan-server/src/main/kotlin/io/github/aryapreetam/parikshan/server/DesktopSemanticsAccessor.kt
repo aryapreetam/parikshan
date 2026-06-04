@@ -114,13 +114,48 @@ internal class DesktopSemanticsAccessor(
     }
   }
 
+  private fun findInputTarget(node: SemanticsNode): SemanticsNode? {
+    var current: SemanticsNode? = node
+    while (current != null) {
+      if (current.config.getOrNull(SemanticsActions.SetText) != null) {
+        return current
+      }
+      current = current.parent
+    }
+
+    current = node.parent
+    while (current != null) {
+      val target = findInputTargetInSubtree(current, exclude = node)
+      if (target != null) {
+        return target
+      }
+      current = current.parent
+    }
+    return null
+  }
+
+  private fun findInputTargetInSubtree(node: SemanticsNode, exclude: SemanticsNode? = null): SemanticsNode? {
+    if (node === exclude) return null
+    if (node.config.getOrNull(SemanticsActions.SetText) != null) {
+      return node
+    }
+    for (child in node.children) {
+      val target = findInputTargetInSubtree(child, exclude)
+      if (target != null) {
+        return target
+      }
+    }
+    return null
+  }
+
   fun performSetText(
     selector: Selector,
     text: String
   ): Boolean =
     onEdt {
       val node = findResolvedWindowedNode(selector)?.node ?: return@onEdt false
-      val action = node.config.getOrNull(SemanticsActions.SetText)?.action ?: return@onEdt false
+      val target = findInputTarget(node) ?: return@onEdt false
+      val action = target.config.getOrNull(SemanticsActions.SetText)?.action ?: return@onEdt false
       action.invoke(AnnotatedString(text))
     }
 
@@ -130,8 +165,16 @@ internal class DesktopSemanticsAccessor(
     amountPx: Float = 200f
   ): Boolean =
     onEdt {
-      val node = findResolvedWindowedNode(selector)?.node ?: return@onEdt false
-      val action = node.config.getOrNull(SemanticsActions.ScrollBy)?.action ?: return@onEdt false
+      var currentNode: SemanticsNode? = findResolvedWindowedNode(selector)?.node ?: return@onEdt false
+      var action: ((Float, Float) -> Boolean)? = null
+      
+      while (currentNode != null) {
+        action = currentNode.config.getOrNull(SemanticsActions.ScrollBy)?.action
+        if (action != null) break
+        currentNode = currentNode.parent
+      }
+
+      if (action == null) return@onEdt false
 
       val (deltaX, deltaY) =
         when (direction) {

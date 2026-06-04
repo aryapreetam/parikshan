@@ -17,6 +17,7 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import io.github.aryapreetam.parikshan.protocol.Bounds
@@ -64,11 +65,19 @@ class AndroidDriver private constructor(
   )
 
   private fun findFirstInteraction(command: Command): SemanticsNodeInteraction? =
-    findFirstNode(command)?.let { interactionFor(it) }
+    resolveTargetNode(command)?.let { interactionFor(it) }
 
-  private fun findFirstNode(command: Command): SemanticsNode? {
+  private fun resolveTargetNode(command: Command): SemanticsNode? {
     val selector = command.resolvedSelector() ?: return null
-    return selectorCandidates(selector).firstOrNull()?.node
+    val candidates = selectorCandidates(selector)
+    if (candidates.isEmpty()) return null
+    
+    val targetIndex = when {
+      selector.index != null && selector.index!! >= 0 -> selector.index!!
+      selector.index != null && selector.index!! < 0 -> candidates.size + selector.index!!
+      else -> 0
+    }
+    return candidates.getOrNull(targetIndex)?.node
   }
 
   private fun selectorCandidates(selector: Selector): List<SelectorCandidate> {
@@ -156,6 +165,28 @@ class AndroidDriver private constructor(
     return null
   }
 
+  private fun inputTargetFor(node: SemanticsNode): SemanticsNode? {
+    var current: SemanticsNode? = node
+    while (current != null) {
+      if (current.config.getOrNull(SemanticsActions.SetText) != null) {
+        return current
+      }
+      current = current.parent
+    }
+    return null
+  }
+
+  private fun scrollTargetFor(node: SemanticsNode): SemanticsNode? {
+    var current: SemanticsNode? = node
+    while (current != null) {
+      if (current.config.getOrNull(SemanticsActions.ScrollBy) != null) {
+        return current
+      }
+      current = current.parent
+    }
+    return null
+  }
+
   private fun nodeArea(node: SemanticsNode): Float {
     val bounds = node.boundsInRoot
     return bounds.width * bounds.height
@@ -174,40 +205,47 @@ class AndroidDriver private constructor(
   private fun handleCommand(command: Command): Response {
     return when (command) {
       is Command.Click -> {
-        val matched = findFirstNode(command)
+        val matched = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${command.selector?.raw ?: command.tag}'")
         val target = clickTargetFor(matched)
           ?: return Response.Error(command.id, "Node '${command.selector?.raw ?: command.tag}' is not clickable")
-        interactionFor(target).performClick()
+        val interaction = interactionFor(target)
+        try { interaction.performScrollTo() } catch (_: Throwable) {}
+        interaction.performClick()
         Response.Ok(command.id)
       }
 
       is Command.Input -> {
-        val interaction = findFirstInteraction(command)
+        val matched = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${command.selector?.raw ?: command.tag}'")
+        val target = inputTargetFor(matched)
+          ?: return Response.Error(command.id, "Node '${command.selector?.raw ?: command.tag}' does not accept text input")
+        val interaction = interactionFor(target)
+        try { interaction.performScrollTo() } catch (_: Throwable) {}
         interaction.performTextClearance()
         interaction.performTextInput(command.text)
         Response.Ok(command.id)
       }
 
       is Command.Scroll -> {
-        val node = findFirstNode(command)
+        val node = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${command.selector?.raw ?: command.tag}'")
+        val target = scrollTargetFor(node) ?: node
         val bridgeHandled =
           ParikshanTagBridgeHooks.performScroll(
             tag = command.tag, // keep fallback
             direction = command.direction,
-            viewportHeightPx = node.boundsInRoot.height
+            viewportHeightPx = target.boundsInRoot.height
           )
         if (!bridgeHandled) {
-          performDeviceSwipe(node, command.direction)
+          performDeviceSwipe(target, command.direction)
         }
         composeUiTest.waitForIdle()
         Response.Ok(command.id)
       }
 
       is Command.AssertVisible -> {
-        val node = findFirstNode(command)
+        val node = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${command.selector?.raw ?: command.tag}'")
         if (!isVisible(node)) {
           return Response.Error(command.id, "Node '${command.selector?.raw ?: command.tag}' exists but is not visible")
@@ -221,7 +259,7 @@ class AndroidDriver private constructor(
       }
 
       is Command.AssertText -> {
-        val node = findFirstNode(command)
+        val node = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${command.selector?.raw ?: command.tag}'")
         val actual = snapshotTextOf(node).orEmpty()
         if (actual != command.expected) {
@@ -237,7 +275,7 @@ class AndroidDriver private constructor(
         val success =
           runCatching {
             composeUiTest.waitUntil(timeoutMillis = command.timeoutMs) {
-              val node = findFirstNode(command)
+              val node = resolveTargetNode(command)
               node != null && isVisible(node)
             }
             true
@@ -248,7 +286,7 @@ class AndroidDriver private constructor(
             message = "Timed out waiting for '${command.selector?.raw ?: command.tag}' after ${command.timeoutMs}ms"
           )
         }
-        val node = findFirstNode(command)
+        val node = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${command.selector?.raw ?: command.tag}'")
         Response.NodeInfo(
           id = command.id,

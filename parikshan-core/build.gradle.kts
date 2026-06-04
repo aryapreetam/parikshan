@@ -38,5 +38,34 @@ kotlin {
 }
 
 mavenPublishing {
+  publishToMavenCentral()
   coordinates(project.group.toString(), project.name, project.version.toString())
+
+  pom {
+    name = "Parikshan Core"
+    description = "Core protocol and engine for Parikshan Compose Multiplatform E2E"
+    url = "https://github.com/aryapreetam/parikshan"
+
+    licenses {
+      license {
+        name = "MIT"
+        url = "https://opensource.org/licenses/MIT"
+      }
+    }
+
+    developers {
+      developer {
+        id = "aryapreetam"
+        name = "Preetam Bhosle"
+      }
+    }
+
+    scm {
+      url = "https://github.com/aryapreetam/parikshan"
+    }
+  }
+
+  if (project.hasProperty("signing.keyId") || project.hasProperty("signingInMemoryKey")) {
+    signAllPublications()
+  }
 }

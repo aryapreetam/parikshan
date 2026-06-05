@@ -2,6 +2,7 @@ rootProject.name = "parikshan-root"
 
 pluginManagement {
   includeBuild("parikshan-gradle-plugin")
+  includeBuild("gradle-plugins")
 
   repositories {
     google {

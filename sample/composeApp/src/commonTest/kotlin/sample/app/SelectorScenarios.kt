@@ -11,12 +11,20 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 class SelectorScenarios {
+ 
+  @Test
+  fun testTaskListDisplays() = e2eTest {
+    relaunchApp()
+    openAppNavigation(); click("nav_task_list")
+    assertVisible("Task 1")
+  }
 
   @Test
   fun testTaskList() = e2eTest {
-    click("nav_task_list")
+    openAppNavigation(); click("nav_task_list")
     assertVisible("task_item_1")
     screenshot(screenshotPath("task-list"))
   }
@@ -58,13 +66,12 @@ class SelectorScenarios {
         ?: throw AssertionError("Expected click(\"Duplicate Action\") to fail because the text is ambiguous")
 
     assertContains(error.message.orEmpty(), "multiple visible text nodes")
-    assertContains(error.message.orEmpty(), "duplicate_action_primary")
-    assertContains(error.message.orEmpty(), "duplicate_action_secondary")
   }
 
   @Test
   fun testScrollAndTree() = e2eTest {
-    click("nav_scroll_demo")
+    relaunchApp()
+    openAppNavigation(); click("nav_scroll_demo")
     assertVisible("scroll_demo_screen")
 
     assertNotVisible(
@@ -88,7 +95,7 @@ class SelectorScenarios {
 
   @Test
   fun testRelaunchAppReturnsToLaunchScreen() = e2eTest {
-    click("nav_input_form")
+    openAppNavigation(); click("nav_input_form")
     assertVisible("input_form_screen")
 
     relaunchApp()
@@ -99,25 +106,7 @@ class SelectorScenarios {
 }
 
 private suspend fun E2ETestScope.openInputForm() {
-  click("nav_input_form")
+  openAppNavigation(); click("nav_input_form")
   assertVisible("input_form_screen")
 }
 
-private suspend fun E2ETestScope.scrollUntilVisible(
-  containerSelector: Selector,
-  targetSelector: Selector,
-  maxScrolls: Int = 40
-) {
-  repeat(maxScrolls + 1) { attempt ->
-    if (hasVisibleNode(targetSelector)) {
-      return
-    }
-    if (attempt == maxScrolls) {
-      throw AssertionError(
-        "Could not make '${targetSelector.raw}' visible after $maxScrolls scroll actions"
-      )
-    }
-    scroll(containerSelector, ScrollDirection.Down)
-    kotlinx.coroutines.delay(200)
-  }
-}

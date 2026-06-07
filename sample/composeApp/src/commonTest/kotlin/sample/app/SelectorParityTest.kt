@@ -11,83 +11,52 @@ import io.github.aryapreetam.parikshan.protocol.first
 import io.github.aryapreetam.parikshan.protocol.last
 import io.github.aryapreetam.parikshan.resolveNode
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertContains
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
-
-private suspend fun E2ETestScope.scrollUntilVisible(
-  containerSelector: Selector,
-  targetSelector: Selector,
-  maxScrolls: Int = 10
-) {
-  repeat(maxScrolls + 1) { attempt ->
-    if (hasVisibleNode(targetSelector)) {
-      return
-    }
-    if (attempt == maxScrolls) {
-      throw AssertionError(
-        "Could not make '${targetSelector.raw}' visible after $maxScrolls scroll actions"
-      )
-    }
-    scroll(containerSelector, ScrollDirection.Down)
-    kotlinx.coroutines.delay(200)
-  }
-}
+import kotlin.test.assertFailsWith
 
 class SelectorParityTest {
 
   @Test
   fun testExistentialAssertsSucceedWithDuplicates() = e2eTest {
     relaunchApp()
-    click("nav_input_form")
+    openAppNavigation(); click("nav_input_form")
     assertVisible("input_form_screen")
     
+    // Existence checks should succeed even if multiple nodes match
     scrollUntilVisible(Selector.Tag("input_form_screen"), Selector.Auto("Duplicate Action"))
-    waitFor(Selector.Auto("Duplicate Action"))
     assertVisible(Selector.Auto("Duplicate Action"))
     
     scrollUntilVisible(Selector.Tag("input_form_screen"), Selector.Tag("duplicate_input_2"))
-    waitFor(Selector.Auto("Duplicate Input"))
     assertVisible(Selector.Auto("Duplicate Input"))
-  }
-
-  private suspend fun E2ETestScope.countVisibleMatches(selector: Selector): Int {
-    return try {
-      val resolved = selector.resolveNode(nodes = getTree(), requireVisible = true)
-      resolved.allMatches.size
-    } catch (e: Exception) {
-      0
-    }
   }
 
   @Test
   fun testActionsFailOnAmbiguityWithoutIndex() = e2eTest {
     relaunchApp()
-    click("nav_input_form")
+    openAppNavigation(); click("nav_input_form")
     assertVisible("input_form_screen")
 
-    // Just scroll a bit to ensure both are in viewport
     scrollUntilVisible(Selector.Tag("input_form_screen"), Selector.Auto("Duplicate Action"))
-    
-    val clickError = kotlin.runCatching {
+
+    // Clicking should fail because text is ambiguous
+    val clickError = assertFailsWith<AssertionError> {
       click("Duplicate Action")
-    }.exceptionOrNull() as? AssertionError
-      ?: throw AssertionError("Expected click to fail due to ambiguity.")
+    }
 
-    assertContains(clickError.message.orEmpty(), "multiple visible text nodes")
+    assertContains(clickError.message.orEmpty(), "matched multiple visible text nodes")
 
-    val inputError = kotlin.runCatching {
+    val inputError = assertFailsWith<AssertionError> {
       input("Duplicate Input", "some text")
-    }.exceptionOrNull() as? AssertionError
-      ?: throw AssertionError("Expected input to fail due to ambiguity.")
+    }
 
-    assertContains(inputError.message.orEmpty(), "multiple visible text nodes")
+    assertContains(inputError.message.orEmpty(), "matched multiple visible text nodes")
   }
 
   @Test
   fun testActionsSucceedWithExplicitIndices() = e2eTest {
     relaunchApp()
-    click("nav_input_form")
+    openAppNavigation(); click("nav_input_form")
     assertVisible("input_form_screen")
 
     // Just scroll a bit to ensure both are in viewport
@@ -98,11 +67,10 @@ class SelectorParityTest {
     click(Selector.Auto("Duplicate Action").atIndex(1))
     click(Selector.Auto("Duplicate Action").last())
 
-    // First input
+    // Input with explicit indices
     input(Selector.Auto("Duplicate Input").first(), "First Input")
     assertText("duplicate_input_1", "First Input")
 
-    // Last input
     input(Selector.Auto("Duplicate Input").last(), "Last Input")
     assertText("duplicate_input_2", "Last Input")
   }
@@ -110,7 +78,7 @@ class SelectorParityTest {
   @Test
   fun testLongFormSubmission() = e2eTest {
     relaunchApp()
-    click("nav_input_form")
+    openAppNavigation(); click("nav_input_form")
     assertVisible("input_form_screen")
     
     // Fill out the long form organically scrolling as needed
@@ -128,7 +96,7 @@ class SelectorParityTest {
     
     scrollUntilVisible(Selector.Tag("input_form_screen"), Selector.Auto("Confirm Password"))
     input("Confirm Password", "secretpassword")
-    
+
     scrollUntilVisible(Selector.Tag("input_form_screen"), Selector.Auto("I agree to the terms and conditions"))
     click("I agree to the terms and conditions") // Toggles checkbox via row click or label
     
@@ -136,7 +104,6 @@ class SelectorParityTest {
     click("Final Submit")
     
     // Check for success message on Snackbar
-    waitFor(Selector.Auto("Final Form Submitted Successfully!"))
     assertVisible("Final Form Submitted Successfully!")
   }
 }

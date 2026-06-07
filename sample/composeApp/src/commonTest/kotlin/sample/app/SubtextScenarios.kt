@@ -8,7 +8,7 @@ class SubtextScenarios {
     @Test
     fun testSubtextMatching() = e2eTest {
         // Navigate to Subtext Demo
-        click("nav_subtext_demo")
+        openAppNavigation(); click("nav_subtext_demo")
         
         // Assert that the full text screen is visible
         assertVisible("subtext_demo_screen")

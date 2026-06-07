@@ -22,6 +22,10 @@ object ParikshanDesktopLauncher {
         ?.trim()
         ?.takeIf { it.isNotEmpty() }
 
+    if (System.getProperty("parikshan.background") == "true") {
+        System.err.println("Parikshan: Background mode active. Enforcing focus-prevention.")
+    }
+
     val bootstrap =
       DesktopBootstrapController(
         config = ParikshanServerConfig.fromSystemProperties(),
@@ -67,12 +71,23 @@ private class DesktopBootstrapController(
   }
 
   private fun waitForComposeWindowAndStartServer() {
+    val isBackground = System.getProperty("parikshan.background") == "true"
+    
     while (!Thread.currentThread().isInterrupted && handle == null) {
+      if (isBackground) {
+          applyBackgroundSettings()
+      }
+
       when (val selection = selectComposeWindow(requiredWindowTitle)) {
         is WindowSelection.Ready -> {
+          val window = selection.window
           System.err.println("Parikshan: Found visible Compose window. Starting server...")
-          handle = ParikshanServer.start(window = selection.window, config = config)
+          handle = ParikshanServer.start(window = window, config = config)
           System.err.println("Parikshan: Server started on ${config.host}:${config.port}")
+          
+          if (isBackground) {
+              onEdt { window.toBack() }
+          }
           return
         }
 
@@ -89,6 +104,19 @@ private class DesktopBootstrapController(
       } catch (_: InterruptedException) {
         Thread.currentThread().interrupt()
         return
+      }
+    }
+  }
+
+  private fun applyBackgroundSettings() {
+    onEdt {
+      Window.getWindows().filterIsInstance<ComposeWindow>().forEach { window ->
+        if (window.focusableWindowState) {
+          System.err.println("Parikshan: Applying background settings to window '${window.title}'")
+          window.focusableWindowState = false
+          window.setAutoRequestFocus(false)
+          window.toBack()
+        }
       }
     }
   }

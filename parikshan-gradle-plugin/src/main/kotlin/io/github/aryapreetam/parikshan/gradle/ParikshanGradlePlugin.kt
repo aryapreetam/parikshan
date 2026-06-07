@@ -73,12 +73,38 @@ class ParikshanGradlePlugin : Plugin<Project> {
   override fun apply(project: Project) {
     val extension = project.extensions.create<ParikshanExtension>("parikshan")
 
+    // Register dummy tasks for clean CLI syntax
+    project.tasks.register("background") {
+      group = "verification"
+      description = "Enable background mode for E2E tests"
+    }
+    project.tasks.register("video") {
+      group = "verification"
+      description = "Enable video recording for E2E tests"
+    }
+
     // Ensure all ZIP/JAR tasks can handle large entry counts (Zip64)
     // This is required for large Compose Uber JARs.
     project.tasks.withType(Zip::class.java).configureEach {
       isZip64 = true
     }
     val sessionToken = project.providers.gradleProperty("parikshan.token").getOrNull() ?: UUID.randomUUID().toString()
+
+    // Centralized flag detection
+    val isBackgroundRequested = 
+      project.gradle.startParameter.taskNames.any { it.contains("background", ignoreCase = true) } ||
+      (project.hasProperty("background") && project.property("background").toString() == "true")
+
+    val isVideoRequested = 
+      project.gradle.startParameter.taskNames.any { it.contains("video", ignoreCase = true) } ||
+      (project.hasProperty("video") && project.property("video").toString() == "true")
+
+    if (isBackgroundRequested) {
+        project.logger.lifecycle("Parikshan: Background mode DETECTED.")
+    }
+    if (isVideoRequested) {
+        project.logger.lifecycle("Parikshan: Video recording ENABLED.")
+    }
 
     // --- Desktop Tasks ---
 
@@ -100,7 +126,8 @@ class ParikshanGradlePlugin : Plugin<Project> {
         // Resolve JAR location at configuration time as a Provider
         val appJarFileProvider = project.tasks.named<org.gradle.jvm.tasks.Jar>(appJarTaskNameValue.get())
           .flatMap { it.archiveFile }
-        
+        val isBackground = isBackgroundRequested
+
         inputs.file(appJarFileProvider)
 
         doLast {
@@ -112,11 +139,11 @@ class ParikshanGradlePlugin : Plugin<Project> {
             logFile = File(buildDirValue.get().asFile, "parikshan/desktop-app.log"),
             manifestFile = desktopLaunchManifestFile.get().asFile,
             appArgs = appArgsValue.get(),
-            host = hostValue.get(),
-            port = portValue.get(),
+            host = hostValue.get(), port = portValue.get(),
             timeoutMs = timeoutMsValue.get(),
             pollMs = pollMsValue.get(),
-            title = titleValue.orNull
+            title = titleValue.orNull,
+            background = isBackground
           )
         }
       }
@@ -252,6 +279,14 @@ class ParikshanGradlePlugin : Plugin<Project> {
         group = "verification"
         dependsOn(startDesktopTask)
         finalizedBy(stopDesktopTask)
+        
+        // Support native --background flag via task option
+        options {
+            if (this is org.gradle.api.tasks.testing.junitplatform.JUnitPlatformOptions) {
+                // We just need to register it, even if we don't use it directly here
+            }
+        }
+
         configureE2eHostTestExecution(
           hostTestClassesDirs = hostTestTask.get().testClassesDirs,
           hostTestClasspath = hostTestTask.get().classpath,
@@ -264,6 +299,12 @@ class ParikshanGradlePlugin : Plugin<Project> {
         systemProperty("parikshan.target", "desktop")
         systemProperty("parikshan.token", sessionToken)
         systemProperty("parikshan.desktop.launchManifest", desktopLaunchManifestFile.get().asFile.absolutePath)
+        if (isBackgroundRequested) {
+          systemProperty("parikshan.background", "true")
+        }
+        if (isVideoRequested) {
+          systemProperty("parikshan.video.enabled", "true")
+        }
       }
 
       project.tasks.register<Test>("e2eWasmTest") {
@@ -280,6 +321,12 @@ class ParikshanGradlePlugin : Plugin<Project> {
         systemProperty("parikshan.target", "wasm")
         systemProperty("parikshan.token", sessionToken)
         systemProperty("parikshan.wasm.url", "http://127.0.0.1:${extension.wasmServerPort.get()}")
+        if (isBackgroundRequested) {
+          systemProperty("parikshan.wasm.headless", "true")
+        }
+        if (isVideoRequested) {
+          systemProperty("parikshan.video.enabled", "true")
+        }
         testLogging {
           showStandardStreams = true
           exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
@@ -706,7 +753,7 @@ private object ParikshanAndroidRecorder {
 
 private object ParikshanDesktopProcess {
   private var process: Process? = null
-  fun start(jar: File, token: String, logFile: File, manifestFile: File, appArgs: List<String>, host: String, port: Int, timeoutMs: Long, pollMs: Long, title: String?) {
+  fun start(jar: File, token: String, logFile: File, manifestFile: File, appArgs: List<String>, host: String, port: Int, timeoutMs: Long, pollMs: Long, title: String?, background: Boolean) {
     stop(host = host, port = port, token = token, manifestFile = manifestFile)
     val javaExecutable = System.getProperty("java.home") + "/bin/java"
     val mainClass = JarFile(jar).manifest.mainAttributes.getValue("Main-Class")
@@ -718,6 +765,12 @@ private object ParikshanDesktopProcess {
         add("-Dparikshan.port=$port")
         add("-Dparikshan.token=$token")
         add("-Dparikshan.desktop.appMainClass=$mainClass")
+        if (background) {
+            add("-Dparikshan.background=true")
+            if (System.getProperty("os.name").contains("mac", ignoreCase = true)) {
+                add("-Dapple.awt.UIElement=true")
+            }
+        }
         title?.let { add("-Dparikshan.desktop.windowTitle=$it") }
         add("-cp")
         add(jar.absolutePath)
@@ -740,7 +793,8 @@ private object ParikshanDesktopProcess {
       appArgs = appArgs,
       host = host,
       port = port,
-      title = title
+      title = title,
+      background = background
     )
   }
   fun stop(host: String = "127.0.0.1", port: Int = 9877, token: String = "", manifestFile: File? = null) {
@@ -777,7 +831,8 @@ private object ParikshanDesktopProcess {
     appArgs: List<String>,
     host: String,
     port: Int,
-    title: String?
+    title: String?,
+    background: Boolean
   ) {
     manifestFile.parentFile.mkdirs()
     val properties =
@@ -790,6 +845,7 @@ private object ParikshanDesktopProcess {
         setProperty("host", host)
         setProperty("port", port.toString())
         setProperty("logFile", logFile.absolutePath)
+        setProperty("background", background.toString())
         title?.let { setProperty("windowTitle", it) }
         setProperty("appArgCount", appArgs.size.toString())
         appArgs.forEachIndexed { index, value ->
@@ -1105,7 +1161,9 @@ private fun Test.configureE2eHostTestExecution(
 
   filter {
     isFailOnNoMatchingTests = true
-    e2eTestClasses.forEach { includeTestsMatching(it) }
+    if (includePatterns.isEmpty()) {
+        e2eTestClasses.forEach { includeTestsMatching(it) }
+    }
   }
 
   doFirst {

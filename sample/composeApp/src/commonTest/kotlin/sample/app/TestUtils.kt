@@ -19,9 +19,7 @@ suspend fun E2ETestScope.openAppNavigation() {
         if (hasVisibleNode("hamburger_button")) {
             click("hamburger_button")
             // Wait for drawer to appear
-            val drawerVisible = retry(maxAttempts = 5, delayMs = 200) {
-                hasVisibleNode("nav_task_list")
-            }
+            val drawerVisible = hasVisibleNode("nav_task_list")
             if (drawerVisible) return
         }
         attempts++

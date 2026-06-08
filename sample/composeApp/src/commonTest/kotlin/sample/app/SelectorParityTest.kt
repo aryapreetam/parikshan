@@ -19,7 +19,7 @@ class SelectorParityTest {
 
   @Test
   fun testExistentialAssertsSucceedWithDuplicates() = e2eTest {
-    relaunchApp()
+    
     openAppNavigation(); click("nav_input_form")
     assertVisible("input_form_screen")
     
@@ -33,7 +33,7 @@ class SelectorParityTest {
 
   @Test
   fun testActionsFailOnAmbiguityWithoutIndex() = e2eTest {
-    relaunchApp()
+    
     openAppNavigation(); click("nav_input_form")
     assertVisible("input_form_screen")
 
@@ -55,7 +55,7 @@ class SelectorParityTest {
 
   @Test
   fun testActionsSucceedWithExplicitIndices() = e2eTest {
-    relaunchApp()
+    
     openAppNavigation(); click("nav_input_form")
     assertVisible("input_form_screen")
 
@@ -77,7 +77,7 @@ class SelectorParityTest {
 
   @Test
   fun testLongFormSubmission() = e2eTest {
-    relaunchApp()
+    
     openAppNavigation(); click("nav_input_form")
     assertVisible("input_form_screen")
     

@@ -323,8 +323,19 @@ internal object IosSemanticsAccessor {
     val node = findNode(tag, selector) ?: return formatNodeDiagnostics(activeSelector)
     val target = scrollTargetFor(node) ?: return "Scroll target not found"
     val action = target.getAction<(Float, Float) -> Boolean>("ScrollBy") ?: return "ScrollBy action not found"
-    val x = if (direction == ScrollDirection.Left) -200f else if (direction == ScrollDirection.Right) 200f else 0f
-    val y = if (direction == ScrollDirection.Up) -200f else if (direction == ScrollDirection.Down) 200f else 0f
+    
+    val bounds = target.boundsInWindow
+    val width = bounds.right - bounds.left
+    val height = bounds.bottom - bounds.top
+    val safeWidth = if (width > 0) width else 400f
+    val safeHeight = if (height > 0) height else 400f
+    
+    val deltaX = safeWidth * 0.5f
+    val deltaY = safeHeight * 0.5f
+    
+    val x = if (direction == ScrollDirection.Left) -deltaX else if (direction == ScrollDirection.Right) deltaX else 0f
+    val y = if (direction == ScrollDirection.Up) -deltaY else if (direction == ScrollDirection.Down) deltaY else 0f
+    
     val success = action.invoke(x, y)
     return if (success) "OK" else "ScrollBy action invoke returned false"
   }

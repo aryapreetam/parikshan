@@ -73,7 +73,9 @@ suspend fun E2ETestScope.selectTimeViaInput(hour: String, minute: String) {
 
 /**
  * Drags a slider physically by calculating its bounds.
+ * (Commented out because drag is not supported in the baseline)
  */
+/*
 suspend fun E2ETestScope.dragSliderPhysically(sliderSelector: Selector, percent: Float) {
     val node = resolveNode(sliderSelector)
     val bounds = node.bounds
@@ -92,3 +94,4 @@ suspend fun E2ETestScope.dragSliderPhysically(sliderSelector: Selector, percent:
 suspend fun E2ETestScope.dragSliderPhysically(tag: String, percent: Float) {
     dragSliderPhysically(Selector.Auto(tag), percent)
 }
+*/

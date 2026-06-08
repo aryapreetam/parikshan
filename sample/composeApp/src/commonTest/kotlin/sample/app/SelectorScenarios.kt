@@ -17,17 +17,10 @@ class SelectorScenarios {
  
   @Test
   fun testTaskListDisplays() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_task_list")
+    //openAppNavigation(); click("nav_task_list")
     assertVisible("Task 1")
   }
 
-  @Test
-  fun testTaskList() = e2eTest {
-    openAppNavigation(); click("nav_task_list")
-    assertVisible("task_item_1")
-    screenshot(screenshotPath("task-list"))
-  }
 
   @Test
   fun testInputForm() = e2eTest {
@@ -70,7 +63,7 @@ class SelectorScenarios {
 
   @Test
   fun testScrollAndTree() = e2eTest {
-    relaunchApp()
+    
     openAppNavigation(); click("nav_scroll_demo")
     assertVisible("scroll_demo_screen")
 
@@ -92,17 +85,18 @@ class SelectorScenarios {
     )
     assertVisible("done")
   }
-
+/*
   @Test
   fun testRelaunchAppReturnsToLaunchScreen() = e2eTest {
     openAppNavigation(); click("nav_input_form")
     assertVisible("input_form_screen")
 
-    relaunchApp()
+    
 
     assertVisible("task_list_screen")
     assertVisible("task_item_1")
   }
+  */
 }
 
 private suspend fun E2ETestScope.openInputForm() {

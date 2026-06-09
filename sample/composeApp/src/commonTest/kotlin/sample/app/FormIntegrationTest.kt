@@ -51,6 +51,7 @@ class FormIntegrationTest {
     // Input Indic Text
     scrollUntilVisible(Selector.Tag("form_playground_screen"), Selector.Tag("form_indic_input"))
     input("form_indic_input", "नमस्ते")
+    scrollUntilVisible(Selector.Tag("form_playground_screen"), Selector.Text("Indic Value: नमस्ते"))
     assertVisible("Indic Value: नमस्ते")
 
     // Accept Terms & Conditions Checkbox

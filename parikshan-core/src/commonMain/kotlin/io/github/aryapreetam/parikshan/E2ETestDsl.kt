@@ -249,6 +249,12 @@ class E2ETestScope internal constructor(
         lastError = error.message
       }
       if (startMark.elapsedNow() >= timeoutMs.milliseconds) {
+        println("Parikshan E2ETestDsl: Timeout waiting for selector ${selector.raw}. Last error: $lastError. Printing semantics tree nodes:")
+        runCatching {
+          fetchTree().forEach { node ->
+            println("  Node: tag='${node.tag}', text='${node.text}', visible=${node.visible}, bounds=${node.bounds}")
+          }
+        }
         break
       }
       delay(WAIT_POLL_INTERVAL_MS)
@@ -381,6 +387,55 @@ class E2ETestScope internal constructor(
   fun screenshotPath(name: String): String =
     artifactPath("screenshots/${name.trim().ifEmpty { "unnamed" }}.png")
 
+  /**
+   * Performs a physical mouse or touch drag/swipe gesture from (fromX, fromY) to (toX, toY) over the specified duration.
+   */
+  suspend fun drag(
+    fromX: Double,
+    fromY: Double,
+    toX: Double,
+    toY: Double,
+    durationMs: Long = 300L
+  ) {
+    expectOk(
+      action = "drag($fromX, $fromY -> $toX, $toY)",
+      response = driver.send(Command.Drag(id = nextId(), fromX = fromX, fromY = fromY, toX = toX, toY = toY, durationMs = durationMs))
+    )
+    settleAfterCommand()
+  }
+
+  /**
+   * Drags the UI element matching [tag] by moving it by (offsetX, offsetY) pixels.
+   */
+  suspend fun drag(
+    tag: String,
+    offsetX: Double,
+    offsetY: Double,
+    durationMs: Long = 300L
+  ) {
+    drag(selector = tag.asAutoSelector(), offsetX = offsetX, offsetY = offsetY, durationMs = durationMs)
+  }
+
+  /**
+   * Drags the UI element matching [selector] by moving it by (offsetX, offsetY) pixels.
+   */
+  suspend fun drag(
+    selector: Selector,
+    offsetX: Double,
+    offsetY: Double,
+    durationMs: Long = 300L
+  ) {
+    waitFor(selector = selector)
+    val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
+    checkAmbiguity(resolved)
+    val bounds = resolved.node.bounds
+    val fromX = bounds.centerX
+    val fromY = bounds.centerY
+    val toX = fromX + offsetX
+    val toY = fromY + offsetY
+    drag(fromX = fromX, fromY = fromY, toX = toX, toY = toY, durationMs = durationMs)
+  }
+
   suspend fun pressBack() {
     expectOk(
       action = "pressBack()",
@@ -453,6 +508,30 @@ class E2ETestScope internal constructor(
     if (resolved.allMatches.size > 1) {
       throw AssertionError(resolved.selector.ambiguousTextMessage(resolved.allMatches))
     }
+  }
+
+  /**
+   * Retries the provided [block] up to [maxAttempts] times with a [delayMs] between attempts.
+   *
+   * Useful for waiting for asynchronous UI state changes that aren't covered by built-in waits.
+   */
+  suspend fun <T> retry(
+    maxAttempts: Int = 3,
+    delayMs: Long = 500L,
+    block: suspend E2ETestScope.() -> T
+  ): T {
+    var lastError: Throwable? = null
+    repeat(maxAttempts) { attempt ->
+      try {
+        return this.block()
+      } catch (e: Throwable) {
+        lastError = e
+        if (attempt < maxAttempts - 1) {
+          delay(delayMs)
+        }
+      }
+    }
+    throw lastError ?: RuntimeException("Retry failed after $maxAttempts attempts")
   }
 }
 

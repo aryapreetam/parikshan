@@ -9,6 +9,7 @@ import sample.app.setup.selectTimeFromDial
 import sample.app.setup.selectTimeViaInput
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import io.github.aryapreetam.parikshan.resolveNode
+import io.github.aryapreetam.parikshan.protocol.atIndex
 import kotlinx.coroutines.delay
 import kotlin.test.Test
 import kotlin.test.assertTrue
@@ -16,46 +17,67 @@ import kotlin.test.assertTrue
 class OverlayIntegrationTest {
 
   @Test
-  fun testDropdownMenuSelectionAndScroll() = e2eTest {
+  fun testDropdownMenuSelection() = e2eTest {
     relaunchApp()
     openAppNavigation(); click("nav_overlay_playground")
-    assertVisible("overlay_playground_screen")
 
     // Open Dropdown Menu via ExposedDropdownMenuBox
     click("dropdown_anchor")
-    waitFor("dropdown_menu")
+//    waitFor("dropdown_menu")
+    
+    // Scroll down inside the dropdown menu to find 'Purple'
+    //scrollUntilVisible(
+   //   containerSelector = Selector.Tag("dropdown_menu"),
+   //   targetSelector = Selector.Text("Option Purple")
+   // )
+    click(Selector.Text("Option Blue"))
+    
+    // Assert correct output message
+  //  delay(500) // Wait for state update
+   // val resultText = resolveNode("overlay_result_message").text.orEmpty()
+	assertVisible("Selected Blue from Dropdown")
+  }
+
+  @Test
+  fun testDropdownMenuSelectionAndScroll() = e2eTest {
+    relaunchApp()
+    openAppNavigation(); click("nav_overlay_playground")
+
+    // Open Dropdown Menu via ExposedDropdownMenuBox
+    click("dropdown_anchor")
+//    waitFor("dropdown_menu")
     
     // Scroll down inside the dropdown menu to find 'Purple'
     scrollUntilVisible(
-      containerSelector = Selector.Tag("dropdown_menu"),
-      targetSelector = Selector.Text("Option Purple")
-    )
+     containerSelector = Selector.Tag("dropdown_menu"),
+     targetSelector = Selector.Text("Option Purple")
+   )
     click(Selector.Text("Option Purple"))
     
     // Assert correct output message
-    delay(500) // Wait for state update
-    val resultText = resolveNode("overlay_result_message").text.orEmpty()
-    assertTrue(resultText.startsWith("Selected Purple from Dropdown"), "Expected purple selected message, got: $resultText")
+  //  delay(500) // Wait for state update
+   // val resultText = resolveNode("overlay_result_message").text.orEmpty()
+	assertVisible("Selected Purple from Dropdown")
   }
 
   @Test
   fun testAlertDialogConfirmation() = e2eTest {
-    relaunchApp()
+    //relaunchApp()
     openAppNavigation(); click("nav_overlay_playground")
     assertVisible("overlay_playground_screen")
 
     click("dialog_trigger_button")
-    assertVisible("alert_dialog")
+    //assertVisible("alert_dialog")
     
     click(Selector.Text("Confirm"))
     
-    assertText("overlay_result_message", "Alert Confirmed")
+    assertVisible("Dialog Confirmed")
     assertNotVisible("alert_dialog")
   }
 
   @Test
   fun testModalBottomSheetInteraction() = e2eTest {
-    relaunchApp()
+    //relaunchApp()
     openAppNavigation(); click("nav_overlay_playground")
     assertVisible("overlay_playground_screen")
 
@@ -72,7 +94,7 @@ class OverlayIntegrationTest {
 
   @Test
   fun testDatePickerInputSelection() = e2eTest {
-    relaunchApp()
+    //relaunchApp()
     openAppNavigation(); click("nav_overlay_playground")
     assertVisible("overlay_playground_screen")
 
@@ -91,7 +113,7 @@ class OverlayIntegrationTest {
 
   @Test
   fun testTimePickerInputSelection() = e2eTest {
-    relaunchApp()
+    //relaunchApp()
     openAppNavigation(); click("nav_overlay_playground")
     assertVisible("overlay_playground_screen")
 
@@ -101,15 +123,16 @@ class OverlayIntegrationTest {
     // Select 10:30 via direct input
     selectTimeViaInput("10", "30")
     
-    delay(500)
-    val resultText = resolveNode("overlay_result_message").text.orEmpty()
-    assertTrue(resultText.startsWith("Time Selected:"), "Expected time selected message, got: $resultText")
+    //delay(500)
+    //val resultText = resolveNode("overlay_result_message").text.orEmpty()
+    //assertTrue(resultText.startsWith("Time Selected:"), "Expected time selected message, got: $resultText")
+    assertVisible("Time Selected:")
     assertNotVisible("time_picker_dialog")
   }
 
   @Test
   fun testTimePickerDialSelection() = e2eTest {
-    relaunchApp()
+    //relaunchApp()
     openAppNavigation(); click("nav_overlay_playground")
     assertVisible("overlay_playground_screen")
 

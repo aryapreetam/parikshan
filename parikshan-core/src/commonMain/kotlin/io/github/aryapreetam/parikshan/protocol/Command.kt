@@ -156,6 +156,18 @@ sealed class Command {
     override val id: String,
     override var token: String = ""
   ) : Command()
+
+  @Serializable
+  @SerialName("drag")
+  data class Drag(
+    override val id: String,
+    val fromX: Double,
+    val fromY: Double,
+    val toX: Double,
+    val toY: Double,
+    val durationMs: Long = 300L,
+    override var token: String = ""
+  ) : Command()
 }
 
 /**

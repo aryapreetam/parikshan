@@ -10,6 +10,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.junit4.ComposeTestRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
@@ -35,6 +36,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalTestApi::class)
 object ParikshanAndroidServer {
@@ -46,10 +48,34 @@ object ParikshanAndroidServer {
   @Volatile
   private var shutdownRequested = false
 
+  @Volatile
+  private var lastClockTime: Long = 0L
+
+  private fun syncClockWithRealTime() {
+    val now = System.currentTimeMillis()
+    if (lastClockTime == 0L) {
+      lastClockTime = now
+      return
+    }
+    val elapsed = now - lastClockTime
+    lastClockTime = now
+    if (elapsed > 0) {
+      try {
+        composeRule.runOnUiThread {
+          composeRule.mainClock.advanceTimeBy(elapsed)
+        }
+      } catch (e: Throwable) {
+        // Ignore
+      }
+    }
+  }
+
   fun isShutdownRequested() = shutdownRequested
 
   fun start(rule: ComposeTestRule, port: Int = 9879, sessionToken: String? = null) {
     if (!running.compareAndSet(false, true)) return
+    
+    lastClockTime = System.currentTimeMillis()
     
     // Resolve session token from instrumentation args
     val args = InstrumentationRegistry.getArguments()
@@ -320,13 +346,18 @@ object ParikshanAndroidServer {
 
   private fun isVisible(node: SemanticsNode): Boolean {
     val bounds = node.boundsInWindow
-    return bounds.width > 0f && bounds.height > 0f && node.layoutInfo.isPlaced
+    return bounds.width > 0f && bounds.height > 0f
   }
 
   private fun snapshotTextOf(node: SemanticsNode): String? =
     directTextOf(node) ?: descendantTextsOf(node).takeIf { it.isNotEmpty() }?.joinToString("")
 
   private fun directTextOf(node: SemanticsNode): String? {
+    val contentDescription = node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty()
+    if (contentDescription.isNotEmpty()) {
+      contentDescription.joinToString("").takeIf { it.isNotBlank() }?.let { return it }
+    }
+
     node.config.getOrNull(SemanticsProperties.EditableText)?.text
       ?.takeIf { it.isNotBlank() }
       ?.let { return it }
@@ -334,11 +365,6 @@ object ParikshanAndroidServer {
     val values = node.config.getOrNull(SemanticsProperties.Text).orEmpty()
     if (values.isNotEmpty()) {
       values.joinToString("") { it.text }.takeIf { it.isNotBlank() }?.let { return it }
-    }
-
-    val contentDescription = node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty()
-    if (contentDescription.isNotEmpty()) {
-      return contentDescription.joinToString("").takeIf { it.isNotBlank() }
     }
 
     return null
@@ -362,15 +388,19 @@ object ParikshanAndroidServer {
   }
 
   private fun handleCommand(command: Command): Response {
+    syncClockWithRealTime()
     return when (command) {
       is Command.Click -> {
         val matched = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${selectorLabel(command)}'")
-        val target = clickTargetFor(matched)
-          ?: return Response.Error(command.id, "Node '${selectorLabel(command)}' is not clickable")
+        val target = clickTargetFor(matched) ?: matched
         val interaction = interactionFor(target)
         try { interaction.performScrollTo() } catch (e: Throwable) { /* Ignore */ }
-        interaction.performClick()
+        try {
+          interaction.performTouchInput { click() }
+        } catch (e: Throwable) {
+          interaction.performClick()
+        }
         Response.Ok(command.id)
       }
 
@@ -389,7 +419,35 @@ object ParikshanAndroidServer {
       is Command.Scroll -> {
         val matched = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${selectorLabel(command)}'")
-        val interaction = interactionFor(scrollTargetFor(matched) ?: matched)
+        val scrollableNode = scrollTargetFor(matched) ?: matched
+        val scrollByAction = scrollableNode.config.getOrNull(SemanticsActions.ScrollBy)
+        
+        if (scrollByAction != null && scrollByAction.action != null) {
+          val bounds = scrollableNode.boundsInWindow
+          val scrollX = when (command.direction) {
+            ScrollDirection.Left -> -bounds.width / 2f
+            ScrollDirection.Right -> bounds.width / 2f
+            else -> 0f
+          }
+          val scrollY = when (command.direction) {
+            ScrollDirection.Up -> -bounds.height / 2f
+            ScrollDirection.Down -> bounds.height / 2f
+            else -> 0f
+          }
+          var success = false
+          try {
+            composeRule.runOnUiThread {
+              success = scrollByAction.action!!.invoke(scrollX, scrollY)
+            }
+          } catch (e: Throwable) {
+            // Ignore
+          }
+          if (success) {
+            return Response.Ok(command.id)
+          }
+        }
+
+        val interaction = interactionFor(scrollableNode)
         try {
           interaction.performTouchInput {
             when (command.direction) {
@@ -411,10 +469,16 @@ object ParikshanAndroidServer {
         if (!isVisible(nodeInfo)) {
           return Response.Error(command.id, "Node '${selectorLabel(command)}' exists but is not visible")
         }
+        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
         val bounds = nodeInfo.boundsInWindow
         Response.NodeInfo(
           id = command.id,
-          bounds = Bounds(bounds.left.toDouble(), bounds.top.toDouble(), bounds.right.toDouble(), bounds.bottom.toDouble()),
+          bounds = Bounds(
+            (bounds.left / density).toDouble(),
+            (bounds.top / density).toDouble(),
+            (bounds.right / density).toDouble(),
+            (bounds.bottom / density).toDouble()
+          ),
           visible = true,
           text = snapshotTextOf(nodeInfo)
         )
@@ -439,53 +503,81 @@ object ParikshanAndroidServer {
         }
         val nodeInfo = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${selectorLabel(command)}'")
+        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
         val bounds = nodeInfo.boundsInWindow
         Response.NodeInfo(
           id = command.id,
-          bounds = Bounds(bounds.left.toDouble(), bounds.top.toDouble(), bounds.right.toDouble(), bounds.bottom.toDouble()),
+          bounds = Bounds(
+            (bounds.left / density).toDouble(),
+            (bounds.top / density).toDouble(),
+            (bounds.right / density).toDouble(),
+            (bounds.bottom / density).toDouble()
+          ),
           visible = true,
           text = snapshotTextOf(nodeInfo)
         )
       }
 
+      is Command.Drag -> {
+        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        device.drag(
+          (command.fromX * density).roundToInt(),
+          (command.fromY * density).roundToInt(),
+          (command.toX * density).roundToInt(),
+          (command.toY * density).roundToInt(),
+          20
+        )
+        Response.Ok(command.id)
+      }
+
       is Command.GetTree -> {
         val nodes = mutableListOf<NodeSnapshot>()
-        val root = try { composeRule.onRoot() } catch (e: Throwable) { null }
         
-        if (root != null) {
-          val rootNode = try { root.fetchSemanticsNode() } catch (e: Throwable) { null }
-          val rootBounds = rootNode?.boundsInWindow
+        try {
+          val roots = composeRule.onAllNodes(androidx.compose.ui.test.isRoot(), useUnmergedTree = true).fetchSemanticsNodes()
+          for (rootNode in roots) {
+            val rootBounds = rootNode.boundsInWindow
 
-          fun traverse(node: SemanticsNode) {
-            val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: ""
-            val editableText = node.config.getOrNull(SemanticsProperties.EditableText)?.text
-            val spokenText = node.config.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text }.orEmpty()
-            val contentDescription = node.config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString("").orEmpty()
+            fun traverse(node: SemanticsNode) {
+              val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: ""
+              val editableText = node.config.getOrNull(SemanticsProperties.EditableText)?.text
+              val spokenText = node.config.getOrNull(SemanticsProperties.Text)?.joinToString("") { it.text }.orEmpty()
+              val contentDescription = node.config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString("").orEmpty()
 
-            val text = editableText?.takeIf { it.isNotBlank() }
-              ?: spokenText.takeIf { it.isNotBlank() }
-              ?: contentDescription.ifBlank { null }
-            
-            val bounds = node.boundsInWindow
-            val hasArea = bounds.width > 0f && bounds.height > 0f
-            val isPhysicallyVisible = if (rootBounds != null && hasArea) {
-              val centerX = bounds.left + (bounds.width / 2f)
-              val centerY = bounds.top + (bounds.height / 2f)
-              centerX >= rootBounds.left && centerX <= rootBounds.right &&
-                centerY >= rootBounds.top && centerY <= rootBounds.bottom
-            } else {
-              hasArea
+              val text = editableText?.takeIf { it.isNotBlank() }
+                ?: spokenText.takeIf { it.isNotBlank() }
+                ?: contentDescription.ifBlank { null }
+              
+              val bounds = node.boundsInWindow
+              val hasArea = bounds.width > 0f && bounds.height > 0f
+              val isPhysicallyVisible = if (rootBounds != null && hasArea) {
+                val centerX = bounds.left + (bounds.width / 2f)
+                val centerY = bounds.top + (bounds.height / 2f)
+                centerX >= rootBounds.left && centerX <= rootBounds.right &&
+                  centerY >= rootBounds.top && centerY <= rootBounds.bottom
+              } else {
+                hasArea
+              }
+
+              val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+              nodes.add(NodeSnapshot(
+                tag = tag,
+                text = text,
+                visible = isPhysicallyVisible,
+                bounds = Bounds(
+                  (bounds.left / density).toDouble(),
+                  (bounds.top / density).toDouble(),
+                  (bounds.right / density).toDouble(),
+                  (bounds.bottom / density).toDouble()
+                )
+              ))
+              node.children.forEach { traverse(it) }
             }
-
-            nodes.add(NodeSnapshot(
-              tag = tag,
-              text = text,
-              visible = isPhysicallyVisible,
-              bounds = Bounds(bounds.left.toDouble(), bounds.top.toDouble(), bounds.right.toDouble(), bounds.bottom.toDouble())
-            ))
-            node.children.forEach { traverse(it) }
+            traverse(rootNode)
           }
-          if (rootNode != null) { traverse(rootNode) }
+        } catch (e: Throwable) {
+           // Ignore errors fetching nodes
         }
         Response.Tree(id = command.id, nodes = nodes)
       }

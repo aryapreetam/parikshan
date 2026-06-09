@@ -2,6 +2,7 @@ package io.github.aryapreetam.parikshan
 
 import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.Selector
+import io.github.aryapreetam.parikshan.protocol.Bounds
 
 data class ResolvedSelector(
   val selector: Selector,
@@ -32,10 +33,15 @@ internal fun String.asAutoSelector(): Selector = Selector.Auto(this)
 
 fun Selector.ambiguousTextMessage(matches: List<NodeSnapshot>): String {
   val matchSummary =
-    matches.joinToString(separator = ", ") { node ->
-      "tag='${node.tag}', text='${node.text}', bounds=${node.bounds}"
+    matches.joinToString(separator = "\n") { node ->
+      "  - node[tag='${node.tag}', text='${node.text}', visible=${node.visible}, bounds=${node.bounds}]"
     }
-  return "Selector ${describe()} matched multiple visible text nodes: $matchSummary. Use a stable tag or an explicit selector."
+  val matchType = when (this) {
+      is Selector.Text -> "text "
+      is Selector.Auto -> "text "
+      else -> ""
+  }
+  return "Selector ${describe()} matched multiple visible ${matchType}nodes:\n$matchSummary\nUse a stable tag or an explicit index (e.g. .atIndex(0))."
 }
 
 internal fun Selector.Auto.resolveAuto(
@@ -111,8 +117,6 @@ private fun matchingTextNodes(
   val filtered = if (tagged.isNotEmpty() && tagged.size < matchesToUse.size) tagged else matchesToUse
 
   // 3. Leaf Preference: Sort by area (smallest first) and deduplicate by containment.
-  // This ensures that if a Card and its Title both match the text (via contentDescription),
-  // we prefer the Title (the smaller, more specific node).
   val sortedByArea = filtered.sortedBy { it.area() }
   val deduplicated = mutableListOf<NodeSnapshot>()
 
@@ -122,8 +126,6 @@ private fun matchingTextNodes(
     while (iterator.hasNext()) {
       val existing = iterator.next()
       if (node.text == existing.text) {
-        // Since we sorted by area, 'existing' is smaller than or equal to 'node'.
-        // If 'node' (the larger one) contains 'existing', we skip 'node'.
         if (node.bounds.left <= existing.bounds.left + 0.5 &&
           node.bounds.top <= existing.bounds.top + 0.5 &&
           node.bounds.right >= existing.bounds.right - 0.5 &&
@@ -136,8 +138,6 @@ private fun matchingTextNodes(
           existing.bounds.right >= node.bounds.right - 0.5 &&
           existing.bounds.bottom >= node.bounds.bottom - 0.5
         ) {
-          // If 'existing' contains 'node' (can happen if areas are identical),
-          // remove 'existing' and prefer 'node'.
           iterator.remove()
         }
       }
@@ -145,7 +145,13 @@ private fun matchingTextNodes(
     if (!isDuplicate) deduplicated.add(node)
   }
 
-  return deduplicated.sortedBy { it.zOrder }
+  return deduplicated.sortedWith(
+    compareBy<NodeSnapshot> { (it.bounds.top / 10.0).toInt() }
+      .thenBy { (it.bounds.left / 10.0).toInt() }
+      .thenBy { (it.bounds.bottom / 10.0).toInt() }
+      .thenBy { (it.bounds.right / 10.0).toInt() }
+      .thenBy { it.tag }
+  )
 }
 
 private fun resolveByText(
@@ -184,28 +190,35 @@ private fun Selector.resolveSingleTagMatch(
   selector: Selector
 ): ResolvedSelector {
   if (tagMatches.isEmpty()) throw SelectorResolutionException(tagNotFoundMessage(selector))
-  
+
   val visibleMatches = if (requireVisible) tagMatches.filter { it.visible } else tagMatches
   if (requireVisible && visibleMatches.isEmpty()) {
     throw SelectorResolutionException(tagNotVisibleMessage(selector, tagMatches))
   }
 
   val matchesToUse = if (requireVisible) visibleMatches else tagMatches
+  val sortedMatches = matchesToUse.sortedWith(
+    compareBy<NodeSnapshot> { (it.bounds.top / 10.0).toInt() }
+      .thenBy { (it.bounds.left / 10.0).toInt() }
+      .thenBy { (it.bounds.bottom / 10.0).toInt() }
+      .thenBy { (it.bounds.right / 10.0).toInt() }
+      .thenBy { it.tag }
+  )
 
   val targetIndex = when {
     selector.index != null && selector.index!! >= 0 -> selector.index!!
-    selector.index != null && selector.index!! < 0 -> matchesToUse.size + selector.index!!
+    selector.index != null && selector.index!! < 0 -> sortedMatches.size + selector.index!!
     else -> 0
   }
 
-  val targetNode = matchesToUse.getOrNull(targetIndex)
-    ?: throw SelectorResolutionException("Selector ${selector.describe()} index ${selector.index} is out of bounds (found ${matchesToUse.size} matches).")
+  val targetNode = sortedMatches.getOrNull(targetIndex)
+    ?: throw SelectorResolutionException("Selector ${selector.describe()} index ${selector.index} is out of bounds (found ${sortedMatches.size} matches).")
 
   return ResolvedSelector(
     selector = selector,
     matchType = ResolvedSelector.MatchType.Tag,
     node = targetNode,
-    allMatches = matchesToUse
+    allMatches = sortedMatches
   )
 }
 
@@ -237,8 +250,7 @@ private fun Selector.describe(): String =
 
 private fun Selector.normalizedRaw(): String = raw.trim()
 
-private fun NodeSnapshot.area(): Double =
-  (bounds.right - bounds.left) * (bounds.bottom - bounds.top)
+private fun NodeSnapshot.area(): Double = (bounds.right - bounds.left) * (bounds.bottom - bounds.top)
 
 private fun NodeSnapshot.normalizedText(): String? = text?.trim()
 

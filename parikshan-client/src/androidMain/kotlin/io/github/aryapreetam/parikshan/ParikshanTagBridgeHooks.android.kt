@@ -68,9 +68,9 @@ internal actual object ParikshanTagBridgeHooks {
       val directionMultiplier = when (direction) {
         ScrollDirection.Up -> -1
         ScrollDirection.Down -> 1
-        ScrollDirection.Left, ScrollDirection.Right -> 0
+        else -> null
       }
-      if (directionMultiplier == 0) return true
+      if (directionMultiplier == null) return false
       runBlocking {
         val startValue = scrollable.value
         val distancePx =

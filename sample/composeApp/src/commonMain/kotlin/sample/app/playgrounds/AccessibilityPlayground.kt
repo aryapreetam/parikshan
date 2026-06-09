@@ -68,21 +68,21 @@ fun AccessibilityPlayground() {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
           Button(
             onClick = { a11yMessage = "Clicked Index 0" },
-            modifier = Modifier.fillMaxWidth().testTag("duplicate_action_item_0")
+            modifier = Modifier.fillMaxWidth().testTag("duplicate_action_item")
           ) {
             Text("Duplicate Action Item")
           }
           
           Button(
             onClick = { a11yMessage = "Clicked Index 1" },
-            modifier = Modifier.fillMaxWidth().testTag("duplicate_action_item_1")
+            modifier = Modifier.fillMaxWidth().testTag("duplicate_action_item")
           ) {
             Text("Duplicate Action Item")
           }
           
           Button(
             onClick = { a11yMessage = "Clicked Index 2" },
-            modifier = Modifier.fillMaxWidth().testTag("duplicate_action_item_2")
+            modifier = Modifier.fillMaxWidth().testTag("duplicate_action_item")
           ) {
             Text("Duplicate Action Item")
           }

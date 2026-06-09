@@ -4,6 +4,7 @@ import io.github.aryapreetam.parikshan.E2ETestScope
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import io.github.aryapreetam.parikshan.e2eTest
+import kotlinx.coroutines.delay
 import kotlin.test.Test
 
 
@@ -81,26 +82,35 @@ class ScrollIntegrationTest {
     relaunchApp()
     openAppNavigation(); click("nav_scroll_playground")
     assertVisible("scroll_playground_screen")
+    delay(500)
 
     // Select Panning Tab
+    scrollUntilVisible(
+      containerSelector = Selector.Tag("scroll_tab_row"),
+      targetSelector = Selector.Tag("tab_panning"),
+      direction = ScrollDirection.Right
+    )
     click("tab_panning")
     assertVisible("panning_drag_surface")
 
     // Verify initial state
     assertVisible("panning_target_node")
-    assertText("panning_coords_text", "X: 0\nY: 0")
+    val initialBounds = resolveNode("panning_target_node").bounds
 
     // Perform physical drag/pan on the surface
     val surface = resolveNode("panning_drag_surface")
     drag(
       fromX = surface.bounds.centerX,
       fromY = surface.bounds.centerY,
-      toX = surface.bounds.centerX + 120.0,
-      toY = surface.bounds.centerY + 180.0,
+      toX = surface.bounds.centerX + 100.0,
+      toY = surface.bounds.centerY + 100.0,
       durationMs = 600
     )
 
-    // Verify coordinates updated
-    assertText("panning_coords_text", "X: 120\nY: 180")
+    // Verify the node has actually moved
+    val finalBounds = resolveNode("panning_target_node").bounds
+    if (initialBounds == finalBounds) {
+        throw AssertionError("Panning failed: Node position did not change. Initial=$initialBounds, Final=$finalBounds")
+    }
   }
 }

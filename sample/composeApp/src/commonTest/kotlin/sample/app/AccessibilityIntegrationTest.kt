@@ -43,10 +43,13 @@ class AccessibilityIntegrationTest {
     assertContains(ambiguityError.message.orEmpty(), "matched multiple visible text nodes")
 
     // Resolve via explicit indices
-    click(Selector.Tag("duplicate_action_item_1").atIndex(0))
+    click(Selector.Tag("duplicate_action_item").atIndex(0))
+    assertText("a11y_result_message", "Clicked Index 0")
+
+    click(Selector.Tag("duplicate_action_item").atIndex(1))
     assertText("a11y_result_message", "Clicked Index 1")
 
-    click(Selector.Tag("duplicate_action_item_2").atIndex(0))
+    click(Selector.Tag("duplicate_action_item").atIndex(2))
     assertText("a11y_result_message", "Clicked Index 2")
 
 

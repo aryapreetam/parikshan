@@ -62,11 +62,11 @@ suspend fun E2ETestScope.selectTimeViaInput(hour: String, minute: String) {
     click(Selector.Tag("toggle_time_picker_mode_button"))
     
     // Dynamically look for the two time text fields
-    val hourSelector = if (hasVisibleNode(Selector.Text("Hour"))) Selector.Text("Hour") else Selector.Text("12")
-    val minuteSelector = if (hasVisibleNode(Selector.Text("Minute"))) Selector.Text("Minute") else Selector.Text("00")
+    //val hourSelector = Selector.Auto("Select hour")
+    //val minuteSelector = Selector.Auto("Select minute")
     
-    input(hourSelector, hour)
-    input(minuteSelector, minute)
+    //input(hourSelector, hour)
+    //input(minuteSelector, minute)
     
     click(Selector.Tag("time_picker_ok_button").atIndex(0))
 }

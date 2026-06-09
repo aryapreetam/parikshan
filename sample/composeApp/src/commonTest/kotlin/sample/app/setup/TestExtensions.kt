@@ -29,8 +29,17 @@ suspend fun E2ETestScope.selectDateFromGrid(dateText: String) {
  * Interacts with a Material 3 TimePicker via dial selection.
  */
 suspend fun E2ETestScope.selectTimeFromDial(hourText: String, minuteText: String) {
-    // Click the hour on the dial uniquely
-    click(Selector.Text("$hourText o'clock"))
+    // Click the hour on the dial uniquely. 
+    // Handle platform differences: Android uses "N o'clock", Desktop/Wasm uses "N hours"
+    val hourSelector = if (hasVisibleNode(Selector.Text("$hourText o'clock"))) {
+        Selector.Text("$hourText o'clock")
+    } else if (hasVisibleNode(Selector.Text("$hourText hours"))) {
+        Selector.Text("$hourText hours")
+    } else {
+        Selector.Text(hourText) // Ultimate fallback
+    }
+    click(hourSelector)
+
     // Click the minute on the dial
     val minuteSelector = if (hasVisibleNode(Selector.Text("$minuteText minutes"))) {
         Selector.Text("$minuteText minutes")

@@ -175,9 +175,21 @@ private class RunningParikshanServer(
         )
         videoRecorder.captureNow()
         delay(120)
+        
+        // Primary: Semantic Click
         if (!semantics.performClick(sel)) {
-          return Response.Error(command.id, "Node '${sel.raw}' is not clickable")
+            // Fallback: AWT Robot (only if semantic click fails/is not supported)
+            try {
+              val robot = java.awt.Robot()
+              robot.mouseMove(node.bounds.centerX.roundToInt(), node.bounds.centerY.roundToInt())
+              robot.mousePress(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)
+              delay(50)
+              robot.mouseRelease(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)
+            } catch (e: Exception) {
+              return Response.Error(command.id, "Node '${sel.raw}' is not clickable and Robot failed: ${e.message}")
+            }
         }
+        
         videoRecorder.captureNow()
         Response.Ok(command.id)
       }
@@ -192,8 +204,23 @@ private class RunningParikshanServer(
         )
         videoRecorder.captureNow()
         delay(120)
+        
+        // Primary: Semantic SetText
         if (!semantics.performSetText(sel, command.text)) {
-          return Response.Error(command.id, "Node '${sel.raw}' does not support text input")
+            // Fallback: AWT Robot click for focus + internal injection (if needed)
+            try {
+              val robot = java.awt.Robot()
+              robot.mouseMove(node.bounds.centerX.roundToInt(), node.bounds.centerY.roundToInt())
+              robot.mousePress(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)
+              delay(50)
+              robot.mouseRelease(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)
+              delay(100)
+            } catch (_: Exception) {}
+            
+            // Re-try semantic set text after focus grab attempt
+            if (!semantics.performSetText(sel, command.text)) {
+                return Response.Error(command.id, "Node '${sel.raw}' does not support text input")
+            }
         }
         videoRecorder.captureNow()
         Response.Ok(command.id)
@@ -259,6 +286,30 @@ private class RunningParikshanServer(
           visible = node.visible,
           text = node.text
         )
+      }
+
+      is Command.Drag -> {
+        videoRecorder.setVirtualCursor(
+          xOnScreen = command.fromX.roundToInt(),
+          yOnScreen = command.fromY.roundToInt()
+        )
+        videoRecorder.captureNow()
+        delay(120)
+        
+        // Use synthetic drag (essential for background mode)
+        if (!semantics.performDrag(
+          fromX = command.fromX,
+          fromY = command.fromY,
+          toX = command.toX,
+          toY = command.toY,
+          durationMs = command.durationMs
+        )) {
+            // No Robot fallback for drag (too risky for background)
+            return Response.Error(command.id, "Drag gesture failed in background mode")
+        }
+        
+        videoRecorder.captureNow()
+        Response.Ok(command.id)
       }
 
       is Command.Screenshot -> {

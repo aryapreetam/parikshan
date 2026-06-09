@@ -15,6 +15,8 @@ import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.resolveNode
 import java.awt.Rectangle
 import java.awt.Window
+import java.awt.event.MouseEvent
+import java.awt.event.InputEvent
 import javax.swing.SwingUtilities
 
 internal data class DesktopNode(
@@ -65,10 +67,9 @@ internal class DesktopSemanticsAccessor(
     val desktopNode = findBySelector(selector) ?: return false
 
     // Primary: Semantic OnClick walk.
-    // Walk the parent chain looking for the best OnClick action to invoke.
     val semanticSuccess = onEdt {
-      var currentNode: SemanticsNode? =
-        findResolvedWindowedNode(selector)?.node ?: return@onEdt false
+      val windowedNode = findResolvedWindowedNode(selector)
+      var currentNode: SemanticsNode? = windowedNode?.node ?: return@onEdt false
       var textFieldAction: (() -> Boolean)? = null
       var bestAction: (() -> Boolean)? = null
 
@@ -88,11 +89,20 @@ internal class DesktopSemanticsAccessor(
         currentNode = currentNode.parent
       }
 
-      val actionToInvoke = bestAction ?: textFieldAction ?: return@onEdt false
-      try {
-        actionToInvoke.invoke()
-      } catch (e: Exception) {
-        false
+      val actionToInvoke = bestAction ?: textFieldAction
+      if (actionToInvoke != null) {
+          System.err.println("Parikshan: performClick - Found semantic OnClick for '${selector.raw}'. Invoking...")
+          try {
+            val result = actionToInvoke.invoke()
+            System.err.println("Parikshan: performClick - Semantic invocation result: $result")
+            result
+          } catch (e: Exception) {
+            System.err.println("Parikshan: performClick - Semantic OnClick FAILED: ${e.message}")
+            false
+          }
+      } else {
+          System.err.println("Parikshan: performClick - No semantic OnClick found for '${selector.raw}'. Falling back to Robot.")
+          false
       }
     }
 
@@ -187,6 +197,63 @@ internal class DesktopSemanticsAccessor(
       action.invoke(deltaX, deltaY)
     }
 
+  fun performDrag(
+    fromX: Double,
+    fromY: Double,
+    toX: Double,
+    toY: Double,
+    durationMs: Long
+  ): Boolean {
+    val location = onEdt { primaryWindow.locationOnScreen }
+    
+    // Relative coordinates
+    val startX = (fromX - location.x).toInt()
+    val startY = (fromY - location.y).toInt()
+    val endX = (toX - location.x).toInt()
+    val endY = (toY - location.y).toInt()
+
+    val targetComponent = onEdt {
+        primaryWindow.findComponentAt(startX, startY) ?: primaryWindow.contentPane
+    }
+
+    onEdt {
+        targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_ENTERED, System.currentTimeMillis(), 0, startX, startY, fromX.toInt(), fromY.toInt(), 0, false, MouseEvent.NOBUTTON))
+        targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_MOVED, System.currentTimeMillis(), 0, startX, startY, fromX.toInt(), fromY.toInt(), 0, false, MouseEvent.NOBUTTON))
+        targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_PRESSED, System.currentTimeMillis(), InputEvent.BUTTON1_DOWN_MASK, startX, startY, fromX.toInt(), fromY.toInt(), 1, false, MouseEvent.BUTTON1))
+    }
+
+    // Small delay to ensure "drag" is registered
+    Thread.sleep(50)
+
+    val steps = 30
+    val stepDelay = (durationMs / steps).coerceAtLeast(1L)
+    
+    for (i in 1..steps) {
+        val progress = i.toFloat() / steps
+        val curXRel = startX + (endX - startX) * progress
+        val curYRel = startY + (endY - startY) * progress
+        val curXAbs = fromX + (toX - fromX) * progress
+        val curYAbs = fromY + (toY - fromY) * progress
+        
+        onEdt {
+            targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_DRAGGED, System.currentTimeMillis(), InputEvent.BUTTON1_DOWN_MASK, curXRel.toInt(), curYRel.toInt(), curXAbs.toInt(), curYAbs.toInt(), 0, false, MouseEvent.NOBUTTON))
+        }
+        
+        try {
+            Thread.sleep(stepDelay)
+        } catch (_: InterruptedException) {
+            break
+        }
+    }
+
+    onEdt {
+        targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_RELEASED, System.currentTimeMillis(), InputEvent.BUTTON1_DOWN_MASK, endX, endY, toX.toInt(), toY.toInt(), 1, false, MouseEvent.BUTTON1))
+        targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_EXITED, System.currentTimeMillis(), 0, endX, endY, toX.toInt(), toY.toInt(), 0, false, MouseEvent.NOBUTTON))
+    }
+    
+    return true
+  }
+
   fun snapshotTree(): List<NodeSnapshot> =
     onEdt {
       allNodes()
@@ -212,11 +279,18 @@ internal class DesktopSemanticsAccessor(
 
   @OptIn(ExperimentalComposeUiApi::class)
   private fun allNodes(): List<WindowedNode> {
-    // Scan all visible ComposeWindow instances so we don't miss Popups/Dialogs
-    return Window.getWindows()
+    // Get all windows and sort them to simulate z-order.
+    // Overlays/Dialogs should be processed last so their nodes are at the end of the list.
+    val windows = Window.getWindows()
+      .filter { it.isShowing && it.isDisplayable }
       .filterIsInstance<ComposeWindow>()
-      .filter { it.isShowing }
-      .flatMap { win ->
+      .sortedWith(
+          compareBy<ComposeWindow> { it === primaryWindow } // Primary first
+          .thenBy { it.type == Window.Type.NORMAL }         // Then normal windows
+          .thenBy { !it.isAlwaysOnTop }                    // Then non-always-on-top
+      )
+
+    return windows.flatMap { win ->
         win.semanticsOwners.flatMap { owner ->
           val merged = owner.getAllSemanticsNodes(mergingEnabled = true)
           val unmerged = owner.getAllSemanticsNodes(mergingEnabled = false)
@@ -243,15 +317,34 @@ internal class DesktopSemanticsAccessor(
   @OptIn(ExperimentalComposeUiApi::class)
   private fun WindowedNode.toDesktopNode(): DesktopNode? {
     val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: ""
-    val location = window.locationOnScreen
+    
+    // On macOS in background mode, locationOnScreen can be unstable.
+    // Using window.bounds as a more reliable anchor.
+    val winX = window.bounds.x
+    val winY = window.bounds.y
     val nodeBounds = node.boundsInWindow
+    
     val editableText = node.config.getOrNull(SemanticsProperties.EditableText)?.text
     val spokenText =
       node.config.getOrNull(SemanticsProperties.Text)
         ?.joinToString(separator = "") { it.text }
         .orEmpty()
-    val invisible = node.config.getOrNull(SemanticsProperties.InvisibleToUser) != null
-    val textValue = editableText?.takeIf { it.isNotBlank() } ?: spokenText.ifBlank { null }
+    val contentDescription =
+      node.config.getOrNull(SemanticsProperties.ContentDescription)
+        ?.joinToString(separator = " ")
+        .orEmpty()
+    
+    // Prioritize Compose-reported visibility
+    val isHidden = node.config.getOrNull(SemanticsProperties.InvisibleToUser) != null ||
+                   node.config.getOrNull(SemanticsProperties.HideFromAccessibility) != null
+
+    val textValue = editableText?.takeIf { it.isNotBlank() }
+      ?: when {
+        contentDescription.isNotBlank() && spokenText.isNotBlank() -> "$contentDescription $spokenText"
+        contentDescription.isNotBlank() -> contentDescription
+        spokenText.isNotBlank() -> spokenText
+        else -> null
+      }
 
     // Include nodes that have either a testTag or text content
     if (tag.isBlank() && textValue == null) return null
@@ -259,22 +352,28 @@ internal class DesktopSemanticsAccessor(
     // Determine the actual visible viewport of the Compose content area.
     val density = window.graphicsConfiguration.defaultTransform.scaleX.toFloat()
     val contentBounds = window.contentPane.bounds
+    
+    val left = nodeBounds.left / density
+    val right = nodeBounds.right / density
+    val top = nodeBounds.top / density
+    val bottom = nodeBounds.bottom / density
+
     val isPhysicallyVisible = 
-      (nodeBounds.left / density) < contentBounds.width &&
-      (nodeBounds.right / density) > 0 &&
-      (nodeBounds.top / density) < contentBounds.height &&
-      (nodeBounds.bottom / density) > 0
+      left < contentBounds.width &&
+      right > 0 &&
+      top < contentBounds.height &&
+      bottom > 0
 
     return DesktopNode(
       tag = tag,
       bounds =
         Bounds(
-          left = location.x + nodeBounds.left.toDouble(),
-          top = location.y + nodeBounds.top.toDouble(),
-          right = location.x + nodeBounds.right.toDouble(),
-          bottom = location.y + nodeBounds.bottom.toDouble()
+          left = winX + left.toDouble(),
+          top = winY + top.toDouble(),
+          right = winX + right.toDouble(),
+          bottom = winY + bottom.toDouble()
         ),
-      visible = !invisible && isPhysicallyVisible,
+      visible = !isHidden && isPhysicallyVisible,
       text = textValue
     )
   }

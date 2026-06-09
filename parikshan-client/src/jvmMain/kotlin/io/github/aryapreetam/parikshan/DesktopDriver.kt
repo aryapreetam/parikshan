@@ -73,6 +73,7 @@ class DesktopDriver(
     val conn = url.openConnection() as HttpURLConnection
     conn.requestMethod = "POST"
     conn.setRequestProperty("Content-Type", "application/json")
+    conn.setRequestProperty("Connection", "close")
     conn.doOutput = true
     conn.connectTimeout = 5000
     conn.readTimeout = 30000
@@ -138,6 +139,7 @@ class DesktopDriver(
     val launchPort = properties.getProperty("port") ?: port.toString()
     val launchToken = properties.getProperty("token") ?: sessionToken
     val windowTitle = properties.getProperty("windowTitle")?.takeIf { it.isNotBlank() }
+    val background = properties.getProperty("background") ?: "false"
     val appArgs = properties.readIndexedValues("appArg")
     val logFile = File(properties.required("logFile"))
     logFile.parentFile?.mkdirs()
@@ -149,6 +151,9 @@ class DesktopDriver(
         add("-Dparikshan.port=$launchPort")
         add("-Dparikshan.token=$launchToken")
         add("-Dparikshan.desktop.appMainClass=$appMainClass")
+        if (background == "true") {
+            add("-Dparikshan.background=true")
+        }
         windowTitle?.let { add("-Dparikshan.desktop.windowTitle=$it") }
         add("-cp")
         add(jarPath)

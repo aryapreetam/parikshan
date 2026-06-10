@@ -93,8 +93,7 @@ internal object WasmSemanticsAccessor {
   }
 
   fun snapshotNode(tag: String): NodeSnapshot? {
-    findNodeByTag(tag)?.let { return toNodeSnapshot(it) }
-    return discoveredSnapshots().find {
+    return snapshotTree().find {
       it.tag == tag || it.text?.contains(tag, ignoreCase = true) == true
     }
   }
@@ -102,16 +101,50 @@ internal object WasmSemanticsAccessor {
   fun snapshotTree(): List<NodeSnapshot> {
     val explicit = findAllNodes().map { toNodeSnapshot(it) }
     val discovered = discoveredSnapshots()
-    val explicitKeys = explicit.map {
-      val b = it.bounds
-      "${it.text}|${b.left.toInt()},${b.top.toInt()},${b.right.toInt()},${b.bottom.toInt()}"
-    }.toSet()
-    val overlayOnly = discovered.filter {
-      val b = it.bounds
-      val key = "${it.text}|${b.left.toInt()},${b.top.toInt()},${b.right.toInt()},${b.bottom.toInt()}"
-      key !in explicitKeys
+    
+    val merged = mutableMapOf<String, NodeSnapshot>()
+    
+    // Identity key strategy:
+    // 1. If tag is non-empty, use tag. This handles the majority of Compose nodes.
+    // 2. If tag is empty, use fuzzy rounded coordinates (5px grid).
+    fun identityKey(node: NodeSnapshot): String {
+      val b = node.bounds
+      return if (node.tag.isNotEmpty()) {
+        "tag:${node.tag}"
+      } else {
+        val rx = (b.left / 5).toInt() * 5
+        val ry = (b.top / 5).toInt() * 5
+        val rw = ((b.right - b.left) / 5).toInt() * 5
+        val rh = ((b.bottom - b.top) / 5).toInt() * 5
+        "rect:$rx,$ry,$rw,$rh"
+      }
     }
-    return explicit + overlayOnly
+
+    // First pass: add all explicit (Kotlin) nodes
+    explicit.forEach { node ->
+      merged[identityKey(node)] = node
+    }
+    
+    // Second pass: merge discovered (JS) nodes
+    discovered.forEach { node ->
+      val key = identityKey(node)
+      val existing = merged[key]
+      if (existing == null) {
+        merged[key] = node
+      } else {
+        // Merge strategy:
+        // 1. Prefer non-empty tag
+        // 2. Prefer non-null/non-blank text
+        // 3. TRUST Kotlin visibility: if it's in the explicit tree, we trust its visibility 
+        //    over the JS bridge which might see 'ghost' nodes during animations.
+        merged[key] = existing.copy(
+          tag = if (existing.tag.isEmpty()) node.tag else existing.tag,
+          text = if (existing.text.isNullOrBlank()) node.text else existing.text,
+        )
+      }
+    }
+    
+    return merged.values.toList()
   }
 
   private fun discoveredSnapshots(): List<NodeSnapshot> {
@@ -147,9 +180,30 @@ internal object WasmSemanticsAccessor {
 
     val centerX = bounds.left + (bounds.width / 2f)
     val centerY = bounds.top + (bounds.height / 2f)
-    val isPhysicallyVisible = hasArea &&
+    
+    // Improved visibility: check viewport AND parent clipping (for scrollable lists)
+    var isPhysicallyVisible = hasArea &&
       centerX >= 0 && centerX <= viewportWidth &&
       centerY >= 0 && centerY <= viewportHeight
+    
+    if (isPhysicallyVisible) {
+      var current = node.parent
+      while (current != null) {
+        val pb = current.boundsInWindow
+        if (pb.width > 0 && pb.height > 0) {
+           // Small padding (1px) to avoid floating point edge issues
+           val isClipped = centerX < pb.left - 1 || centerX > pb.right + 1 || centerY < pb.top - 1 || centerY > pb.bottom + 1
+           if (isClipped) {
+             val isScrollable = current.config.getOrNull(SemanticsActions.ScrollBy) != null
+             if (isScrollable) {
+               isPhysicallyVisible = false
+               break
+             }
+           }
+        }
+        current = current.parent
+      }
+    }
 
     return NodeSnapshot(
       tag = tag,
@@ -340,8 +394,14 @@ private fun discoverA11yNodesJs(): String? = js(
       function extractText(el) {
         const aria = el.getAttribute && el.getAttribute('aria-label');
         if (aria && aria.trim()) return aria.trim();
-        const text = el.innerText || el.textContent;
-        if (text && text.trim()) return text.trim();
+        // Only use innerText for leaf elements or elements with an explicit role (like buttons/menuitems)
+        // This prevents giant container elements from reporting the concatenated text of all their children.
+        const role = el.getAttribute && el.getAttribute('role');
+        const hasElementChildren = el.children && el.children.length > 0;
+        if (!hasElementChildren || role) {
+          const text = el.innerText || el.textContent;
+          if (text && text.trim()) return text.trim();
+        }
         return null;
       }
 
@@ -351,11 +411,28 @@ private fun discoverA11yNodesJs(): String? = js(
           const text = extractText(el);
           const rect = el.getBoundingClientRect();
           const w = rect.right - rect.left, h = rect.bottom - rect.top;
-          if (text && w > 0 && h > 0) {
+          const hasId = !!(el.id && el.id.trim());
+          if ((text || hasId) && w > 0 && h > 0) {
             const role = el.getAttribute && el.getAttribute('role');
             const tag = el.id || role || '';
-            const vis = (rect.left + w / 2) >= 0 && (rect.left + w / 2) <= vWidth &&
-              (rect.top + h / 2) >= 0 && (rect.top + h / 2) <= vHeight;
+            const cx = rect.left + w / 2, cy = rect.top + h / 2;
+            
+            let vis = cx >= 0 && cx <= vWidth && cy >= 0 && cy <= vHeight;
+            if (vis) {
+              // Check if clipped by any parent with overflow
+              let p = el.parentElement;
+              while (p && p !== document.body) {
+                const s = window.getComputedStyle(p);
+                if (s.overflow === 'hidden' || s.overflow === 'auto' || s.overflow === 'scroll') {
+                  const pr = p.getBoundingClientRect();
+                  if (cx < pr.left - 1 || cx > pr.right + 1 || cy < pr.top - 1 || cy > pr.bottom + 1) {
+                    vis = false; break;
+                  }
+                }
+                p = p.parentElement;
+              }
+            }
+            
             results.push({
               tag: String(tag || ''),
               text: text,
@@ -416,8 +493,14 @@ private fun clickPendingA11yNodeJs(): Boolean = js(
       function extractText(el) {
         const aria = el.getAttribute && el.getAttribute('aria-label');
         if (aria && aria.trim()) return aria.trim();
-        const text = el.innerText || el.textContent;
-        if (text && text.trim()) return text.trim();
+        // Only use innerText for leaf elements or elements with an explicit role (like buttons/menuitems)
+        // This prevents giant container elements from reporting the concatenated text of all their children.
+        const role = el.getAttribute && el.getAttribute('role');
+        const hasElementChildren = el.children && el.children.length > 0;
+        if (!hasElementChildren || role) {
+          const text = el.innerText || el.textContent;
+          if (text && text.trim()) return text.trim();
+        }
         return null;
       }
 

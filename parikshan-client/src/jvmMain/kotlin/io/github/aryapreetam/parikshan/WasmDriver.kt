@@ -212,24 +212,30 @@ class WasmDriver private constructor(
         val node = readNodeBySelector(selector)
           ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
         if (!invokeBridgeScroll(selector, command.direction)) {
-          val scrollAtX = if (command.direction == io.github.aryapreetam.parikshan.protocol.ScrollDirection.Up ||
-            command.direction == io.github.aryapreetam.parikshan.protocol.ScrollDirection.Down
-          ) {
-            node.bounds.left + 10.0
-          } else {
-            node.bounds.centerX
+          // Focus canvas and ensure it has focus before scrolling
+          runCatching {
+             page.evaluate("""() => {
+               const canvas = document.querySelector('canvas');
+               if (canvas) {
+                 canvas.focus();
+                 if (document.activeElement !== canvas) {
+                   canvas.click(); // Force focus if focus() didn't work
+                 }
+               }
+             }""")
           }
-          page.mouse().move(scrollAtX, node.bounds.centerY)
+          // Reverting to centerX, centerY which worked before
+          page.mouse().move(node.bounds.centerX, node.bounds.centerY)
           val (deltaX, deltaY) =
             when (command.direction) {
-              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Up -> 0.0 to -420.0
-              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Down -> 0.0 to 420.0
-              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Left -> -420.0 to 0.0
-              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Right -> 420.0 to 0.0
+              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Up -> 0.0 to -400.0
+              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Down -> 0.0 to 400.0
+              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Left -> -400.0 to 0.0
+              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Right -> 400.0 to 0.0
             }
           page.mouse().wheel(deltaX, deltaY)
         }
-        delay(100)
+        delay(300) // Increased settling delay for Wasm
         Response.Ok(command.id)
       }
 

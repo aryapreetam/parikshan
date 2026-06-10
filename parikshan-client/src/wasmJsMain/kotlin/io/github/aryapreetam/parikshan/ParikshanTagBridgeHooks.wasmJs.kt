@@ -127,10 +127,9 @@ internal actual object ParikshanTagBridgeHooks {
     GlobalThis.getTreeJson = {
       val semanticsTree = io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.snapshotTree()
       val trackedTree = nodes.entries.map { (tag, node) -> node.toSnapshot(tag) }
-      val combined = semanticsTree + trackedTree
-      val tagged = combined.filter { it.tag.isNotEmpty() }.distinctBy { it.tag }
-      val untagged = combined.filter { it.tag.isEmpty() }
-      val finalTree = tagged + untagged
+      val semanticsTags = semanticsTree.map { it.tag }.filter { it.isNotEmpty() }.toSet()
+      val extraTracked = trackedTree.filter { it.tag.isEmpty() || it.tag !in semanticsTags }
+      val finalTree = semanticsTree + extraTracked
       ProtocolJson.instance.encodeToString(ListSerializer(NodeSnapshot.serializer()), finalTree)
     }
     GlobalThis.performClick = { tag ->

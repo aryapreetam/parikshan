@@ -22,6 +22,8 @@ fun initializeParikshanWasm() {
 
 /**
  * Replaces ComposeViewport to automatically grab the SemanticsOwner for E2E testing in Wasm.
+ * Since the Gradle plugin swaps all ComposeViewports with this, we automatically capture
+ * the Main App and every Popup/Dialog root.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Suppress("FunctionName")
@@ -45,8 +47,19 @@ private data object ParikshanSemanticsGrabberElement : ModifierNodeElement<Parik
 private class ParikshanSemanticsGrabberNode : Modifier.Node() {
     override fun onAttach() {
         super.onAttach()
+        register()
+    }
+
+    private fun register() {
         try {
             WasmSemanticsAccessor.injectOwner(requireOwner())
         } catch (_: Throwable) {}
+    }
+
+    override fun onDetach() {
+        try {
+            WasmSemanticsAccessor.removeOwner(requireOwner())
+        } catch (_: Throwable) {}
+        super.onDetach()
     }
 }

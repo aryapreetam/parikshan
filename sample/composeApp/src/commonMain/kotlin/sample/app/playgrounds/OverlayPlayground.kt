@@ -244,7 +244,7 @@ fun OverlayPlayground() {
                 Text("Switch to touch dial mode")
               }
             } else {
-              TimePicker(state = timePickerState)
+              TimePicker(state = timePickerState, modifier = Modifier.testTag("time_picker_dial"))
               TextButton(
                 onClick = { isInputMode = true },
                 modifier = Modifier.testTag("toggle_time_picker_mode_button")

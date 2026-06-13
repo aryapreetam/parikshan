@@ -196,15 +196,24 @@ fun OverlayPlayground() {
     }
     
     // 5. Time Picker Section
-    Button(
-      onClick = { showTimePicker = true },
-      modifier = Modifier.testTag("time_picker_trigger_button")
-    ) {
-      Text("Open Time Picker")
+    var use24HourTime by remember { mutableStateOf(true) }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      Button(
+        onClick = { use24HourTime = false; showTimePicker = true },
+        modifier = Modifier.testTag("time_picker_12h_trigger_button")
+      ) {
+        Text("Open Time Picker (12h)")
+      }
+      Button(
+        onClick = { use24HourTime = true; showTimePicker = true },
+        modifier = Modifier.testTag("time_picker_24h_trigger_button")
+      ) {
+        Text("Open Time Picker (24h)")
+      }
     }
     
     if (showTimePicker) {
-      val timePickerState = rememberTimePickerState()
+      val timePickerState = rememberTimePickerState(is24Hour = use24HourTime)
       var isInputMode by remember { mutableStateOf(false) }
       AlertDialog(
         onDismissRequest = { showTimePicker = false },

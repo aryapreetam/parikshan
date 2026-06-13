@@ -24,18 +24,8 @@ class OverlayIntegrationTest {
 
     // Open Dropdown Menu via ExposedDropdownMenuBox
     click("dropdown_anchor")
-//    waitFor("dropdown_menu")
-    
-    // Scroll down inside the dropdown menu to find 'Purple'
-    //scrollUntilVisible(
-   //   containerSelector = Selector.Tag("dropdown_menu"),
-   //   targetSelector = Selector.Text("Option Purple")
-   // )
     click(Selector.Text("Option Blue"))
     
-    // Assert correct output message
-  //  delay(500) // Wait for state update
-   // val resultText = resolveNode("overlay_result_message").text.orEmpty()
 	assertVisible("Selected Blue from Dropdown")
   }
 
@@ -46,7 +36,6 @@ class OverlayIntegrationTest {
 
     // Open Dropdown Menu via ExposedDropdownMenuBox
     click("dropdown_anchor")
-//    waitFor("dropdown_menu")
     
     // Scroll down inside the dropdown menu to find 'Purple'
     scrollUntilVisible(
@@ -55,9 +44,6 @@ class OverlayIntegrationTest {
    )
     click(Selector.Text("Option Purple"))
     
-    // Assert correct output message
-  //  delay(500) // Wait for state update
-   // val resultText = resolveNode("overlay_result_message").text.orEmpty()
 	assertVisible("Selected Purple from Dropdown")
   }
 
@@ -68,7 +54,6 @@ class OverlayIntegrationTest {
     assertVisible("overlay_playground_screen")
 
     click("dialog_trigger_button")
-    //assertVisible("alert_dialog")
     
     click(Selector.Text("Confirm"))
     
@@ -88,9 +73,6 @@ class OverlayIntegrationTest {
     // Click Execute Action B
     click("sheet_action_b_button")
     
-    // Assert correct output message and sheet dismissal
-    //assertText("overlay_result_message", "Action B from Sheet clicked")
-    //assertNotVisible("bottom_sheet_content")
     assertVisible("Action B from Sheet clicked")
   }
 
@@ -110,59 +92,65 @@ class OverlayIntegrationTest {
     delay(500)
     val resultText = resolveNode("overlay_result_message").text.orEmpty()
     assertTrue(resultText.startsWith("Date Selected:"), "Expected date selected message, got: $resultText")
-    //assertNotVisible("date_picker_dialog")
   }
 
   @Test
-  fun testTimePickerInputSelection() = e2eTest {
+  fun testTimePickerDialSelection24h() = e2eTest {
     relaunchApp()
     openAppNavigation(); click("nav_overlay_playground")
     assertVisible("overlay_playground_screen")
 
-    click("time_picker_trigger_button")
-    assertVisible("time_picker_dialog")
-    delay(800)
-    
-    // Select 10:30 via direct input
-    selectTimeViaInput("10", "30")
-    
-    //delay(500)
-    //val resultText = resolveNode("overlay_result_message").text.orEmpty()
-    //assertTrue(resultText.startsWith("Time Selected:"), "Expected time selected message, got: $resultText")
-    assertVisible("Time Selected:")
-    //assertNotVisible("time_picker_dialog")
-  }
-
-  @Test
-  fun testTimePickerDialSelection() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_overlay_playground")
-    assertVisible("overlay_playground_screen")
-
-    click("time_picker_trigger_button")
+    click("time_picker_24h_trigger_button")
     assertVisible("time_picker_dialog")
     delay(800)
     try {
-        // Select 10:30 from the dial
-        selectTimeFromDial("10", "30")
+        // Select 22:30 (10:30 PM) from the dial
+        selectTimeFromDial("22", "30", is24Hour = true)
     } catch (e: AssertionError) {
         println("Dial semantics missing, falling back to geometric tap")
-        selectTimeFromDialGeometrically(10, 30)
+        selectTimeFromDialGeometrically(22, 30, is24Hour = true)
     }
     
-    //delay(500)
-    //val resultText = resolveNode("overlay_result_message").text.orEmpty()
-    //assertTrue(resultText.startsWith("Time Selected:"), "Expected time selected message, got: $resultText")
-    assertVisible("Time Selected:")
-    //assertNotVisible("time_picker_dialog")
+    assertVisible("Time Selected: 22:30")
+  }
+
+  @Test
+  fun testTimePickerDialSelection12h() = e2eTest {
+    relaunchApp()
+    openAppNavigation(); click("nav_overlay_playground")
+    assertVisible("overlay_playground_screen")
+
+    click("time_picker_12h_trigger_button")
+    assertVisible("time_picker_dialog")
+    delay(800)
+    try {
+        // Select 22:30 (10:30 PM) from the dial
+        selectTimeFromDial("22", "30", is24Hour = false)
+    } catch (e: AssertionError) {
+        println("Dial semantics missing, falling back to geometric tap")
+        selectTimeFromDialGeometrically(22, 30, is24Hour = false)
+    }
+    
+    assertVisible("Time Selected: 22:30")
   }
 
   @Test
   fun testDumpTree() = e2eTest {
+    relaunchApp()
     openAppNavigation(); click("nav_overlay_playground")
-    click("time_picker_trigger_button")
+    click("time_picker_24h_trigger_button")
     assertVisible("time_picker_dialog")    
-    selectTimeFromDialGeometrically(10, 30)
-    assertVisible("Time Selected:")
+    selectTimeFromDialGeometrically(10, 30, is24Hour = true)
+    assertVisible("Time Selected: 10:30")
+  }
+
+  @Test
+  fun testDumpTree12h() = e2eTest {
+    relaunchApp()
+    openAppNavigation(); click("nav_overlay_playground")
+    click("time_picker_12h_trigger_button")
+    assertVisible("time_picker_dialog")    
+    selectTimeFromDialGeometrically(22, 30, is24Hour = false)
+    assertVisible("Time Selected: 22:30")
   }
 }

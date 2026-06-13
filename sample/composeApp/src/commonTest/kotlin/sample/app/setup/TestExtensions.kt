@@ -33,14 +33,28 @@ suspend fun E2ETestScope.selectDateViaInput(dateText: String) {
 /**
  * Interacts with a Material 3 TimePicker via dial selection.
  */
-suspend fun E2ETestScope.selectTimeFromDial(hour: String, minute: String) {
+suspend fun E2ETestScope.selectTimeFromDial(hour: String, minute: String, is24Hour: Boolean = true) {
+    // Select AM/PM if needed
+    if (!is24Hour) {
+        val h = hour.toInt()
+        val amPmSelector = if (h < 12) Selector.Text("AM") else Selector.Text("PM")
+        click(amPmSelector)
+    }
+
     // Click hour
     click(Selector.Auto("Select hour"))
     // In M3 TimePicker, the numbers on dial have specific text properties
-    val hourSelector = if (hour.toInt() < 10) {
-        Selector.Text("$hour o'clock").atIndex(0)
+    val hInt = hour.toInt()
+    val displayHour = if (!is24Hour) {
+        if (hInt == 0) "12" else if (hInt > 12) (hInt - 12).toString() else hInt.toString()
     } else {
-        Selector.Text(hour).atIndex(0)
+        hour
+    }
+
+    val hourSelector = if (displayHour.toInt() < 10) {
+        Selector.Text("$displayHour o'clock").atIndex(0)
+    } else {
+        Selector.Text(displayHour).atIndex(0)
     }
     click(hourSelector)
 
@@ -93,22 +107,24 @@ suspend fun E2ETestScope.dragSliderPhysically(tag: String, percent: Float) {
 }
 
 suspend fun E2ETestScope.clickAtFast(x: Double, y: Double) {
-    // 2px move + 100ms duration ensures Wasm registers the tap
-    drag(fromX = x, fromY = y, toX = x + 2.0, toY = y, durationMs = 100L)
-    delay(500L) // Wait for tree update
+    // 5px move ensures Wasm registers the pointer sequence
+    drag(fromX = x, fromY = y, toX = x + 5.0, toY = y, durationMs = 100L)
+    delay(800L) 
 }
 
-suspend fun E2ETestScope.clickAt(x: Double, y: Double) {
-    drag(fromX = x, fromY = y, toX = x + 2.0, toY = y, durationMs = 100L)
+suspend fun E2ETestScope.clickAtStill(x: Double, y: Double) {
+    // 0px move but 150ms duration ensures high precision for minute targets like '30'
+    drag(fromX = x, fromY = y, toX = x, toY = y, durationMs = 150L)
     delay(1000L)
 }
 
-suspend fun E2ETestScope.selectTimeFromDialGeometrically(hour: Int, minute: Int) {
-    println("Calibration: Pure Math + Feedback...")
+suspend fun E2ETestScope.selectTimeFromDialGeometrically(hour: Int, minute: Int, is24Hour: Boolean = true) {
+    println("Calibration: Pure Math + Targeted Taps (is24Hour=$is24Hour)...")
     delay(2000)
     
     val dialNode = resolveNode(Selector.Tag("time_picker_dial"))
-    val hourBtn = getTree().firstOrNull { it.text?.contains("hour", ignoreCase = true) == true }
+    val initialTree = getTree()
+    val hourBtn = initialTree.firstOrNull { it.text?.contains("hour", ignoreCase = true) == true }
         ?: throw AssertionError("Could not find hour button")
         
     val width = dialNode.bounds.right - dialNode.bounds.left
@@ -116,8 +132,6 @@ suspend fun E2ETestScope.selectTimeFromDialGeometrically(hour: Int, minute: Int)
     val isLandscape = width > height
     val dialSize = if (isLandscape) height else width
     
-    // Material 3 TimePicker dial has internal padding. 
-    // Empirically derived: dial center is shifted inward by ~8px, and radius is smaller by ~12px.
     val padding = 12.0
     val offset = 8.0
     val centerX = if (isLandscape) dialNode.bounds.right - (dialSize / 2.0) - offset else dialNode.bounds.centerX
@@ -127,52 +141,74 @@ suspend fun E2ETestScope.selectTimeFromDialGeometrically(hour: Int, minute: Int)
     
     println("Math Calibrated: Center=($centerX, $centerY), MaxRadius=$maxRadius")
     
-    // 1. Feedback Loop for Hour
-    val hourAngle = (hour - 3) * (PI / 6.0)
-    // 24h dial ring logic: 1-12 is inner ring (~0.55), 13-23/0 is outer ring (~0.85)
-    val rScales = if (hour in 1..12) listOf(0.55, 0.45, 0.65) else listOf(0.85, 0.75, 0.95)
+    // 0. Handle AM/PM
+    if (!is24Hour) {
+        val amPmNode = getTree().firstOrNull { it.text?.contains("a.m.", ignoreCase = true) == true || it.text?.contains("p.m.", ignoreCase = true) == true }
+        if (amPmNode != null) {
+            val isPm = hour >= 12
+            val targetX = if (isPm) amPmNode.bounds.right - 20.0 else amPmNode.bounds.left + 20.0
+            clickAtFast(targetX, amPmNode.bounds.centerY)
+            println("  Selected ${if (isPm) "PM" else "AM"} mode")
+            delay(1000)
+        }
+    }
+
+    // 1. PINPOINT HOUR
+    val displayHour = if (!is24Hour) {
+        if (hour == 0) 12 else if (hour > 12) hour - 12 else hour
+    } else {
+        hour
+    }
+
+    val hourAngle = (displayHour - 3) * (PI / 6.0)
+    // CORRECT RING LOGIC: 1-12 is OUTER (~0.85), 0 and 13-23 is INNER (~0.55)
+    val preferredRScale = if (is24Hour && (hour == 0 || hour >= 13)) 0.55 else 0.85
+    val rScales = if (is24Hour) listOf(preferredRScale, if (preferredRScale == 0.85) 0.55 else 0.85) else listOf(0.85)
     
     var hourFound = false
-    println("Pinpointing Hour $hour...")
+    println("Pinpointing Hour $hour (display=$displayHour, rScales=$rScales)...")
+    
+    // Focus Hour box once
+    clickAtFast(hourBtn.bounds.centerX, hourBtn.bounds.centerY)
+    var lastHourText = ""
+
     for (rScale in rScales) {
-        val r = maxRadius * rScale
-        for (aNudge in listOf(0.0, -0.05, 0.05, -0.1, 0.1, -0.15, 0.15, -0.2, 0.2)) {
-            // Re-click hour box
-            val hBtn = getTree().firstOrNull { it.text?.contains("hour", ignoreCase = true) == true }
-            if (hBtn != null) clickAtFast(hBtn.bounds.centerX, hBtn.bounds.centerY)
-            
-            val tx = centerX + r * cos(hourAngle + aNudge)
-            val ty = centerY + r * sin(hourAngle + aNudge)
+        for (aNudge in listOf(0.0, -0.05, 0.05, -0.1, 0.1)) {
+            val tx = centerX + (maxRadius * rScale) * cos(hourAngle + aNudge)
+            val ty = centerY + (maxRadius * rScale) * sin(hourAngle + aNudge)
             clickAtFast(tx, ty)
             
-            val text = getTree().find { it.text?.contains("hour", ignoreCase = true) == true }?.text ?: ""
-            if (text.contains("$hour hours") || text.contains("${hour+12} hours") || text.contains("${hour-12} hours")) {
-                println("Successfully locked Hour $hour (Text: $text)")
-                hourFound = true; break
+            for (w in 1..4) {
+                val currentText = getTree().find { it.text?.contains("Select hour", ignoreCase = true) == true }?.text ?: ""
+                val digits = currentText.filter { it.isDigit() }
+                if (digits == displayHour.toString() || currentText.contains("$displayHour hours") || currentText.contains("$displayHour o'clock")) {
+                    println("Successfully locked Hour $hour (Text: $currentText)")
+                    hourFound = true; break
+                }
+                delay(500)
             }
+            if (hourFound) break
         }
         if (hourFound) break
     }
 
     if (!hourFound) throw AssertionError("Failed to select hour $hour")
 
-    // 2. Switch to Minutes Mode
+    // 2. SWITCH TO MINUTE MODE
     println("Switching to Minute mode...")
-    val currentMinBtn = getTree().filter { it.bounds.centerY == hourBtn.bounds.centerY && it.bounds.left > hourBtn.bounds.right }
-                                 .minByOrNull { it.bounds.left }
-    val safeMinBtnX = currentMinBtn?.bounds?.centerX ?: (hourBtn.bounds.right + 50.0)
-    val safeMinBtnY = currentMinBtn?.bounds?.centerY ?: centerY
-    
+    val safeMinBtnX = hourBtn.bounds.right + 60.0
+    val safeMinBtnY = centerY
     clickAtFast(safeMinBtnX, safeMinBtnY)
-    delay(1000)
-    
-    // 3. Select Minute directly via math (No feedback loop needed since calibration is perfect and text reads fail in Wasm)
+    delay(1500)
+
+    // 3. SELECT MINUTE (Direct Math - No Feedback due to Wasm focus bug)
     val minuteAngle = (minute - 15) * (PI / 30.0)
-    println("Pinpointing Minute $minute...")
+    println("Pinpointing Minute $minute at angle=$minuteAngle...")
     
+    // Target minute with high precision (still tap)
     val tx = centerX + (maxRadius * 0.85) * cos(minuteAngle)
     val ty = centerY + (maxRadius * 0.85) * sin(minuteAngle)
-    clickAtFast(tx, ty)
+    clickAtStill(tx, ty)
     println("Successfully clicked Minute $minute at X=$tx, Y=$ty")
     
     click(Selector.Tag("time_picker_ok_button").atIndex(0))

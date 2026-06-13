@@ -41,13 +41,16 @@ suspend fun E2ETestScope.selectDateViaInput(dateText: String) {
 }
 
 private suspend fun E2ETestScope.selectDateViaInputNative(dateText: String) {
-    // Standard M3 DatePicker Native logic using substrings for resilience
+    // Standard M3 DatePicker Native logic.
     click(Selector.Auto("text input"))
+    delay(300)
     input(Selector.Auto("Date"), dateText)
-    click(Selector.Auto("OK"))
+    delay(300)
+    click(Selector.Tag("date_picker_ok_button").atIndex(0))
 }
 
 private suspend fun E2ETestScope.selectDateViaInputWasm(dateText: String) {
+    // Wasm Canvas mode toggle.
     try {
         click(Selector.Auto("Switch to text input mode"))
     } catch (e: Throwable) {
@@ -57,7 +60,8 @@ private suspend fun E2ETestScope.selectDateViaInputWasm(dateText: String) {
             clickAtFast(toggleBtn.bounds.centerX, toggleBtn.bounds.centerY)
         }
     }
-    delay(2000)
+    
+    waitFor(Selector.Auto("YYYY"))
 
     val currentTree = getTree()
     val inputNode = currentTree.firstOrNull { it.text?.contains("YYYY", ignoreCase = true) == true || it.text?.contains("Date", ignoreCase = true) == true }
@@ -67,7 +71,6 @@ private suspend fun E2ETestScope.selectDateViaInputWasm(dateText: String) {
     } else {
         input(Selector.Tag("date_picker_input_field"), dateText)
     }
-    delay(1000)
 
     try {
         click(Selector.Auto("OK"))
@@ -88,28 +91,27 @@ suspend fun E2ETestScope.selectTimeFromDial(hour: String, minute: String, is24Ho
 }
 
 private suspend fun E2ETestScope.selectTimeFromDialNative(hourText: String, minuteText: String, is24Hour: Boolean = true) {
+    // Built-in wait for the modal
     waitFor("time_picker_dialog")
+    delay(800) // Stability wait for M3 animation
 
     if (!is24Hour) {
         val hInt = hourText.toInt()
         val isPm = hInt >= 12
+        val amPmSearch = if (isPm) "p.m." else "a.m."
         val tree = getTree()
+        val amPmNode = tree.firstOrNull { it.text?.contains(amPmSearch, ignoreCase = true) == true }
+            ?: tree.firstOrNull { it.text?.contains(if (isPm) "PM" else "AM", ignoreCase = true) == true }
         
-        // Find the node that contains period info (M3 toggle uses localized strings)
-        val periodNode = tree.firstOrNull { 
-            val t = it.text?.lowercase() ?: ""
-            if (isPm) t == "p.m." || t == "pm" else t == "a.m." || t == "am"
-        }
-        
-        if (periodNode != null) {
-            click(Selector.Text(periodNode.text!!).atIndex(0))
+        if (amPmNode != null) {
+            click(Selector.Text(amPmNode.text!!).atIndex(0))
         } else {
             click(Selector.Auto(if (isPm) "PM" else "AM"))
         }
         delay(300)
     }
 
-    // Ensure Hour mode is active
+    // Ensure Hour mode
     click(Selector.Auto("Select hour"))
     delay(300)
 
@@ -120,19 +122,29 @@ private suspend fun E2ETestScope.selectTimeFromDialNative(hourText: String, minu
         hInt
     }
 
-    // Dial numbers in M3 are unique enough for Auto (substring) search. 
-    // We click atIndex(0) to avoid any duplicated semantics nodes.
-    click(Selector.Auto(displayHour.toString()).atIndex(0))
+    // Search for the specific label format on the dial (hours vs o'clock)
+    val tree = getTree()
+    val hourLabel = when {
+        tree.any { it.text == "$displayHour hours" } -> "$displayHour hours"
+        tree.any { it.text == "$displayHour o'clock" } -> "$displayHour o'clock"
+        else -> displayHour.toString()
+    }
+    click(Selector.Text(hourLabel).atIndex(0))
     delay(500)
 
     // Switch to minutes
     click(Selector.Auto("Select minutes"))
     delay(300)
     
-    click(Selector.Auto(minuteText).atIndex(0))
+    val minTree = getTree()
+    val minuteLabel = when {
+        minTree.any { it.text == "$minuteText minutes" } -> "$minuteText minutes"
+        else -> minuteText
+    }
+    click(Selector.Text(minuteLabel).atIndex(0))
     delay(500)
 
-    click(Selector.Auto("OK"))
+    click(Selector.Tag("time_picker_ok_button").atIndex(0))
 }
 
 /**
@@ -161,19 +173,18 @@ suspend fun E2ETestScope.dragSliderPhysically(tag: String, percent: Float) {
 }
 
 suspend fun E2ETestScope.clickAtFast(x: Double, y: Double) {
-    drag(fromX = x, fromY = y, toX = x + 15.0, toY = y, durationMs = 300L)
+    // 20px move ensures Wasm registers interaction unmistakably
+    drag(fromX = x, fromY = y, toX = x + 20.0, toY = y, durationMs = 300L)
     delay(1200L) 
 }
 
 suspend fun E2ETestScope.clickAtStill(x: Double, y: Double) {
+    // Force-drag to ensure Wasm registers selection on dial
     drag(fromX = x, fromY = y, toX = x + 5.0, toY = y + 15.0, durationMs = 400L)
     delay(1500L)
 }
 
 suspend fun E2ETestScope.selectTimeFromDialGeometrically(hour: Int, minute: Int, is24Hour: Boolean = true) {
-    println("Calibration: Pure Math + Force-Drags (is24Hour=$is24Hour)...")
-    delay(2000)
-    
     val dialNode = resolveNode(Selector.Tag("time_picker_dial"))
     val initialTree = getTree()
     val hourBtn = initialTree.firstOrNull { it.text?.contains("Select hour", ignoreCase = true) == true }
@@ -189,16 +200,12 @@ suspend fun E2ETestScope.selectTimeFromDialGeometrically(hour: Int, minute: Int,
     
     val maxRadius = (dialSize / 2.0) - 12.0
     
-    println("Math Calibrated: Center=($centerX, $centerY), MaxRadius=$maxRadius")
-    
     if (!is24Hour) {
         val amPmNode = getTree().firstOrNull { it.text?.contains("a.m.", ignoreCase = true) == true || it.text?.contains("p.m.", ignoreCase = true) == true }
         if (amPmNode != null) {
             val isPm = hour >= 12
-            // AM is left side (~54px from center), PM is right side (~160px from center)
-            val targetX = if (isPm) amPmNode.bounds.left + 160.0 else amPmNode.bounds.left + 54.0
+            val targetX = if (isPm) amPmNode.bounds.right - 25.0 else amPmNode.bounds.left + 25.0
             clickAtFast(targetX, amPmNode.bounds.centerY)
-            println("  Selected ${if (isPm) "PM" else "AM"} mode via geometry")
             delay(1000)
         }
     }
@@ -213,8 +220,6 @@ suspend fun E2ETestScope.selectTimeFromDialGeometrically(hour: Int, minute: Int,
     val rScales = if (is24Hour && (hour == 0 || hour >= 13)) listOf(0.55, 0.85) else listOf(0.85, 0.55)
     
     var hourFound = false
-    println("Pinpointing Hour $hour (display=$displayHour, rScales=$rScales)...")
-    
     clickAtFast(hourBtn.bounds.centerX, hourBtn.bounds.centerY)
 
     for (rScale in rScales) {
@@ -227,7 +232,6 @@ suspend fun E2ETestScope.selectTimeFromDialGeometrically(hour: Int, minute: Int,
                 val currentText = getTree().find { it.text?.contains("Select hour", ignoreCase = true) == true }?.text ?: ""
                 val digits = currentText.filter { it.isDigit() }
                 if (digits == displayHour.toString()) {
-                    println("Successfully locked Hour $hour (Text: $currentText)")
                     hourFound = true; break
                 }
                 delay(500)
@@ -240,7 +244,6 @@ suspend fun E2ETestScope.selectTimeFromDialGeometrically(hour: Int, minute: Int,
 
     if (!hourFound) throw AssertionError("Failed to select hour $hour")
 
-    println("Switching to Minute mode...")
     val safeMinBtnX = hourBtn.bounds.right + 75.0
     val safeMinBtnY = hourBtn.bounds.centerY
     clickAtFast(safeMinBtnX, safeMinBtnY)
@@ -252,7 +255,7 @@ suspend fun E2ETestScope.selectTimeFromDialGeometrically(hour: Int, minute: Int,
     clickAtStill(tx, ty)
     
     try {
-        click(Selector.Auto("OK"))
+        click(Selector.Tag("time_picker_ok_button"))
     } catch (e: Throwable) {
         clickAtFast(840.0, 500.0) 
     }

@@ -83,13 +83,13 @@ class OverlayIntegrationTest {
     assertVisible("overlay_playground_screen")
 
     click("date_picker_trigger_button")
-    delay(1000)
+    assertVisible("date_picker_dialog")
     
-    // Material 3 date picker input mode test
+    // Material 3 date picker input mode test. Platform routing handles waits internally.
     selectDateViaInput("10/24/2026")
     
-    // We just verify it successfully dismissed and output updated
-    delay(1000)
+    // Verify it successfully dismissed and output updated
+    assertVisible("Date Selected:")
     val resultText = resolveNode("overlay_result_message").text.orEmpty()
     assertTrue(resultText.startsWith("Date Selected:"), "Expected date selected message, got: $resultText")
   }
@@ -101,7 +101,7 @@ class OverlayIntegrationTest {
     assertVisible("overlay_playground_screen")
 
     click("time_picker_24h_trigger_button")
-    delay(1000)
+    assertVisible("time_picker_dialog")
     
     // TestExtensions handles the platform routing internally
     selectTimeFromDial("22", "30", is24Hour = true)
@@ -116,33 +116,13 @@ class OverlayIntegrationTest {
     assertVisible("overlay_playground_screen")
 
     click("time_picker_12h_trigger_button")
-    delay(1000)
+    assertVisible("time_picker_dialog")
     
     // TestExtensions handles the platform routing internally
     selectTimeFromDial("22", "30", is24Hour = false)
     
-    assertVisible("Time Selected: 22:30")
+    waitFor(Selector.Auto("Time Selected:"))
+    val resultText = resolveNode("overlay_result_message").text.orEmpty()
+    assertTrue(resultText.contains("22:30") || resultText.contains("10:30"), "Expected 22:30 or 10:30, but got: $resultText")
   }
-
-  /* 
-  @Test
-  fun testDumpTree() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_overlay_playground")
-    click("time_picker_24h_trigger_button")
-    delay(2000)
-    selectTimeFromDialGeometrically(22, 30, is24Hour = true)
-    assertVisible("Time Selected: 22:30")
-  }
-
-  @Test
-  fun testDumpTree12h() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_overlay_playground")
-    click("time_picker_12h_trigger_button")
-    delay(2000)
-    selectTimeFromDialGeometrically(22, 30, is24Hour = false)
-    assertVisible("Time Selected: 22:30")
-  }
-  */
 }

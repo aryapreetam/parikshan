@@ -11,9 +11,6 @@ import io.github.aryapreetam.parikshan.protocol.first
 import io.github.aryapreetam.parikshan.protocol.last
 import io.github.aryapreetam.parikshan.resolveNode
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertContains
-import kotlin.test.assertFailsWith
 
 class SelectorParityTest {
 
@@ -40,17 +37,13 @@ class SelectorParityTest {
     scrollUntilVisible(Selector.Tag("input_form_screen"), Selector.Auto("Duplicate Action"))
 
     // Clicking should fail because text is ambiguous
-    val clickError = assertFailsWith<AssertionError> {
+    assertFailure("matched multiple visible nodes") {
       click("Duplicate Action")
     }
 
-    assertContains(clickError.message.orEmpty(), "matched multiple visible nodes")
-
-    val inputError = assertFailsWith<AssertionError> {
+    assertFailure("matched multiple visible nodes") {
       input("Duplicate Input", "some text")
     }
-
-    assertContains(inputError.message.orEmpty(), "matched multiple visible nodes")
   }
 
   @Test

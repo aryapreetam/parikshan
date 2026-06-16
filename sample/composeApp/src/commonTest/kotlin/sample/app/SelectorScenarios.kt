@@ -8,10 +8,6 @@ import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import io.github.aryapreetam.parikshan.resolveNode
 import kotlin.test.Test
-import kotlin.test.assertContains
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
-import kotlin.test.assertFailsWith
 
 class SelectorScenarios {
  
@@ -59,13 +55,9 @@ class SelectorScenarios {
     // Scroll to the second button to ensure BOTH "Duplicate Action" buttons are physically visible
     scrollUntilVisible(Selector.Tag("input_form_screen"), Selector.Tag("duplicate_action_secondary"))
 
-    val error =
-      kotlin.runCatching {
-        click("Duplicate Action")
-      }.exceptionOrNull() as? AssertionError
-        ?: throw AssertionError("Expected click(\"Duplicate Action\") to fail because the text is ambiguous")
-
-    assertContains(error.message.orEmpty(), "multiple visible nodes")
+    assertFailure("multiple visible nodes") {
+      click("Duplicate Action")
+    }
   }
 
   @Test

@@ -8,8 +8,6 @@ import io.github.aryapreetam.parikshan.e2eTest
 import io.github.aryapreetam.parikshan.resolveNode
 import kotlinx.coroutines.delay
 import kotlin.test.Test
-import kotlin.test.assertFailsWith
-import kotlin.test.assertContains
 
 class AccessibilityIntegrationTest {
 
@@ -39,10 +37,9 @@ class AccessibilityIntegrationTest {
 
     // On Native targets, we verify that ambiguous clicks fail.
     if (!sample.app.setup.isWasmTarget()) {
-        val ambiguityError = assertFailsWith<AssertionError> {
+        assertFailure("matched multiple visible nodes") {
           click("Duplicate Action Item")
         }
-        assertContains(ambiguityError.message.orEmpty(), "matched multiple visible nodes")
     }
 
     // Resolve via unique tags (Deterministic across all platforms)
@@ -94,10 +91,8 @@ class AccessibilityIntegrationTest {
     assertNotVisible("invisible_click_target")
     
     // Attempting to click it should fail since it's invisible
-    val clickError = assertFailsWith<AssertionError> {
+    assertFailure("invisible_click_target") {
       click("invisible_click_target")
     }
-    
-    assertContains(clickError.message.orEmpty(), "invisible_click_target")
   }
 }

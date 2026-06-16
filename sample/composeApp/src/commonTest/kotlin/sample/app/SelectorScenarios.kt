@@ -65,7 +65,7 @@ class SelectorScenarios {
       }.exceptionOrNull() as? AssertionError
         ?: throw AssertionError("Expected click(\"Duplicate Action\") to fail because the text is ambiguous")
 
-    assertContains(error.message.orEmpty(), "multiple visible text nodes")
+    assertContains(error.message.orEmpty(), "multiple visible nodes")
   }
 
   @Test

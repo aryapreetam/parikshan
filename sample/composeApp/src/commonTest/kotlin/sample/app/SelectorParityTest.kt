@@ -44,13 +44,13 @@ class SelectorParityTest {
       click("Duplicate Action")
     }
 
-    assertContains(clickError.message.orEmpty(), "matched multiple visible text nodes")
+    assertContains(clickError.message.orEmpty(), "matched multiple visible nodes")
 
     val inputError = assertFailsWith<AssertionError> {
       input("Duplicate Input", "some text")
     }
 
-    assertContains(inputError.message.orEmpty(), "matched multiple visible text nodes")
+    assertContains(inputError.message.orEmpty(), "matched multiple visible nodes")
   }
 
   @Test

@@ -12,7 +12,7 @@ import kotlin.math.abs
 /**
  * Checks if the current E2E test is running against the Wasm target.
  */
-private fun isWasmTarget(): Boolean {
+fun isWasmTarget(): Boolean {
     val target = System.getProperty("parikshan.target") ?: ""
     return target.equals("wasm", ignoreCase = true)
 }
@@ -51,32 +51,18 @@ private suspend fun E2ETestScope.selectDateViaInputNative(dateText: String) {
 
 private suspend fun E2ETestScope.selectDateViaInputWasm(dateText: String) {
     // Wasm Canvas mode toggle.
-    try {
-        click(Selector.Auto("Switch to text input mode"))
-    } catch (e: Throwable) {
-        val tree = getTree()
-        val toggleBtn = tree.firstOrNull { it.text?.contains("text input mode", ignoreCase = true) == true }
-        if (toggleBtn != null) {
-            clickAtFast(toggleBtn.bounds.centerX, toggleBtn.bounds.centerY)
-        }
-    }
+    // Use Text search because the tag is often generic 'button' on Wasm
+    click(Selector.Auto("Switch to text input mode"))
     
+    // Ensure the input field placeholder has appeared
     waitFor(Selector.Auto("YYYY"))
 
-    val currentTree = getTree()
-    val inputNode = currentTree.firstOrNull { it.text?.contains("YYYY", ignoreCase = true) == true || it.text?.contains("Date", ignoreCase = true) == true }
-    if (inputNode != null) {
-        clickAtFast(inputNode.bounds.centerX, inputNode.bounds.centerY)
-        input(Selector.Text(inputNode.text!!).atIndex(0), dateText)
-    } else {
-        input(Selector.Tag("date_picker_input_field"), dateText)
-    }
+    // Target the input field by its placeholder or tag
+    val inputSelector = Selector.Auto("YYYY")
+    click(inputSelector)
+    input(inputSelector, dateText)
 
-    try {
-        click(Selector.Auto("OK"))
-    } catch (e: Throwable) {
-        clickAtFast(840.0, 500.0)
-    }
+    click(Selector.Tag("date_picker_ok_button"))
 }
 
 /**
@@ -93,7 +79,7 @@ suspend fun E2ETestScope.selectTimeFromDial(hour: String, minute: String, is24Ho
 private suspend fun E2ETestScope.selectTimeFromDialNative(hourText: String, minuteText: String, is24Hour: Boolean = true) {
     // Built-in wait for the modal
     waitFor("time_picker_dialog")
-    delay(800) // Stability wait for M3 animation
+    delay(500) // Stability wait for M3 animation
 
     if (!is24Hour) {
         val hInt = hourText.toInt()
@@ -173,13 +159,11 @@ suspend fun E2ETestScope.dragSliderPhysically(tag: String, percent: Float) {
 }
 
 suspend fun E2ETestScope.clickAtFast(x: Double, y: Double) {
-    // 20px move ensures Wasm registers interaction unmistakably
     drag(fromX = x, fromY = y, toX = x + 20.0, toY = y, durationMs = 300L)
     delay(1200L) 
 }
 
 suspend fun E2ETestScope.clickAtStill(x: Double, y: Double) {
-    // Force-drag to ensure Wasm registers selection on dial
     drag(fromX = x, fromY = y, toX = x + 5.0, toY = y + 15.0, durationMs = 400L)
     delay(1500L)
 }

@@ -42,27 +42,58 @@ suspend fun E2ETestScope.selectDateViaInput(dateText: String) {
 
 private suspend fun E2ETestScope.selectDateViaInputNative(dateText: String) {
     // Standard M3 DatePicker Native logic.
-    click(Selector.Auto("text input"))
+    click(Selector.Auto("Switch to text input mode"))
+    delay(500)
+    
+    // Determine the correct selector based on the current tree
+    val tree = getTree()
+    val inputSelector = when {
+        tree.any { it.text?.contains("Date", ignoreCase = true) == true } -> Selector.Auto("Date")
+        tree.any { it.text?.contains("Enter date", ignoreCase = true) == true } -> Selector.Auto("Enter date")
+        else -> Selector.Auto("Date")
+    }
+    
+    input(inputSelector, dateText)
     delay(300)
-    input(Selector.Auto("Date"), dateText)
-    delay(300)
-    click(Selector.Tag("date_picker_ok_button").atIndex(0))
+    
+    // Robust OK button click
+    val finalTree = getTree()
+    val okSelector = when {
+        finalTree.any { it.tag == "date_picker_ok_button" } -> Selector.Tag("date_picker_ok_button")
+        finalTree.any { it.text?.contains("OK", ignoreCase = true) == true } -> Selector.Text("OK")
+        else -> Selector.Tag("date_picker_ok_button")
+    }
+    click(okSelector.atIndex(0))
 }
 
 private suspend fun E2ETestScope.selectDateViaInputWasm(dateText: String) {
     // Wasm Canvas mode toggle.
-    // Use Text search because the tag is often generic 'button' on Wasm
     click(Selector.Auto("Switch to text input mode"))
     
-    // Ensure the input field placeholder has appeared
-    waitFor(Selector.Auto("YYYY"))
+    // Increased wait for Wasm canvas re-render and bridge sync
+    delay(2000)
 
-    // Target the input field by its placeholder or tag
-    val inputSelector = Selector.Auto("YYYY")
+    // On Wasm, the placeholder 'YYYY' or label 'Date' might be used
+    val tree = getTree()
+    val inputSelector = when {
+        tree.any { it.text?.contains("YYYY") == true } -> Selector.Auto("YYYY")
+        tree.any { it.text?.contains("Date") == true } -> Selector.Auto("Date")
+        else -> Selector.Auto("YYYY") // Default fallback
+    }
+    
+    waitFor(inputSelector)
     click(inputSelector)
     input(inputSelector, dateText)
+    delay(500)
 
-    click(Selector.Tag("date_picker_ok_button"))
+    // Robust OK button click
+    val finalTree = getTree()
+    val okSelector = when {
+        finalTree.any { it.tag == "date_picker_ok_button" } -> Selector.Tag("date_picker_ok_button")
+        finalTree.any { it.text?.contains("OK", ignoreCase = true) == true } -> Selector.Text("OK")
+        else -> Selector.Tag("date_picker_ok_button")
+    }
+    click(okSelector)
 }
 
 /**
@@ -85,20 +116,14 @@ private suspend fun E2ETestScope.selectTimeFromDialNative(hourText: String, minu
         val hInt = hourText.toInt()
         val isPm = hInt >= 12
         val amPmSearch = if (isPm) "p.m." else "a.m."
-        val tree = getTree()
-        val amPmNode = tree.firstOrNull { it.text?.contains(amPmSearch, ignoreCase = true) == true }
-            ?: tree.firstOrNull { it.text?.contains(if (isPm) "PM" else "AM", ignoreCase = true) == true }
-        
-        if (amPmNode != null) {
-            click(Selector.Text(amPmNode.text!!).atIndex(0))
-        } else {
-            click(Selector.Auto(if (isPm) "PM" else "AM"))
-        }
+        // Use .atIndex(-1) to pick the largest (outer) match if multiple match
+        click(Selector.Text(amPmSearch).atIndex(-1))
         delay(300)
     }
 
     // Ensure Hour mode
-    click(Selector.Auto("Select hour"))
+    // Use atIndex(-1) to pick outer node if nested
+    click(Selector.Auto("Select hour").atIndex(-1))
     delay(300)
 
     val hInt = hourText.toInt()
@@ -111,23 +136,25 @@ private suspend fun E2ETestScope.selectTimeFromDialNative(hourText: String, minu
     // Search for the specific label format on the dial (hours vs o'clock)
     val tree = getTree()
     val hourLabel = when {
-        tree.any { it.text == "$displayHour hours" } -> "$displayHour hours"
-        tree.any { it.text == "$displayHour o'clock" } -> "$displayHour o'clock"
+        tree.any { it.text?.contains("$displayHour hours", ignoreCase = true) == true } -> "$displayHour hours"
+        tree.any { it.text?.contains("$displayHour o'clock", ignoreCase = true) == true } -> "$displayHour o'clock"
+        tree.any { it.text?.contains("$displayHour", ignoreCase = true) == true } -> "$displayHour"
         else -> displayHour.toString()
     }
-    click(Selector.Text(hourLabel).atIndex(0))
+    click(Selector.Text(hourLabel).atIndex(-1))
     delay(500)
 
     // Switch to minutes
-    click(Selector.Auto("Select minutes"))
+    click(Selector.Auto("Select minutes").atIndex(-1))
     delay(300)
     
     val minTree = getTree()
     val minuteLabel = when {
-        minTree.any { it.text == "$minuteText minutes" } -> "$minuteText minutes"
+        minTree.any { it.text?.contains("$minuteText minutes", ignoreCase = true) == true } -> "$minuteText minutes"
+        minTree.any { it.text?.contains("$minuteText", ignoreCase = true) == true } -> "$minuteText"
         else -> minuteText
     }
-    click(Selector.Text(minuteLabel).atIndex(0))
+    click(Selector.Text(minuteLabel).atIndex(-1))
     delay(500)
 
     click(Selector.Tag("time_picker_ok_button").atIndex(0))

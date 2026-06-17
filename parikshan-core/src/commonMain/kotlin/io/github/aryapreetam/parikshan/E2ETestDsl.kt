@@ -23,6 +23,10 @@ interface TestDriver {
     }
   }
 
+  suspend fun reset() {
+    send(Command.Reset(id = nextId()))
+  }
+
   suspend fun close()
 
   fun resolveArtifactPath(relativePath: String): String =

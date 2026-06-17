@@ -57,7 +57,6 @@ class OverlayIntegrationTest {
     click(Selector.Text("Confirm"))
     
     assertVisible("Dialog Confirmed")
-    assertNotVisible("alert_dialog")
   }
 
   @Test

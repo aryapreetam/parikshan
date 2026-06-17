@@ -606,6 +606,7 @@ object ParikshanAndroidServer {
         Response.Ok(command.id)
       }
       is Command.Ping -> Response.Ok(command.id)
+      is Command.Reset -> Response.Ok(command.id)
     }
   }
 

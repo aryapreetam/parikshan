@@ -349,6 +349,7 @@ private class RunningParikshanServer(
         Response.Error(command.id, "relaunchApp() is handled by the DesktopDriver process launcher")
       is Command.Shutdown -> Response.Ok(command.id)
       is Command.Ping -> Response.Ok(command.id)
+      is Command.Reset -> Response.Ok(command.id)
     }
   }
 

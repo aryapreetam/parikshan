@@ -100,7 +100,7 @@ fun App() {
             }
           ) { paddingValues ->
             ContentSurface(
-              modifier = Modifier.fillMaxSize().padding(paddingValues).padding(12.dp),
+              modifier = Modifier.fillMaxSize().padding(paddingValues),
               activeScreen = activeScreenVal,
               formValue = formValue.value,
               onFormValueChange = { formValue.value = it },
@@ -270,7 +270,6 @@ private fun ContentSurface(
   Box(
     modifier = modifier
       .background(Color.White)
-      .padding(20.dp)
   ) {
     when (activeScreen) {
       SampleScreen.TaskList -> TaskListScreen()

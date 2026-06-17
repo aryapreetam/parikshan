@@ -46,6 +46,8 @@ actual fun e2eTest(
     val target = System.getProperty("parikshan.target")?.lowercase()
     val defaultDelay = if (target == "wasm" || target == "web") {
       max(config.commandDelayMs, 150L)
+    } else if (target == "ios") {
+      max(config.commandDelayMs, 300L)
     } else {
       config.commandDelayMs
     }

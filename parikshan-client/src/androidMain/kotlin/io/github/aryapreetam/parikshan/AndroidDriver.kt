@@ -337,6 +337,7 @@ class AndroidDriver private constructor(
       is Command.StopRecording -> Response.Ok(command.id)
       is Command.Shutdown -> Response.Ok(command.id)
       is Command.Ping -> Response.Ok(command.id)
+      is Command.Reset -> Response.Ok(command.id)
     }
   }
 

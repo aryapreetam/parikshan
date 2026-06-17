@@ -271,6 +271,7 @@ class WasmDriver private constructor(
         relaunchSharedPage(ParikshanWasmConfig.fromSystemProperties())
         Response.Ok(command.id)
       }
+      is Command.Reset -> Response.Ok(command.id)
       is Command.StartRecording -> {
         lastRequestedVideoPath = command.path
         Response.Ok(command.id)

@@ -23,7 +23,6 @@ fun OverlayPlayground() {
   var overlayMessage by remember { mutableStateOf("") }
 
   val sheetState = rememberModalBottomSheetState()
-  val scope = rememberCoroutineScope()
   val scrollState = rememberScrollState()
 
   Column(
@@ -35,8 +34,7 @@ fun OverlayPlayground() {
     verticalArrangement = Arrangement.spacedBy(16.dp),
     horizontalAlignment = Alignment.Start
   ) {
-    Text("Overlays & Dialogs Playground", style = MaterialTheme.typography.headlineMedium)
-    Text("This area validates window overlay traversal, coordinate mapping, and modal layer dismissal.")
+    Text("Overlays Playground", style = MaterialTheme.typography.titleSmall)
 
     // 1. Dropdown Section (Using ExposedDropdownMenuBox)
     ExposedDropdownMenuBox(
@@ -74,7 +72,7 @@ fun OverlayPlayground() {
     // 2. Alert Dialog Section
     Button(
       onClick = { showDialog = true },
-      modifier = Modifier.testTag("dialog_trigger_button")
+      modifier = Modifier.fillMaxWidth().testTag("dialog_trigger_button")
     ) {
       Text("Open Alert Dialog")
     }
@@ -113,7 +111,7 @@ fun OverlayPlayground() {
     // 3. Bottom Sheet Section
     Button(
       onClick = { showBottomSheet = true },
-      modifier = Modifier.testTag("bottom_sheet_trigger_button")
+      modifier = Modifier.fillMaxWidth().testTag("bottom_sheet_trigger_button")
     ) {
       Text("Open Bottom Sheet")
     }
@@ -160,7 +158,7 @@ fun OverlayPlayground() {
     // 4. Date Picker Section
     Button(
       onClick = { showDatePicker = true },
-      modifier = Modifier.testTag("date_picker_trigger_button")
+      modifier = Modifier.fillMaxWidth().testTag("date_picker_trigger_button")
     ) {
       Text("Open Date Picker")
     }
@@ -197,19 +195,17 @@ fun OverlayPlayground() {
     
     // 5. Time Picker Section
     var use24HourTime by remember { mutableStateOf(true) }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      Button(
-        onClick = { use24HourTime = false; showTimePicker = true },
-        modifier = Modifier.testTag("time_picker_12h_trigger_button")
-      ) {
-        Text("Open Time Picker (12h)")
-      }
-      Button(
-        onClick = { use24HourTime = true; showTimePicker = true },
-        modifier = Modifier.testTag("time_picker_24h_trigger_button")
-      ) {
-        Text("Open Time Picker (24h)")
-      }
+    Button(
+      onClick = { use24HourTime = false; showTimePicker = true },
+      modifier = Modifier.fillMaxWidth().testTag("time_picker_12h_trigger_button")
+    ) {
+      Text("Open Time Picker (12h)")
+    }
+    Button(
+      onClick = { use24HourTime = true; showTimePicker = true },
+      modifier = Modifier.fillMaxWidth().testTag("time_picker_24h_trigger_button")
+    ) {
+      Text("Open Time Picker (24h)")
     }
     
     if (showTimePicker) {

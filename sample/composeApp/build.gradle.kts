@@ -61,6 +61,9 @@ kotlin {
       implementation(compose.desktop.currentOs)
     }
 
+    wasmJsMain.dependencies {
+    }
+
   }
 }
 

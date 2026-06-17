@@ -9,6 +9,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import sample.app.formatUtcDate
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -170,7 +171,10 @@ fun OverlayPlayground() {
         confirmButton = {
           TextButton(
             onClick = {
-              val date = if (datePickerState.selectedDateMillis != null) "10/24/2026" else "None"
+              val millis = datePickerState.selectedDateMillis
+              val date = if (millis != null) {
+                formatUtcDate(millis)
+              } else "None"
               overlayMessage = "Date Selected: $date"
               showDatePicker = false
             },

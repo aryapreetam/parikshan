@@ -5,6 +5,7 @@ import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.e2eTest
 import sample.app.setup.selectFromExposedDropdown
 import sample.app.setup.selectDateViaInput
+import sample.app.setup.selectDateFromCalendar
 import sample.app.setup.selectTimeFromDial
 import sample.app.setup.selectTimeFromDialGeometrically
 import sample.app.setup.selectTimeViaInput
@@ -88,6 +89,63 @@ class OverlayIntegrationTest {
     
     // Verify it successfully dismissed and output updated
     assertContains("overlay_result_message", "Date Selected:")
+  }
+
+  @Test
+  fun testDumpAndroidTree() = e2eTest {
+    relaunchApp()
+    openAppNavigation(); click("nav_overlay_playground")
+    click("date_picker_trigger_button")
+    val tree = getTree()
+    tree.forEach { println("NODE: tag=${it.tag}, text=${it.text}, bounds=${it.bounds}") }
+  }
+
+  @Test
+  fun testCalendarDateSelectionCurrentMonth() = e2eTest {
+    relaunchApp()
+    openAppNavigation(); click("nav_overlay_playground")
+    assertVisible("overlay_playground_screen")
+
+    click("date_picker_trigger_button")
+    assertVisible("date_picker_dialog")
+
+    // Select June 15, 2026 (Current month in session context)
+    // We use a date slightly before today to ensure it's selectable (not in the future if the picker has constraints)
+    // But today is June 17, 2026.
+    selectDateFromCalendar(day = 15, month = 6, year = 2026)
+
+    // Verify it successfully dismissed and output updated to dd/mm/yyyy
+    assertContains("overlay_result_message", "Date Selected: 15/06/2026")
+  }
+
+  @Test
+  fun testCalendarDateSelectionPastDate() = e2eTest {
+    relaunchApp()
+    openAppNavigation(); click("nav_overlay_playground")
+    assertVisible("overlay_playground_screen")
+
+    click("date_picker_trigger_button")
+    assertVisible("date_picker_dialog")
+
+    // Select December 25, 2025 (Past date)
+    selectDateFromCalendar(day = 25, month = 12, year = 2025)
+
+    assertContains("overlay_result_message", "Date Selected: 25/12/2025")
+  }
+
+  @Test
+  fun testCalendarDateSelectionFutureDate() = e2eTest {
+    relaunchApp()
+    openAppNavigation(); click("nav_overlay_playground")
+    assertVisible("overlay_playground_screen")
+
+    click("date_picker_trigger_button")
+    assertVisible("date_picker_dialog")
+
+    // Select March 10, 2027 (Future date)
+    selectDateFromCalendar(day = 10, month = 3, year = 2027)
+
+    assertContains("overlay_result_message", "Date Selected: 10/03/2027")
   }
 
   @Test

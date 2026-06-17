@@ -3,6 +3,8 @@ package sample.app.setup
 import io.github.aryapreetam.parikshan.E2ETestScope
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.protocol.atIndex
+import io.github.aryapreetam.parikshan.protocol.ScrollDirection
+import sample.app.scrollUntilVisible
 import kotlinx.coroutines.delay
 import kotlin.math.cos
 import kotlin.math.sin
@@ -166,6 +168,233 @@ private suspend fun E2ETestScope.selectTimeFromDialNative(hourText: String, minu
 suspend fun E2ETestScope.selectTimeViaInput(hour: String, minute: String) {
     click(Selector.Tag("toggle_time_picker_mode_button"))
     click(Selector.Tag("time_picker_ok_button").atIndex(0))
+}
+
+/**
+ * Interacts with a Material 3 DatePickerDialog via calendar mode selection.
+ */
+suspend fun E2ETestScope.selectDateFromCalendar(day: Int, month: Int, year: Int) {
+    if (isWasmTarget()) {
+        selectDateFromCalendarWasm(day, month, year)
+    } else {
+        selectDateFromCalendarNative(day, month, year)
+    }
+}
+
+private suspend fun E2ETestScope.selectDateFromCalendarNative(day: Int, month: Int, year: Int) {
+    // 1. Navigate Year if needed
+    val initialTree = getTree()
+    val headerNode = initialTree.find { it.text?.contains("20") == true } // Anchor for "Month Year"
+    
+    val currentMonthYear = headerNode?.text?.let { sample.app.parseMonthYear(it) }
+    
+    if (currentMonthYear != null) {
+        val (curMonth, curYear) = currentMonthYear
+        
+        // Year Navigation via M3 Year Picker
+        if (curYear != year) {
+             click(Selector.Text(headerNode.text!!).atIndex(0)) // Open Year Picker mode
+             delay(500)
+             
+             // Find the scrollable year list container
+             val yearTree = getTree()
+             val yearList = yearTree.find { it.tag == "date_picker_year_list" || it.tag == "list" }
+             val container = yearList?.tag?.let { Selector.Tag(it) } ?: Selector.Tag("list")
+
+             scrollUntilVisible(
+                 containerSelector = container,
+                 targetSelector = Selector.Text("$year"),
+                 direction = if (year > curYear) ScrollDirection.Down else ScrollDirection.Up
+             )
+             click(Selector.Text("$year"))
+             delay(500)
+        }
+        
+        // Month Navigation Loop (Month Clicker)
+        var tries = 0
+        while (tries < 24) { // Limit to 2 years to prevent infinite loops
+            val updatedTree = getTree()
+            val updatedHeader = updatedTree.find { it.text?.contains("20") == true }
+            val (m, y) = sample.app.parseMonthYear(updatedHeader?.text ?: "") ?: break
+            
+            println("DEBUG: Calendar currently at $m/$y (Target: $month/$year)")
+            
+            if (m == month && y == year) break
+            
+            val totalTargetMonths = year * 12 + month
+            val totalCurrentMonths = y * 12 + m
+            
+            if (totalTargetMonths > totalCurrentMonths) {
+                // Try several common selectors for M3 DatePicker next button
+                val nextSelector = when {
+                    updatedTree.any { it.text == "Next month" } -> Selector.Text("Next month")
+                    updatedTree.any { it.tag == "next_month_button" } -> Selector.Tag("next_month_button")
+                    else -> Selector.Text("Next month") 
+                }
+                click(nextSelector.atIndex(0))
+            } else {
+                val prevSelector = when {
+                    updatedTree.any { it.text == "Previous month" } -> Selector.Text("Previous month")
+                    else -> Selector.Text("Previous month")
+                }
+                click(prevSelector.atIndex(0))
+            }
+            delay(400) // Wait for month transition animation
+            tries++
+        }
+    }
+
+    // 3. Click the day cell
+    // We try to find a node that contains the day number and has the full date string
+    // M3 DatePicker uses full date strings for accessibility labels.
+    // Desktop: "Monday, June 15, 2026"
+    // Android: "Monday 15 June, 2026"
+    val finalTree = getTree()
+    
+    // 1. Try to find the full semantic date string (M3 standard)
+    var targetNode = finalTree.find { 
+        val text = it.text ?: ""
+        val parts = text.split(" ", ",")
+        // Contains the exact day, contains the exact year, and has enough parts to be a full date string
+        parts.any { it == "$day" } && parts.any { it == "$year" } && parts.size >= 3
+    }
+
+    // 2. Fallback to exact number match to bypass the substring matching trap
+    if (targetNode == null) {
+        val exactMatches = finalTree.filter { it.text == "$day" || it.text == day.toString().padStart(2, '0') }
+        // Pick the last one to get the most deeply nested (rendered) node, rather than a hidden parent
+        targetNode = exactMatches.lastOrNull()
+    }
+
+    if (targetNode != null) {
+        // Since coordinate clicks can be flaky on Android due to nested nodes, 
+        // we use the framework's semantic click, but we explicitly pass the exact text 
+        // we matched to avoid substring issues like "25" matching "2025" or "19".
+        click(Selector.Text(targetNode.text!!).atIndex(-1))
+    } else {
+        throw AssertionError("Could not find day cell for $day in the semantic tree")
+    }
+    
+    delay(500)
+    click(Selector.Tag("date_picker_ok_button").atIndex(0))
+}
+
+private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int, year: Int) {
+    // Wasm geometric fallback.
+    
+    // 1. Month / Year Navigation Loop
+    // On Wasm, standard M3 month switching is often available via the Next/Previous buttons
+    // The header text (e.g. "June 2026") might be split across nodes or missing.
+    // Let's implement a robust Month-Clicker loop similar to native.
+    var tries = 0
+    while (tries < 24) {
+        val currentTree = getTree()
+        
+        // Find header: look for a node matching a year (e.g. "202")
+        val headerNode = currentTree.find { it.text?.contains("202") == true }
+        if (headerNode == null) {
+             println("DEBUG: Wasm Calendar missing year header.")
+             break
+        }
+        
+        val currentMonthYear = sample.app.parseMonthYear(headerNode.text ?: "")
+        if (currentMonthYear == null) {
+            println("DEBUG: Wasm Calendar failed to parse month/year from: ${headerNode.text}")
+            break
+        }
+        
+        val (curMonth, curYear) = currentMonthYear
+        println("DEBUG: Wasm Calendar currently at $curMonth/$curYear (Target: $month/$year)")
+        
+        if (curMonth == month && curYear == year) break
+        
+        // Use month clickers for year switching too, since Year list is hard geometrically
+        val totalTargetMonths = year * 12 + month
+        val totalCurrentMonths = curYear * 12 + curMonth
+        
+        if (totalTargetMonths > totalCurrentMonths) {
+            val nextBtn = currentTree.find { it.tag == "next_month_button" }
+            if (nextBtn != null) {
+                clickAtFast(nextBtn.bounds.centerX, nextBtn.bounds.centerY)
+            } else if (currentTree.any { it.text == "Next month" }) {
+                click(Selector.Text("Next month").atIndex(0))
+            } else {
+                // Geometric fallback: M3 Next chevron is at far right of the dialog, aligning with the Month/Year header.
+                // The Month/Year header is usually below "Select date". Let's align with the headerNode Y.
+                val dialogNode = currentTree.find { it.tag == "date_picker_dialog" }
+                val nextX = (dialogNode?.bounds?.right ?: 820.0) - 36.0 
+                val nextY = headerNode.bounds.centerY
+                clickAtFast(nextX, nextY)
+            }
+        } else {
+            val prevBtn = currentTree.find { it.tag == "previous_month_button" }
+            if (prevBtn != null) {
+                clickAtFast(prevBtn.bounds.centerX, prevBtn.bounds.centerY)
+            } else if (currentTree.any { it.text == "Previous month" }) {
+                click(Selector.Text("Previous month").atIndex(0))
+            } else {
+                // Geometric fallback: M3 Prev chevron is to the left of the Next chevron
+                val dialogNode = currentTree.find { it.tag == "date_picker_dialog" }
+                val prevX = (dialogNode?.bounds?.right ?: 820.0) - 84.0 
+                val prevY = headerNode.bounds.centerY
+                clickAtFast(prevX, prevY)
+            }
+        }
+        delay(400)
+        tries++
+    }
+    
+    val tree = getTree()
+
+    // 1. Calibrate Columns using the day-of-week headers
+    // M3 DatePicker on Wasm shows "Monday", "Tuesday", etc. as individual nodes above the list.
+    val dayNames = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+    val headerNodes = dayNames.mapNotNull { name -> tree.find { it.text == name } }
+    
+    if (headerNodes.isEmpty()) throw AssertionError("Could not find day-of-week headers for calibration")
+    
+    // Sort by X to ensure we have the correct column order
+    val sortedHeaders = headerNodes.sortedBy { it.bounds.left }
+    val colWidth = sortedHeaders[1].bounds.left - sortedHeaders[0].bounds.left
+    val firstColX = sortedHeaders[0].bounds.centerX
+    
+    // 2. Find the list node and calibrate Rows
+    val listNode = tree.find { it.tag == "list" }
+        ?: throw AssertionError("Could not find calendar list node")
+    
+    val gridTop = listNode.bounds.top
+    val rowHeight = colWidth // M3 cells are usually square
+    
+    // 3. Determine Day 1's position
+    // We parse the list text to find " 1 " or similar
+    val listText = listNode.text ?: ""
+    val day1Line = listText.split("\n").find { it.contains(" 1 ") || it.endsWith(" 1") || it.contains(", 1 ") }
+        ?: throw AssertionError("Could not find Day 1 in list text to calibrate start day")
+    
+    val day1OfWeek = dayNames.indexOfFirst { day1Line.contains(it, ignoreCase = true) }
+    if (day1OfWeek == -1) throw AssertionError("Could not determine day of week for Day 1 from: $day1Line")
+
+    // 4. Calculate target coordinates
+    val absoluteIndex = day1OfWeek + (day - 1)
+    val targetCol = absoluteIndex % 7
+    val targetRow = absoluteIndex / 7
+    
+    val targetX = firstColX + (targetCol * colWidth)
+    val targetY = gridTop + (targetRow + 0.5) * rowHeight
+    
+    // 5. Perform the click using high-precision "Still Tap"
+    clickAtStill(targetX, targetY)
+    
+    delay(500)
+    
+    // 6. Robust OK button click
+    val finalTree = getTree()
+    val okSelector = when {
+        finalTree.any { it.tag == "date_picker_ok_button" } -> Selector.Tag("date_picker_ok_button")
+        finalTree.any { it.text?.contains("OK", ignoreCase = true) == true } -> Selector.Text("OK")
+        else -> Selector.Tag("date_picker_ok_button")
+    }
+    click(okSelector)
 }
 
 /**

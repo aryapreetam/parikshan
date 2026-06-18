@@ -184,12 +184,9 @@ class WasmDriver private constructor(
       is Command.Click -> {
         val node = readNodeBySelector(selector)
           ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
-        if (!invokeBridgeClick(selector)) {
-          if (!invokeDomClick(selector)) {
-            page.mouse().click(node.bounds.centerX, node.bounds.centerY)
-          }
-        }
-        delay(100)
+        invokeBridgeClick(selector)
+        performPhysicalClick(node.bounds.centerX, node.bounds.centerY)
+        delay(200)
         Response.Ok(command.id)
       }
 
@@ -197,7 +194,10 @@ class WasmDriver private constructor(
         val node = readNodeBySelector(selector)
           ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
         if (!invokeBridgeInput(selector, command.text)) {
-          page.mouse().click(node.bounds.centerX, node.bounds.centerY)
+          page.mouse().move(node.bounds.centerX, node.bounds.centerY)
+          page.mouse().down()
+          delay(50)
+          page.mouse().up()
           page.keyboard().press("ControlOrMeta+A")
           page.keyboard().type(command.text)
         }
@@ -209,17 +209,30 @@ class WasmDriver private constructor(
         val node = readNodeBySelector(selector)
           ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
         if (!invokeBridgeScroll(selector, command.direction)) {
+          // Focus canvas and ensure it has focus before scrolling
+          runCatching {
+             page.evaluate("""() => {
+               const canvas = document.querySelector('canvas');
+               if (canvas) {
+                 canvas.focus();
+                 if (document.activeElement !== canvas) {
+                   canvas.click(); // Force focus if focus() didn't work
+                 }
+               }
+             }""")
+          }
+          // Reverting to centerX, centerY which worked before
           page.mouse().move(node.bounds.centerX, node.bounds.centerY)
           val (deltaX, deltaY) =
             when (command.direction) {
-              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Up -> 0.0 to -420.0
-              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Down -> 0.0 to 420.0
-              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Left -> -420.0 to 0.0
-              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Right -> 420.0 to 0.0
+              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Up -> 0.0 to -400.0
+              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Down -> 0.0 to 400.0
+              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Left -> -400.0 to 0.0
+              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Right -> 400.0 to 0.0
             }
           page.mouse().wheel(deltaX, deltaY)
         }
-        delay(100)
+        delay(300) // Increased settling delay for Wasm
         Response.Ok(command.id)
       }
 
@@ -235,6 +248,14 @@ class WasmDriver private constructor(
         Response.Error(command.id, "Timed out waiting for '${selector.raw}' after ${command.timeoutMs}ms")
       }
 
+      is Command.Drag -> {
+        page.mouse().move(command.fromX, command.fromY)
+        page.mouse().down()
+        page.mouse().move(command.toX, command.toY, com.microsoft.playwright.Mouse.MoveOptions().setSteps(20))
+        page.mouse().up()
+        Response.Ok(command.id)
+      }
+
       is Command.Screenshot -> {
         val path = command.hostPath.ifBlank { command.devicePath }
         page.screenshot(Page.ScreenshotOptions().setPath(Paths.get(path)).setFullPage(true))
@@ -247,6 +268,7 @@ class WasmDriver private constructor(
         relaunchSharedPage(ParikshanWasmConfig.fromSystemProperties())
         Response.Ok(command.id)
       }
+      is Command.Reset -> Response.Ok(command.id)
       is Command.StartRecording -> {
         lastRequestedVideoPath = command.path
         Response.Ok(command.id)
@@ -344,14 +366,54 @@ class WasmDriver private constructor(
     return ProtocolJson.instance.decodeFromString(ListSerializer(NodeSnapshot.serializer()), payload)
   }
 
+  private suspend fun performPhysicalClick(x: Double, y: Double) {
+    val clickedOnCanvas = runCatching {
+      page.evaluate(
+        """([x, y]) => {
+          function findCanvas(root) {
+            if (!root) return null;
+            if (root.tagName === 'CANVAS') return root;
+            const children = root.children || [];
+            for (let i = 0; i < children.length; i++) {
+              const found = findCanvas(children[i]);
+              if (found) return found;
+            }
+            if (root.shadowRoot) return findCanvas(root.shadowRoot);
+            return null;
+          }
+          const canvas = findCanvas(document.body);
+          if (!canvas) return false;
+          const opts = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0 };
+          canvas.dispatchEvent(new PointerEvent('pointerdown', opts));
+          canvas.dispatchEvent(new PointerEvent('pointerup', opts));
+          canvas.dispatchEvent(new MouseEvent('click', opts));
+          return true;
+        }""",
+        listOf(x, y)
+      ) as? Boolean ?: false
+    }.getOrDefault(false)
+    if (!clickedOnCanvas) {
+      page.mouse().move(x, y)
+      page.mouse().down()
+      delay(50)
+      page.mouse().up()
+    }
+  }
+
   private fun invokeBridgeClick(selector: io.github.aryapreetam.parikshan.protocol.Selector): Boolean {
     val tag = selector.raw
     val index = selector.index
     return runCatching {
       if (index != null) {
-        page.evaluate("([tag, index]) => (window.__parikshan_click_indexed ? window.__parikshan_click_indexed(tag, index) : false)", listOf<Any>(tag, index)) as? Boolean ?: false
+        page.evaluate(
+          "([tag, index]) => (window.__parikshan_click_indexed ? window.__parikshan_click_indexed(tag, index) : false)",
+          listOf<Any>(tag, index)
+        ) as? Boolean ?: false
       } else {
-        page.evaluate("tag => (window.__parikshan_click ? window.__parikshan_click(tag) : false)", tag) as? Boolean ?: false
+        page.evaluate(
+          "tag => (window.__parikshan_click ? window.__parikshan_click(tag) : false)",
+          tag
+        ) as? Boolean ?: false
       }
     }.getOrDefault(false)
   }

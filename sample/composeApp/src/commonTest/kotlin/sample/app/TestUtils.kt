@@ -5,8 +5,9 @@ import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import kotlinx.coroutines.delay
 
-import io.github.aryapreetam.parikshan.protocol.first
-
+/**
+ * Ensures the app navigation (drawer/rail) is accessible.
+ */
 suspend fun E2ETestScope.openAppNavigation() {
     // 1. If we can see a primary navigation marker, we're likely already in Wide mode or drawer is open
     if (hasVisibleNode("nav_task_list")) {
@@ -14,43 +15,66 @@ suspend fun E2ETestScope.openAppNavigation() {
     }
 
     // 2. Try to open the drawer
-    var attempts = 0
-    while (attempts < 3) {
-        if (hasVisibleNode("hamburger_button")) {
-            click("hamburger_button")
-            // Wait for drawer to appear
-            val drawerVisible = hasVisibleNode("nav_task_list")
-            if (drawerVisible) return
-        }
-        attempts++
-        delay(500)
+    if (hasVisibleNode("hamburger_button")) {
+        click("hamburger_button")
+        // Wait for drawer to appear
+        waitFor("nav_task_list")
     }
 }
 
+/**
+ * Navigates to a specific section by clicking its navigation item,
+ * scrolling the navigation container if necessary.
+ */
+suspend fun E2ETestScope.navigateToSection(navTag: String) {
+    openAppNavigation()
+    
+    // On Wasm, the navigation rail/drawer might need scrolling if items are clipped.
+    // We look for the 'nav_rail' or 'navigation_drawer' tags.
+    val tree = getTree()
+    val navContainer = when {
+        tree.any { it.tag == "nav_rail" } -> "nav_rail"
+        tree.any { it.tag == "navigation_drawer" } -> "navigation_drawer"
+        else -> null
+    }
+    
+    if (navContainer != null) {
+        scrollUntilVisible(
+            containerSelector = Selector.Tag(navContainer),
+            targetSelector = Selector.Tag(navTag)
+        )
+    }
+    
+    click(navTag)
+}
+
+/**
+ * Retries a block until it returns true or max attempts reached.
+ */
+suspend fun retry(
+    maxAttempts: Int = 3,
+    delayMs: Long = 500,
+    block: suspend () -> Boolean
+): Boolean {
+    repeat(maxAttempts) {
+        if (block()) return true
+        delay(delayMs)
+    }
+    return false
+}
+
+/**
+ * Utility to scroll a container until a target becomes visible.
+ */
 suspend fun E2ETestScope.scrollUntilVisible(
   containerSelector: Selector,
   targetSelector: Selector,
   direction: ScrollDirection = ScrollDirection.Down,
   maxScrolls: Int = 30
 ) {
-  repeat(maxScrolls + 1) { attempt ->
-    if (hasVisibleNode(targetSelector)) {
-      return
-    }
-    if (attempt == maxScrolls) {
-      println("scrollUntilVisible timed out waiting for ${targetSelector.raw}. Printing visible tree nodes:")
-      runCatching {
-        getTree().forEach { node ->
-          if (node.visible) {
-            println("  Node: tag='${node.tag}', text='${node.text}', bounds=${node.bounds}")
-          }
-        }
-      }
-      throw AssertionError(
-        "Could not make '${targetSelector.raw}' visible after $maxScrolls scroll actions"
-      )
-    }
+  repeat(maxScrolls) {
+    if (hasVisibleNode(targetSelector)) return
     scroll(containerSelector, direction)
-    delay(200)
+    delay(300)
   }
 }

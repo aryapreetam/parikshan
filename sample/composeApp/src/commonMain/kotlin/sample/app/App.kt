@@ -63,6 +63,9 @@ fun App() {
   val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 
   MaterialTheme {
+    val activeScreenVal = activeScreen.value
+    val onScreenSelectedVal = onScreenSelected
+    
     BoxWithConstraints(
       modifier = Modifier.fillMaxSize().background(Color(0xFFF5F1E8))
     ) {
@@ -74,9 +77,9 @@ fun App() {
           drawerContent = {
             ModalDrawerSheet(modifier = Modifier.width(280.dp).testTag("navigation_drawer")) {
               SidebarNavigation(
-                activeScreen = activeScreen.value,
+                activeScreen = activeScreenVal,
                 onScreenSelected = { 
-                  onScreenSelected(it)
+                  onScreenSelectedVal(it)
                   coroutineScope.launch { drawerState.close() }
                 }
               )
@@ -90,15 +93,15 @@ fun App() {
                 title = { Text("Parikshan Sample") },
                 navigationIcon = {
                   IconButton(onClick = { coroutineScope.launch { drawerState.open() } }, modifier = Modifier.testTag("hamburger_button")) {
-                    Text("☰") // Simplistic hamburger icon if Icons.Default.Menu is missing
+                    Text("☰") 
                   }
                 }
               )
             }
           ) { paddingValues ->
             ContentSurface(
-              modifier = Modifier.fillMaxSize().padding(paddingValues).padding(12.dp),
-              activeScreen = activeScreen.value,
+              modifier = Modifier.fillMaxSize().padding(paddingValues),
+              activeScreen = activeScreenVal,
               formValue = formValue.value,
               onFormValueChange = { formValue.value = it },
               onFormSubmit = { showFormSuccess.value = true },
@@ -122,13 +125,13 @@ fun App() {
         ) { paddingValues ->
           Row(modifier = Modifier.fillMaxSize().padding(paddingValues).padding(12.dp)) {
             SidebarNavigation(
-              activeScreen = activeScreen.value,
-              onScreenSelected = onScreenSelected
+              activeScreen = activeScreenVal,
+              onScreenSelected = onScreenSelectedVal
             )
             Spacer(modifier = Modifier.width(12.dp))
             ContentSurface(
               modifier = Modifier.fillMaxSize().weight(1f),
-              activeScreen = activeScreen.value,
+              activeScreen = activeScreenVal,
               formValue = formValue.value,
               onFormValueChange = { formValue.value = it },
               onFormSubmit = { showFormSuccess.value = true },
@@ -158,13 +161,14 @@ private fun SidebarNavigation(
 ) {
   val scrollState = rememberScrollState()
   Column(
-    modifier = Modifier
-      .width(240.dp)
-      .fillMaxHeight()
-      .background(Color.White)
-      .verticalScroll(scrollState)
-      .padding(12.dp),
-    verticalArrangement = Arrangement.spacedBy(8.dp)
+   modifier = Modifier
+     .width(240.dp)
+     .fillMaxHeight()
+     .background(Color.White)
+     .testTag("nav_rail")
+     .verticalScroll(scrollState)
+     .padding(12.dp),
+   verticalArrangement = Arrangement.spacedBy(8.dp)
   ) {
     Text("Parikshan Sample", style = MaterialTheme.typography.titleMedium)
     
@@ -266,7 +270,6 @@ private fun ContentSurface(
   Box(
     modifier = modifier
       .background(Color.White)
-      .padding(20.dp)
   ) {
     when (activeScreen) {
       SampleScreen.TaskList -> TaskListScreen()

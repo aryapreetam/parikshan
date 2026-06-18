@@ -23,6 +23,10 @@ interface TestDriver {
     }
   }
 
+  suspend fun reset() {
+    send(Command.Reset(id = nextId()))
+  }
+
   suspend fun close()
 
   fun resolveArtifactPath(relativePath: String): String =
@@ -213,8 +217,73 @@ class E2ETestScope internal constructor(
   ) {
     // assertText now has "waiting built-in" for the content to match,
     // which is the world-class standard for E2E testing.
-    waitForVisibleText(selector = selector, expected = expected)
+    waitForVisibleText(selector = selector, expected = expected, policy = MatchPolicy.EXACT)
     settleAfterCommand()
+  }
+
+  /**
+   * Asserts that the element matching the [tag] contains the provided [substring].
+   */
+  suspend fun assertContains(
+    tag: String,
+    substring: String
+  ) {
+    assertContains(selector = tag.asAutoSelector(), substring = substring)
+  }
+
+  /**
+   * Asserts that the element matching the [selector] contains the provided [substring].
+   */
+  suspend fun assertContains(
+    selector: Selector,
+    substring: String
+  ) {
+    waitForVisibleText(selector = selector, expected = substring, policy = MatchPolicy.CONTAINS)
+    settleAfterCommand()
+  }
+
+  /**
+   * Asserts that the input element matching the [tag] has the [expected] value.
+   *
+   * This is a semantic alias for [assertText] that improves intent when verifying form fields.
+   */
+  suspend fun assertValue(
+    tag: String,
+    expected: String
+  ) {
+    assertText(tag = tag, expected = expected)
+  }
+
+  /**
+   * Asserts that the input element matching the [selector] has the [expected] value.
+   */
+  suspend fun assertValue(
+    selector: Selector,
+    expected: String
+  ) {
+    assertText(selector = selector, expected = expected)
+  }
+
+  /**
+   * Asserts that the provided [block] fails with an [AssertionError] containing the [messageContains] substring.
+   *
+   * Useful for verifying negative scenarios and framework behavior.
+   */
+  suspend fun assertFailure(
+    messageContains: String,
+    block: suspend E2ETestScope.() -> Unit
+  ) {
+    try {
+      block()
+    } catch (e: AssertionError) {
+      if (e.message?.contains(messageContains) == true) {
+        return
+      }
+      throw AssertionError("Expected failure message to contain '$messageContains' but got '${e.message}'")
+    } catch (e: Throwable) {
+      throw AssertionError("Expected AssertionError but got ${e::class.simpleName}: ${e.message}")
+    }
+    throw AssertionError("Expected block to fail with message containing '$messageContains', but it succeeded.")
   }
 
   /**
@@ -249,6 +318,12 @@ class E2ETestScope internal constructor(
         lastError = error.message
       }
       if (startMark.elapsedNow() >= timeoutMs.milliseconds) {
+        println("Parikshan E2ETestDsl: Timeout waiting for selector ${selector.raw}. Last error: $lastError. Printing semantics tree nodes:")
+        runCatching {
+          fetchTree().forEach { node ->
+            println("  Node: tag='${node.tag}', text='${node.text}', visible=${node.visible}, bounds=${node.bounds}")
+          }
+        }
         break
       }
       delay(WAIT_POLL_INTERVAL_MS)
@@ -267,14 +342,16 @@ class E2ETestScope internal constructor(
   private suspend fun waitForVisibleText(
     tag: String,
     expected: String,
+    policy: MatchPolicy,
     timeoutMs: Long = config.defaultWaitTimeoutMs
   ) {
-    waitForVisibleText(selector = tag.asAutoSelector(), expected = expected, timeoutMs = timeoutMs)
+    waitForVisibleText(selector = tag.asAutoSelector(), expected = expected, policy = policy, timeoutMs = timeoutMs)
   }
 
   private suspend fun waitForVisibleText(
     selector: Selector,
     expected: String,
+    policy: MatchPolicy,
     timeoutMs: Long = config.defaultWaitTimeoutMs
   ) {
     val startMark = TimeSource.Monotonic.markNow()
@@ -289,7 +366,7 @@ class E2ETestScope internal constructor(
 
     do {
       try {
-        if (nativeTag != null) {
+        if (nativeTag != null && policy == MatchPolicy.EXACT) {
           val response = driver.send(Command.AssertText(id = nextId(), tag = nativeTag, expected = expected))
           if (response is Response.Ok) {
             settleAfterCommand()
@@ -301,11 +378,17 @@ class E2ETestScope internal constructor(
         }
 
         val resolved = selector.resolveNode(fetchTree(), requireVisible = true)
-        if (resolved.node.text == expected) {
+        val actualText = resolved.node.text
+        val matched = when (policy) {
+          MatchPolicy.EXACT -> actualText?.trim() == expected.trim()
+          MatchPolicy.CONTAINS -> actualText?.contains(expected) == true
+        }
+
+        if (matched) {
           settleAfterCommand()
           return
         }
-        lastError = "Text mismatch: expected '$expected' actual '${resolved.node.text}'"
+        lastError = "Text mismatch (policy=$policy): expected '$expected', actual '$actualText'"
       } catch (error: IllegalArgumentException) {
         lastError = error.message
       }
@@ -321,7 +404,7 @@ class E2ETestScope internal constructor(
       }
     }
     throw AssertionError(
-      "Timed out waiting for '${selector.raw}' to expose text '$expected'. Last error='$lastError'."
+      "Timed out waiting for '${selector.raw}' to expose text '$expected' (policy=$policy). Last error='$lastError'."
     )
   }
 
@@ -380,6 +463,55 @@ class E2ETestScope internal constructor(
 
   fun screenshotPath(name: String): String =
     artifactPath("screenshots/${name.trim().ifEmpty { "unnamed" }}.png")
+
+  /**
+   * Performs a physical mouse or touch drag/swipe gesture from (fromX, fromY) to (toX, toY) over the specified duration.
+   */
+  suspend fun drag(
+    fromX: Double,
+    fromY: Double,
+    toX: Double,
+    toY: Double,
+    durationMs: Long = 300L
+  ) {
+    expectOk(
+      action = "drag($fromX, $fromY -> $toX, $toY)",
+      response = driver.send(Command.Drag(id = nextId(), fromX = fromX, fromY = fromY, toX = toX, toY = toY, durationMs = durationMs))
+    )
+    settleAfterCommand()
+  }
+
+  /**
+   * Drags the UI element matching [tag] by moving it by (offsetX, offsetY) pixels.
+   */
+  suspend fun drag(
+    tag: String,
+    offsetX: Double,
+    offsetY: Double,
+    durationMs: Long = 300L
+  ) {
+    drag(selector = tag.asAutoSelector(), offsetX = offsetX, offsetY = offsetY, durationMs = durationMs)
+  }
+
+  /**
+   * Drags the UI element matching [selector] by moving it by (offsetX, offsetY) pixels.
+   */
+  suspend fun drag(
+    selector: Selector,
+    offsetX: Double,
+    offsetY: Double,
+    durationMs: Long = 300L
+  ) {
+    waitFor(selector = selector)
+    val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
+    checkAmbiguity(resolved)
+    val bounds = resolved.node.bounds
+    val fromX = bounds.centerX
+    val fromY = bounds.centerY
+    val toX = fromX + offsetX
+    val toY = fromY + offsetY
+    drag(fromX = fromX, fromY = fromY, toX = toX, toY = toY, durationMs = durationMs)
+  }
 
   suspend fun pressBack() {
     expectOk(
@@ -454,6 +586,30 @@ class E2ETestScope internal constructor(
       throw AssertionError(resolved.selector.ambiguousTextMessage(resolved.allMatches))
     }
   }
+
+  /**
+   * Retries the provided [block] up to [maxAttempts] times with a [delayMs] between attempts.
+   *
+   * Useful for waiting for asynchronous UI state changes that aren't covered by built-in waits.
+   */
+  suspend fun <T> retry(
+    maxAttempts: Int = 3,
+    delayMs: Long = 500L,
+    block: suspend E2ETestScope.() -> T
+  ): T {
+    var lastError: Throwable? = null
+    repeat(maxAttempts) { attempt ->
+      try {
+        return this.block()
+      } catch (e: Throwable) {
+        lastError = e
+        if (attempt < maxAttempts - 1) {
+          delay(delayMs)
+        }
+      }
+    }
+    throw lastError ?: RuntimeException("Retry failed after $maxAttempts attempts")
+  }
 }
 
 suspend fun e2eTest(
@@ -487,6 +643,11 @@ private fun nextId(): String {
 }
 
 private const val WAIT_POLL_INTERVAL_MS = 50L
+
+private enum class MatchPolicy {
+  EXACT,
+  CONTAINS
+}
 
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.SOURCE)

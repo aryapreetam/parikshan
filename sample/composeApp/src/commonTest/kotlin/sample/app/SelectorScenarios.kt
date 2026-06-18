@@ -8,19 +8,22 @@ import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import io.github.aryapreetam.parikshan.resolveNode
 import kotlin.test.Test
-import kotlin.test.assertContains
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
-import kotlin.test.assertFailsWith
 
 class SelectorScenarios {
  
   @Test
   fun testTaskListDisplays() = e2eTest {
-    //openAppNavigation(); click("nav_task_list")
+    relaunchApp()
+    openAppNavigation(); click("nav_task_list")
     assertVisible("Task 1")
   }
 
+  @Test
+  fun testTaskList() = e2eTest {
+    openAppNavigation(); click("nav_task_list")
+    assertVisible("task_item_1")
+    screenshot(screenshotPath("task-list"))
+  }
 
   @Test
   fun testInputForm() = e2eTest {
@@ -52,18 +55,14 @@ class SelectorScenarios {
     // Scroll to the second button to ensure BOTH "Duplicate Action" buttons are physically visible
     scrollUntilVisible(Selector.Tag("input_form_screen"), Selector.Tag("duplicate_action_secondary"))
 
-    val error =
-      kotlin.runCatching {
-        click("Duplicate Action")
-      }.exceptionOrNull() as? AssertionError
-        ?: throw AssertionError("Expected click(\"Duplicate Action\") to fail because the text is ambiguous")
-
-    assertContains(error.message.orEmpty(), "multiple visible text nodes")
+    assertFailure("multiple visible nodes") {
+      click("Duplicate Action")
+    }
   }
 
   @Test
   fun testScrollAndTree() = e2eTest {
-    
+    relaunchApp()
     openAppNavigation(); click("nav_scroll_demo")
     assertVisible("scroll_demo_screen")
 
@@ -85,18 +84,17 @@ class SelectorScenarios {
     )
     assertVisible("done")
   }
-/*
+
   @Test
   fun testRelaunchAppReturnsToLaunchScreen() = e2eTest {
     openAppNavigation(); click("nav_input_form")
     assertVisible("input_form_screen")
 
-    
+    relaunchApp()
 
     assertVisible("task_list_screen")
     assertVisible("task_item_1")
   }
-  */
 }
 
 private suspend fun E2ETestScope.openInputForm() {

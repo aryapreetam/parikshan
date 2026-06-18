@@ -1,6 +1,7 @@
 package sample.app.playgrounds
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -59,12 +60,18 @@ fun AccessibilityPlayground() {
       }
     }
 
-    // 2. Duplicate Text Buttons for Indexing Verification
+    // 2. Ambiguity & Indexing Verification
     Card(modifier = Modifier.fillMaxWidth().testTag("a11y_card_2")) {
       Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("2. Identical Elements (Index Resolution)", style = MaterialTheme.typography.titleMedium)
-        Text("These buttons share the exact same text and tag. The test must use indices to click them:")
+        Text("2. Identical Elements (Ambiguity & Indexing)", style = MaterialTheme.typography.titleMedium)
         
+        // This Row creates an ambiguity trap: two nodes with the same tag.
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+           Box(modifier = Modifier.size(40.dp).testTag("ambiguity_trap"))
+           Box(modifier = Modifier.size(40.dp).testTag("ambiguity_trap"))
+        }
+
+        Text("Buttons with same tag/text for index resolution:")
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
           Button(
             onClick = { a11yMessage = "Clicked Index 0" },

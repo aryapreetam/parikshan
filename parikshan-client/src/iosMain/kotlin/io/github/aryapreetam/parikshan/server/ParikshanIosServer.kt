@@ -1,16 +1,18 @@
 @file:OptIn(
   kotlinx.cinterop.ExperimentalForeignApi::class,
-  kotlinx.cinterop.BetaInteropApi::class
+  kotlinx.cinterop.BetaInteropApi::class,
+  androidx.compose.ui.ExperimentalComposeUiApi::class,
+  androidx.compose.ui.InternalComposeUiApi::class
 )
 
 package io.github.aryapreetam.parikshan.server
 
-import io.github.aryapreetam.parikshan.IosBridgeState
-import io.github.aryapreetam.parikshan.pumpRunLoop
 import io.github.aryapreetam.parikshan.protocol.Command
 import io.github.aryapreetam.parikshan.protocol.ProtocolJson
 import io.github.aryapreetam.parikshan.protocol.Response
 import io.github.aryapreetam.parikshan.protocol.resolvedSelector
+import platform.Foundation.runUntilDate
+import platform.Foundation.dateWithTimeIntervalSinceNow
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
@@ -277,8 +279,18 @@ object ParikshanIosServer {
         Response.NodeInfo(command.id, io.github.aryapreetam.parikshan.protocol.Bounds(0.0,0.0,0.0,0.0), true, base64)
       }
 
+      is Command.Drag -> {
+        val res = IosSemanticsAccessor.performDrag(command.fromX, command.fromY, command.toX, command.toY, command.durationMs)
+        if (res != "OK") return Response.Error(command.id, "Drag failed: $res")
+        pumpRunLoop(iterations = 3, intervalSeconds = 0.05)
+        Response.Ok(command.id)
+      }
       is Command.Shutdown -> Response.Ok(command.id)
       is Command.Ping -> Response.Ok(command.id)
+      is Command.Reset -> {
+          ComposeRootRegistry.clear()
+          Response.Ok(command.id)
+      }
       else -> Response.Ok(command.id)
     }
   }
@@ -290,5 +302,17 @@ object ParikshanIosServer {
     val headBytes = head.encodeToByteArray()
     write(fd, headBytes.usePinned { it.addressOf(0) }, headBytes.size.convert())
     write(fd, bodyBytes.usePinned { it.addressOf(0) }, bodyBytes.size.convert())
+  }
+}
+
+/**
+ * Pumps the NSRunLoop to allow UIKit and Compose to process pending
+ * layout, rendering, and recomposition work.
+ */
+fun pumpRunLoop(iterations: Int = 5, intervalSeconds: Double = 0.05) {
+  repeat(iterations) {
+    platform.Foundation.NSRunLoop.mainRunLoop.runUntilDate(
+      platform.Foundation.NSDate.dateWithTimeIntervalSinceNow(intervalSeconds)
+    )
   }
 }

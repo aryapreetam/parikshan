@@ -296,6 +296,19 @@ class AndroidDriver private constructor(
         )
       }
 
+      is Command.Drag -> {
+        val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        device.drag(
+          (command.fromX * density).roundToInt(),
+          (command.fromY * density).roundToInt(),
+          (command.toX * density).roundToInt(),
+          (command.toY * density).roundToInt(),
+          20
+        )
+        Response.Ok(command.id)
+      }
+
       is Command.Screenshot -> {
         val bitmap = captureRootBitmapWithRetry()
         writeBitmap(bitmap = bitmap, path = command.devicePath)
@@ -324,6 +337,7 @@ class AndroidDriver private constructor(
       is Command.StopRecording -> Response.Ok(command.id)
       is Command.Shutdown -> Response.Ok(command.id)
       is Command.Ping -> Response.Ok(command.id)
+      is Command.Reset -> Response.Ok(command.id)
     }
   }
 
@@ -385,19 +399,20 @@ class AndroidDriver private constructor(
   }
 
   private fun boundsOf(node: SemanticsNode): Bounds {
+    val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
     val bounds = node.boundsInRoot
     return Bounds(
-      left = bounds.left.toDouble(),
-      top = bounds.top.toDouble(),
-      right = bounds.right.toDouble(),
-      bottom = bounds.bottom.toDouble()
+      left = (bounds.left / density).toDouble(),
+      top = (bounds.top / density).toDouble(),
+      right = (bounds.right / density).toDouble(),
+      bottom = (bounds.bottom / density).toDouble()
     )
   }
 
   private fun isVisible(node: SemanticsNode, rootBounds: androidx.compose.ui.geometry.Rect? = null): Boolean {
     val bounds = node.boundsInRoot
     val hasArea = bounds.width > 0f && bounds.height > 0f
-    if (!hasArea || !node.layoutInfo.isPlaced) return false
+    if (!hasArea) return false
 
     return if (rootBounds != null) {
       val centerX = (bounds.left + bounds.right) / 2f
@@ -431,7 +446,7 @@ class AndroidDriver private constructor(
         ScrollDirection.Left -> listOf(leftX, centerY, rightX, centerY)
         ScrollDirection.Right -> listOf(rightX, centerY, leftX, centerY)
       }
-    device.swipe(startX, startY, endX, endY, 18)
+    device.swipe(startX, startY, endX, endY, 40)
   }
 
   private fun snapshotTextOf(node: SemanticsNode): String? =

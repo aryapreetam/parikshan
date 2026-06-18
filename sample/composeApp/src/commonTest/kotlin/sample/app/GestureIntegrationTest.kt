@@ -4,7 +4,7 @@ import io.github.aryapreetam.parikshan.E2ETestScope
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import io.github.aryapreetam.parikshan.e2eTest
-// import sample.app.setup.dragSliderPhysically
+import sample.app.setup.dragSliderPhysically
 import kotlin.test.Test
 
 class GestureIntegrationTest {
@@ -44,7 +44,6 @@ class GestureIntegrationTest {
     assertVisible("drag_source_box_a")
     assertVisible("drag_target_box_b")
 
-    /*
     // Physically drag the red card over to box B
     val startNode = resolveNode("draggable_red_card")
     val targetNode = resolveNode("drag_target_box_b")
@@ -59,7 +58,6 @@ class GestureIntegrationTest {
 
     // The red card is now dropped, turning into a green card
     assertVisible("dropped_green_card")
-    */
   }
 
   @Test
@@ -70,12 +68,10 @@ class GestureIntegrationTest {
 
     assertVisible("form_slider")
     
-    /*
     // Drag slider physically to 80%
     dragSliderPhysically("form_slider", 0.8f)
     
     assertVisible("form_slider")
-    */
   }
 
   @Test

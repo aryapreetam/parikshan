@@ -197,6 +197,7 @@ private fun ScrollPlaygroundTabs(
 @Composable
 private fun PanningCanvas() {
   var dragOffset by remember { mutableStateOf(Offset(0f, 0f)) }
+  val density = androidx.compose.ui.platform.LocalDensity.current
 
   Box(
     modifier = Modifier
@@ -227,7 +228,7 @@ private fun PanningCanvas() {
       contentAlignment = Alignment.Center
     ) {
       Text(
-        text = "X: ${dragOffset.x.toInt()}\nY: ${dragOffset.y.toInt()}",
+        text = "X: ${with(density) { dragOffset.x.toDp().value.toInt() }}\nY: ${with(density) { dragOffset.y.toDp().value.toInt() }}",
         color = Color.White,
         style = MaterialTheme.typography.bodyMedium,
         modifier = Modifier.testTag("panning_coords_text")

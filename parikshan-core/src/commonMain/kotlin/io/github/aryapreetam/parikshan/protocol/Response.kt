@@ -4,29 +4,6 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class Bounds(
-  val left: Double,
-  val top: Double,
-  val right: Double,
-  val bottom: Double
-) {
-  val centerX: Double
-    get() = (left + right) / 2.0
-
-  val centerY: Double
-    get() = (top + bottom) / 2.0
-}
-
-@Serializable
-data class NodeSnapshot(
-  val tag: String,
-  val bounds: Bounds,
-  val visible: Boolean,
-  val text: String? = null,
-  val zOrder: Int = 0
-)
-
-@Serializable
 sealed interface Response {
   val id: String
 
@@ -44,24 +21,44 @@ sealed interface Response {
   ) : Response
 
   @Serializable
-  @SerialName("shutdown")
-  data class Shutdown(
-    override val id: String
+  @SerialName("tree")
+  data class Tree(
+    override val id: String,
+    val nodes: List<NodeSnapshot>
   ) : Response
 
   @Serializable
-  @SerialName("nodeinfo")
+  @SerialName("node_info")
   data class NodeInfo(
     override val id: String,
     val bounds: Bounds,
     val visible: Boolean,
     val text: String? = null
   ) : Response
+}
 
-  @Serializable
-  @SerialName("tree")
-  data class Tree(
-    override val id: String,
-    val nodes: List<NodeSnapshot>
-  ) : Response
+@Serializable
+data class Bounds(
+  val left: Double,
+  val top: Double,
+  val right: Double,
+  val bottom: Double
+) {
+  val width: Double get() = right - left
+  val height: Double get() = bottom - top
+  val centerX: Double get() = left + width / 2.0
+  val centerY: Double get() = top + height / 2.0
+}
+
+@Serializable
+data class NodeSnapshot(
+  val tag: String,
+  val text: String? = null,
+  val visible: Boolean = true,
+  val bounds: Bounds,
+  val zOrder: Int = 0
+) {
+  val width: Double get() = bounds.width
+  val height: Double get() = bounds.height
+  val area: Double get() = width * height
 }

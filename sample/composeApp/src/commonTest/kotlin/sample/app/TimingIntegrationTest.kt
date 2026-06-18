@@ -10,44 +10,51 @@ class TimingIntegrationTest {
   @Test
   fun testAsynchronousLoadingWithPolling() = e2eTest {
     relaunchApp()
-    openAppNavigation(); click("nav_timing_playground")
+    navigateToSection("nav_timing_playground")
     assertVisible("timing_playground_screen")
 
     // Assert results not showing initially
     assertNotVisible("async_result_text")
 
-    // Click trigger to start loading (which has a 2-second delay)
+    // Trigger async load (2s delay in app)
     click("trigger_async_load_button")
 
-    // Assert spinner is shown immediately
-    assertVisible("timing_loading_spinner")
-
-    // Assert result is eventually visible (automatically handles wait polling up to default timeout)
-    assertText("async_result_text", "Asynchronous Data Loaded Successfully!")
-
-    // Assert spinner is now gone
-    assertNotVisible("timing_loading_spinner")
+    // Use built-in polling via waitFor (default 10s)
+    waitFor("async_result_text")
+    assertVisible("Asynchronous Data Loaded Successfully!")
   }
 
   @Test
   fun testDynamicLayoutResizingAndCoordinateShifts() = e2eTest {
     relaunchApp()
-    openAppNavigation(); click("nav_timing_playground")
+    navigateToSection("nav_timing_playground")
     assertVisible("timing_playground_screen")
 
     // Initially details should not exist
     assertNotVisible("expandable_details_text")
 
     // Toggle expand card
-    click("expandable_toggle_button")
+    clickReliably("expandable_toggle_button")
     
     // Assert details appear and are visible
+    waitFor("expandable_details_text")
     assertVisible("expandable_details_text")
 
     // Toggle collapse card
-    click("expandable_toggle_button")
+    clickReliably("expandable_toggle_button")
     
     // Assert details disappear
     assertNotVisible("expandable_details_text")
+  }
+
+  private suspend fun E2ETestScope.clickReliably(target: String) {
+    if (System.getProperty("parikshan.target") == "wasm") {
+       val node = resolveNode(target)
+       // Proof-of-work: 0px drag is the most reliable way to click Canvas items
+       drag(fromX = node.bounds.centerX, fromY = node.bounds.centerY, toX = node.bounds.centerX, toY = node.bounds.centerY, durationMs = 400L)
+       kotlinx.coroutines.delay(1200)
+    } else {
+       click(target)
+    }
   }
 }

@@ -11,15 +11,12 @@ import io.github.aryapreetam.parikshan.protocol.first
 import io.github.aryapreetam.parikshan.protocol.last
 import io.github.aryapreetam.parikshan.resolveNode
 import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertContains
-import kotlin.test.assertFailsWith
 
 class SelectorParityTest {
 
   @Test
   fun testExistentialAssertsSucceedWithDuplicates() = e2eTest {
-    
+    relaunchApp()
     openAppNavigation(); click("nav_input_form")
     assertVisible("input_form_screen")
     
@@ -33,29 +30,25 @@ class SelectorParityTest {
 
   @Test
   fun testActionsFailOnAmbiguityWithoutIndex() = e2eTest {
-    
+    relaunchApp()
     openAppNavigation(); click("nav_input_form")
     assertVisible("input_form_screen")
 
     scrollUntilVisible(Selector.Tag("input_form_screen"), Selector.Auto("Duplicate Action"))
 
     // Clicking should fail because text is ambiguous
-    val clickError = assertFailsWith<AssertionError> {
+    assertFailure("matched multiple visible nodes") {
       click("Duplicate Action")
     }
 
-    assertContains(clickError.message.orEmpty(), "matched multiple visible text nodes")
-
-    val inputError = assertFailsWith<AssertionError> {
+    assertFailure("matched multiple visible nodes") {
       input("Duplicate Input", "some text")
     }
-
-    assertContains(inputError.message.orEmpty(), "matched multiple visible text nodes")
   }
 
   @Test
   fun testActionsSucceedWithExplicitIndices() = e2eTest {
-    
+    relaunchApp()
     openAppNavigation(); click("nav_input_form")
     assertVisible("input_form_screen")
 
@@ -77,7 +70,7 @@ class SelectorParityTest {
 
   @Test
   fun testLongFormSubmission() = e2eTest {
-    
+    relaunchApp()
     openAppNavigation(); click("nav_input_form")
     assertVisible("input_form_screen")
     

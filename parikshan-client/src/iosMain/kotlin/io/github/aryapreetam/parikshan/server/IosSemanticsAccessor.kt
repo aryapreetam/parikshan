@@ -1,8 +1,8 @@
 @file:Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE", "CANNOT_OVERRIDE_INVISIBLE_MEMBER")
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class, androidx.compose.ui.InternalComposeUiApi::class, androidx.compose.ui.ExperimentalComposeUiApi::class)
 package io.github.aryapreetam.parikshan.server
 
-import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.node.LayoutNode
 import androidx.compose.ui.node.Owner
 import androidx.compose.ui.semantics.SemanticsActions
@@ -11,25 +11,44 @@ import androidx.compose.ui.semantics.SemanticsOwner
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getAllSemanticsNodes
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.scene.ComposeScene
 import io.github.aryapreetam.parikshan.protocol.Bounds
 import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import io.github.aryapreetam.parikshan.protocol.Selector
+import io.github.aryapreetam.parikshan.resolveNode
 import androidx.compose.ui.text.AnnotatedString
 import kotlinx.cinterop.useContents
 
 internal object IosSemanticsAccessor {
-  var globalSemanticsOwner: SemanticsOwner? = null
 
-  internal fun injectOwner(owner: Owner) {
-    globalSemanticsOwner = owner.semanticsOwner
+  var currentScene: ComposeScene? = null
+
+  fun setup() {
+      ComposeRootRegistry.clear()
   }
 
-  fun findAllNodes(): List<SemanticsNode> {
-    val owner = globalSemanticsOwner ?: return emptyList()
-    val merged = owner.getAllSemanticsNodes(mergingEnabled = true)
-    val unmerged = owner.getAllSemanticsNodes(mergingEnabled = false)
-    return (merged + unmerged).distinctBy { it.id }
+  fun findAllNodes(): List<Pair<SemanticsNode, Int>> {
+    val roots = ComposeRootRegistry.roots
+    val result = mutableListOf<Pair<SemanticsNode, Int>>()
+    for ((index, root) in roots.withIndex()) {
+      // Force layout to ensure bounds are up to date
+      try {
+          (root as? androidx.compose.ui.node.RootNodeOwner)?.measureAndLayout()
+      } catch (e: Throwable) {
+          // Ignore if cast or call fails
+      }
+      val owner = root.semanticsOwner
+      val merged = owner.getAllSemanticsNodes(mergingEnabled = true)
+      val unmerged = owner.getAllSemanticsNodes(mergingEnabled = false)
+      val all = (merged + unmerged).distinctBy { it.id }
+      for (node in all) {
+        result.add(node to index)
+      }
+    }
+    return result
   }
 
   fun findNodeByTag(tag: String): SemanticsNode? {
@@ -39,15 +58,15 @@ internal object IosSemanticsAccessor {
 
   fun snapshotNode(tag: String): NodeSnapshot? {
     val node = findNodeByTag(tag) ?: return null
-    return toNodeSnapshot(node)
+    return toNodeSnapshot(node, 0)
   }
 
   fun snapshotNode(node: SemanticsNode): NodeSnapshot {
-    return toNodeSnapshot(node)
+    return toNodeSnapshot(node, 0)
   }
 
   fun snapshotTree(): List<NodeSnapshot> {
-    return findAllNodes().map { toNodeSnapshot(it) }
+    return findAllNodes().map { toNodeSnapshot(it.first, it.second) }
   }
 
   private fun SemanticsNode.hasAction(name: String): Boolean {
@@ -83,24 +102,48 @@ internal object IosSemanticsAccessor {
     return entry.value as? List<String>
   }
 
-  private fun toNodeSnapshot(node: SemanticsNode): NodeSnapshot {
+  private fun directTextOf(node: SemanticsNode): String? {
+    // Priority 1: Editable text (actual input value)
+    val editable = node.getEditableText()
+    if (editable != null) return editable
+
+    // Priority 2: Combined Text and Content Description for other nodes
+    val result = mutableListOf<String>()
+    val values = node.getTextList().orEmpty()
+    for (v in values) {
+        if (v.isNotBlank()) result.add(v.text)
+    }
+
+    val contentDescription = node.getContentDescription().orEmpty()
+    for (cd in contentDescription) {
+        if (cd.isNotBlank()) result.add(cd)
+    }
+
+    return if (result.isEmpty()) null else result.joinToString(" ")
+  }
+
+  private fun toNodeSnapshot(node: SemanticsNode, zOrder: Int): NodeSnapshot {
     val tag = node.getTestTag() ?: ""
     val text = directTextOf(node)
     
-    val bounds = node.boundsInWindow
+    // Try boundsInWindow first, then fallback to boundsInRoot
+    var bounds = node.boundsInWindow
+    if (bounds.width <= 0f || bounds.height <= 0f) {
+        bounds = node.boundsInRoot
+    }
+    
     val hasArea = bounds.width > 0f && bounds.height > 0f
-
+    val isPlaced = node.layoutInfo.isPlaced
+    
     val screenBounds = platform.UIKit.UIScreen.mainScreen.bounds
     val scale = platform.UIKit.UIScreen.mainScreen.scale.toFloat()
-    val physicalScreenWidth = screenBounds.useContents { size.width }.toFloat() * scale
-    val physicalScreenHeight = screenBounds.useContents { size.height }.toFloat() * scale
+    val physicalScreenWidth = screenBounds.useContents<platform.CoreGraphics.CGRect, Double> { size.width }.toFloat() * scale
+    val physicalScreenHeight = screenBounds.useContents<platform.CoreGraphics.CGRect, Double> { size.height }.toFloat() * scale
 
-    val centerX = bounds.left + (bounds.width / 2f)
-    val centerY = bounds.top + (bounds.height / 2f)
-
-    val isPhysicallyVisible = hasArea && node.layoutInfo.isPlaced &&
-      centerX >= 0f && centerX <= physicalScreenWidth &&
-      centerY >= 0f && centerY <= physicalScreenHeight
+    // Lenient physical visibility: allow nodes partially off-screen
+    val isPhysicallyVisible = hasArea && isPlaced &&
+      bounds.right > 0f && bounds.left < physicalScreenWidth &&
+      bounds.bottom > 0f && bounds.top < physicalScreenHeight
 
     return NodeSnapshot(
       tag = tag,
@@ -111,135 +154,34 @@ internal object IosSemanticsAccessor {
         top = bounds.top.toDouble(),
         right = bounds.right.toDouble(),
         bottom = bounds.bottom.toDouble()
-      )
+      ),
+      zOrder = zOrder
     )
   }
 
-  private data class SelectorCandidate(
-    val node: SemanticsNode,
-    val score: Int,
-    val area: Float,
-    val depth: Int
-  )
-
   fun findBySelector(selector: Selector): SemanticsNode? {
-    val candidates = selectorCandidates(selector)
-    if (candidates.isEmpty()) return null
+    val nodesWithZOrder = findAllNodes()
+    if (nodesWithZOrder.isEmpty()) return null
+
+    val snapshots = nodesWithZOrder.map { toNodeSnapshot(it.first, it.second) }
     
-    val targetIndex = when {
-      selector.index != null && selector.index!! >= 0 -> selector.index!!
-      selector.index != null && selector.index!! < 0 -> candidates.size + selector.index!!
-      else -> 0
+    val resolved = try {
+      selector.resolveNode(snapshots, requireVisible = false)
+    } catch (e: Throwable) {
+      return null
     }
-    return candidates.getOrNull(targetIndex)?.node
+
+    val matchedSnapshot = resolved.node
+    val matchedIndex = snapshots.indexOf(matchedSnapshot)
+    if (matchedIndex >= 0 && matchedIndex < nodesWithZOrder.size) {
+        return nodesWithZOrder[matchedIndex].first
+    }
+    return null
   }
 
   fun findNode(tag: String, selector: Selector?): SemanticsNode? {
     val activeSelector = selector ?: tag.takeIf { it.isNotBlank() }?.let { Selector.Auto(it) }
     return activeSelector?.let { findBySelector(it) }
-  }
-
-  private fun selectorCandidates(selector: Selector): List<SelectorCandidate> {
-    if (selector.raw.isBlank()) return emptyList()
-
-    return selectorSearchNodes()
-      .asSequence()
-      .filter { hasArea(it) }
-      .mapNotNull { node ->
-        selectorScore(node = node, selector = selector)?.let { score ->
-          SelectorCandidate(
-            node = node,
-            score = score,
-            area = nodeArea(node),
-            depth = nodeDepth(node)
-          )
-        }
-      }
-      .sortedWith(
-        compareBy<SelectorCandidate> { it.score }
-          .thenBy { it.area }
-          .thenByDescending { it.depth }
-      )
-      .toList()
-  }
-
-  private fun selectorSearchNodes(): List<SemanticsNode> {
-    return findAllNodes()
-  }
-
-  private fun selectorScore(
-    node: SemanticsNode,
-    selector: Selector
-  ): Int? {
-    val raw = selector.raw.trim()
-    if (raw.isEmpty()) return null
-
-    val tag = node.getTestTag()?.trim()
-    val text = directTextOf(node)?.trim()
-
-    return when (selector) {
-      is Selector.Tag ->
-        if (tag == selector.value.trim()) 0 else null
-
-      is Selector.Text ->
-        textScore(text = text, raw = selector.value.trim())
-
-      is Selector.Auto ->
-        when {
-          tag == raw -> 0
-          text?.equals(raw, ignoreCase = true) == true -> 10
-          text?.contains(raw, ignoreCase = true) == true -> 20
-          else -> null
-        }
-    }
-  }
-
-  private fun textScore(
-    text: String?,
-    raw: String
-  ): Int? =
-    when {
-      raw.isEmpty() || text == null -> null
-      text.equals(raw, ignoreCase = true) -> 10
-      text.contains(raw, ignoreCase = true) -> 20
-      else -> null
-    }
-
-  private fun directTextOf(node: SemanticsNode): String? {
-    node.getEditableText()
-      ?.takeIf { it.isNotBlank() }
-      ?.let { return it }
-
-    val values = node.getTextList().orEmpty()
-    if (values.isNotEmpty()) {
-      return values.joinToString("") { it.text }.takeIf { it.isNotBlank() }
-    }
-
-    val contentDescription = node.getContentDescription().orEmpty()
-    if (contentDescription.isNotEmpty()) {
-      return contentDescription.joinToString("").takeIf { it.isNotBlank() }
-    }
-    return null
-  }
-
-  private fun hasArea(node: SemanticsNode): Boolean {
-    val bounds = node.boundsInWindow
-    return bounds.width > 0f && bounds.height > 0f
-  }
-
-  private fun nodeArea(node: SemanticsNode): Float {
-    val bounds = node.boundsInWindow
-    return bounds.width * bounds.height
-  }
-
-  private fun nodeDepth(node: SemanticsNode): Int {
-    var depth = 0
-    var current = node.parent
-    while (current != null) {
-      depth += 1
-      current = current.parent
-    }
-    return depth
   }
 
   private fun clickTargetFor(node: SemanticsNode): SemanticsNode? {
@@ -265,7 +207,17 @@ internal object IosSemanticsAccessor {
   }
 
   private fun scrollTargetFor(node: SemanticsNode): SemanticsNode? {
-    var current: SemanticsNode? = node
+    // 1. Check the node itself
+    if (node.hasAction("ScrollBy")) return node
+
+    // 2. Check immediate children (shallow search for internal scrollable components like ScrollableTabRow)
+    val children = node.children
+    for (child in children) {
+        if (child.hasAction("ScrollBy")) return child
+    }
+
+    // 3. Walk up the tree to find a scrollable container
+    var current: SemanticsNode? = node.parent
     while (current != null) {
       if (current.hasAction("ScrollBy")) {
         return current
@@ -281,21 +233,20 @@ internal object IosSemanticsAccessor {
     sb.append("Node not found for selector: ").append(selector).append("\n")
     sb.append("Total nodes in tree: ").append(all.size).append("\n")
     for (i in 0 until all.size) {
-      val node = all[i]
+      val pair = all[i]
+      val node = pair.first
       val tag = node.getTestTag()
       val text = directTextOf(node)
       val bounds = node.boundsInWindow
-      val area = nodeArea(node)
-      val depth = nodeDepth(node)
-      val score = selectorScore(node, selector) ?: -1
       val placed = node.layoutInfo.isPlaced
+      val actions = node.config.map { it.key.name }.joinToString(",")
       sb.append("  [").append(i).append("] id=").append(node.id)
         .append(" tag='").append(tag).append("'")
         .append(" text='").append(text).append("'")
+        .append(" actions=[").append(actions).append("]")
         .append(" bounds=(L:").append(bounds.left).append(", T:").append(bounds.top)
         .append(", R:").append(bounds.right).append(", B:").append(bounds.bottom).append(")")
-        .append(" area=").append(area).append(" depth=").append(depth)
-        .append(" score=").append(score).append(" placed=").append(placed).append("\n")
+        .append(" zOrder=").append(pair.second).append(" placed=").append(placed).append("\n")
     }
     return sb.toString()
   }
@@ -303,8 +254,8 @@ internal object IosSemanticsAccessor {
   fun performClickResult(tag: String, selector: Selector?): String {
     val activeSelector = selector ?: tag.takeIf { it.isNotBlank() }?.let { Selector.Auto(it) } ?: Selector.Auto("")
     val node = findNode(tag, selector) ?: return formatNodeDiagnostics(activeSelector)
-    val target = clickTargetFor(node) ?: return "Click target not found"
-    val action = target.getAction<() -> Boolean>("OnClick") ?: return "OnClick action not found on target"
+    val target = clickTargetFor(node) ?: return "Click target not found for selector $activeSelector. ${formatNodeDiagnostics(activeSelector)}"
+    val action = target.getAction<() -> Boolean>("OnClick") ?: return "OnClick action not found on target. ${formatNodeDiagnostics(activeSelector)}"
     val success = action.invoke()
     return if (success) "OK" else "OnClick action invoke returned false"
   }
@@ -323,19 +274,8 @@ internal object IosSemanticsAccessor {
     val node = findNode(tag, selector) ?: return formatNodeDiagnostics(activeSelector)
     val target = scrollTargetFor(node) ?: return "Scroll target not found"
     val action = target.getAction<(Float, Float) -> Boolean>("ScrollBy") ?: return "ScrollBy action not found"
-    
-    val bounds = target.boundsInWindow
-    val width = bounds.right - bounds.left
-    val height = bounds.bottom - bounds.top
-    val safeWidth = if (width > 0) width else 400f
-    val safeHeight = if (height > 0) height else 400f
-    
-    val deltaX = safeWidth * 0.5f
-    val deltaY = safeHeight * 0.5f
-    
-    val x = if (direction == ScrollDirection.Left) -deltaX else if (direction == ScrollDirection.Right) deltaX else 0f
-    val y = if (direction == ScrollDirection.Up) -deltaY else if (direction == ScrollDirection.Down) deltaY else 0f
-    
+    val x = if (direction == ScrollDirection.Left) -800f else if (direction == ScrollDirection.Right) 800f else 0f
+    val y = if (direction == ScrollDirection.Up) -800f else if (direction == ScrollDirection.Down) 800f else 0f
     val success = action.invoke(x, y)
     return if (success) "OK" else "ScrollBy action invoke returned false"
   }
@@ -350,5 +290,32 @@ internal object IosSemanticsAccessor {
 
   fun performScroll(tag: String, selector: Selector?, direction: ScrollDirection): Boolean {
     return performScrollResult(tag, selector, direction) == "OK"
+  }
+
+  fun performDrag(fromX: Double, fromY: Double, toX: Double, toY: Double, durationMs: Long): String {
+      val scene = currentScene ?: return "Drag failed: No ComposeScene found"
+      val from = Offset(fromX.toFloat(), fromY.toFloat())
+      val to = Offset(toX.toFloat(), toY.toFloat())
+      val id = androidx.compose.ui.input.pointer.PointerId(999L)
+      
+      scene.sendPointerEvent(
+          eventType = PointerEventType.Press,
+          pointers = listOf(androidx.compose.ui.scene.ComposeScenePointer(id, from, true, PointerType.Touch))
+      )
+      val steps = (durationMs / 16).coerceAtLeast(1).toInt()
+      for (i in 1..steps) {
+          val fraction = i.toFloat() / steps
+          val curX = from.x + (to.x - from.x) * fraction
+          val curY = from.y + (to.y - from.y) * fraction
+          scene.sendPointerEvent(
+              eventType = PointerEventType.Move,
+              pointers = listOf(androidx.compose.ui.scene.ComposeScenePointer(id, Offset(curX, curY), true, PointerType.Touch))
+          )
+      }
+      scene.sendPointerEvent(
+          eventType = PointerEventType.Release,
+          pointers = listOf(androidx.compose.ui.scene.ComposeScenePointer(id, to, false, PointerType.Touch))
+      )
+      return "OK"
   }
 }

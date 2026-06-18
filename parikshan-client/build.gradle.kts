@@ -61,6 +61,18 @@ kotlin {
       implementation(libs.androidx.uiautomator)
       implementation(libs.androidx.test.runner)
     }
+
+    val iosMain by creating {
+      dependencies {
+        @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+        implementation(compose.uiTest)
+      }
+    }
+
+    wasmJsMain.dependencies {
+      @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+      implementation(compose.uiTest)
+    }
   }
 }
 

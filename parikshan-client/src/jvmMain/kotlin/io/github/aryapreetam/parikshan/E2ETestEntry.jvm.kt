@@ -43,10 +43,19 @@ actual fun e2eTest(
       className = callerClassName
     )
 
-    val effectiveConfig = if (videoConfig.enabled) {
-      config.copy(commandDelayMs = max(config.commandDelayMs, videoConfig.stepDelayMs))
+    val target = System.getProperty("parikshan.target")?.lowercase()
+    val defaultDelay = if (target == "wasm" || target == "web") {
+      max(config.commandDelayMs, 150L)
+    } else if (target == "ios") {
+      max(config.commandDelayMs, 300L)
     } else {
-      config
+      config.commandDelayMs
+    }
+
+    val effectiveConfig = if (videoConfig.enabled) {
+      config.copy(commandDelayMs = max(defaultDelay, videoConfig.stepDelayMs))
+    } else {
+      config.copy(commandDelayMs = defaultDelay)
     }
 
     e2eTest(

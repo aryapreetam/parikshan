@@ -32,6 +32,20 @@ suspend fun E2ETestScope.selectFromExposedDropdown(tag: String, optionText: Stri
 }
 
 /**
+ * Helper to click the dropdown chevron area on Wasm generically.
+ */
+suspend fun E2ETestScope.clickDropdown(selector: Selector) {
+    val node = resolveNode(selector)
+    val chevronX = node.bounds.right - 16.0
+    val centerY = node.bounds.centerY
+    drag(fromX = chevronX, fromY = centerY, toX = chevronX, toY = centerY, durationMs = 100L)
+}
+
+suspend fun E2ETestScope.clickDropdown(tag: String) {
+    clickDropdown(Selector.Auto(tag))
+}
+
+/**
  * Interacts with a Material 3 DatePickerDialog via text input mode.
  */
 suspend fun E2ETestScope.selectDateViaInput(dateText: String) {
@@ -43,11 +57,9 @@ suspend fun E2ETestScope.selectDateViaInput(dateText: String) {
 }
 
 private suspend fun E2ETestScope.selectDateViaInputNative(dateText: String) {
-    // Standard M3 DatePicker Native logic.
     click(Selector.Auto("Switch to text input mode"))
     delay(500)
     
-    // Determine the correct selector based on the current tree
     val tree = getTree()
     val inputSelector = when {
         tree.any { it.text?.contains("Date", ignoreCase = true) == true } -> Selector.Auto("Date")
@@ -58,29 +70,22 @@ private suspend fun E2ETestScope.selectDateViaInputNative(dateText: String) {
     input(inputSelector, dateText)
     delay(300)
     
-    // Robust OK button click
-    val finalTree = getTree()
     val okSelector = when {
-        finalTree.any { it.tag == "date_picker_ok_button" } -> Selector.Tag("date_picker_ok_button")
-        finalTree.any { it.text?.contains("OK", ignoreCase = true) == true } -> Selector.Text("OK")
-        else -> Selector.Tag("date_picker_ok_button")
+        getTree().any { it.tag == "date_picker_ok_button" } -> Selector.Tag("date_picker_ok_button")
+        else -> Selector.Text("OK")
     }
     click(okSelector.atIndex(0))
 }
 
 private suspend fun E2ETestScope.selectDateViaInputWasm(dateText: String) {
-    // Wasm Canvas mode toggle.
     click(Selector.Auto("Switch to text input mode"))
-    
-    // Increased wait for Wasm canvas re-render and bridge sync
     delay(2000)
 
-    // On Wasm, the placeholder 'YYYY' or label 'Date' might be used
     val tree = getTree()
     val inputSelector = when {
         tree.any { it.text?.contains("YYYY") == true } -> Selector.Auto("YYYY")
         tree.any { it.text?.contains("Date") == true } -> Selector.Auto("Date")
-        else -> Selector.Auto("YYYY") // Default fallback
+        else -> Selector.Auto("YYYY")
     }
     
     waitFor(inputSelector)
@@ -88,86 +93,11 @@ private suspend fun E2ETestScope.selectDateViaInputWasm(dateText: String) {
     input(inputSelector, dateText)
     delay(500)
 
-    // Robust OK button click
-    val finalTree = getTree()
     val okSelector = when {
-        finalTree.any { it.tag == "date_picker_ok_button" } -> Selector.Tag("date_picker_ok_button")
-        finalTree.any { it.text?.contains("OK", ignoreCase = true) == true } -> Selector.Text("OK")
-        else -> Selector.Tag("date_picker_ok_button")
+        getTree().any { it.tag == "date_picker_ok_button" } -> Selector.Tag("date_picker_ok_button")
+        else -> Selector.Text("OK")
     }
     click(okSelector)
-}
-
-/**
- * Interacts with a Material 3 TimePicker via dial selection.
- */
-suspend fun E2ETestScope.selectTimeFromDial(hour: String, minute: String, is24Hour: Boolean = true) {
-    if (isWasmTarget()) {
-        selectTimeFromDialGeometrically(hour.toInt(), minute.toInt(), is24Hour)
-    } else {
-        selectTimeFromDialNative(hour, minute, is24Hour)
-    }
-}
-
-private suspend fun E2ETestScope.selectTimeFromDialNative(hourText: String, minuteText: String, is24Hour: Boolean = true) {
-    // Built-in wait for the modal
-    waitFor("time_picker_dialog")
-    delay(500) // Stability wait for M3 animation
-
-    if (!is24Hour) {
-        val hInt = hourText.toInt()
-        val isPm = hInt >= 12
-        val amPmSearch = if (isPm) "p.m." else "a.m."
-        // Use .atIndex(-1) to pick the largest (outer) match if multiple match
-        click(Selector.Text(amPmSearch).atIndex(-1))
-        delay(300)
-    }
-
-    // Ensure Hour mode
-    // Use atIndex(-1) to pick outer node if nested
-    click(Selector.Auto("Select hour").atIndex(-1))
-    delay(300)
-
-    val hInt = hourText.toInt()
-    val displayHour = if (!is24Hour) {
-        if (hInt == 0) 12 else if (hInt > 12) hInt - 12 else hInt
-    } else {
-        hInt
-    }
-
-    // Search for the specific label format on the dial (hours vs o'clock)
-    val tree = getTree()
-    val hourLabel = when {
-        tree.any { it.text?.contains("$displayHour hours", ignoreCase = true) == true } -> "$displayHour hours"
-        tree.any { it.text?.contains("$displayHour o'clock", ignoreCase = true) == true } -> "$displayHour o'clock"
-        tree.any { it.text?.contains("$displayHour", ignoreCase = true) == true } -> "$displayHour"
-        else -> displayHour.toString()
-    }
-    click(Selector.Text(hourLabel).atIndex(-1))
-    delay(500)
-
-    // Switch to minutes
-    click(Selector.Auto("Select minutes").atIndex(-1))
-    delay(300)
-    
-    val minTree = getTree()
-    val minuteLabel = when {
-        minTree.any { it.text?.contains("$minuteText minutes", ignoreCase = true) == true } -> "$minuteText minutes"
-        minTree.any { it.text?.contains("$minuteText", ignoreCase = true) == true } -> "$minuteText"
-        else -> minuteText
-    }
-    click(Selector.Text(minuteLabel).atIndex(-1))
-    delay(500)
-
-    click(Selector.Tag("time_picker_ok_button").atIndex(0))
-}
-
-/**
- * Interacts with a Material 3 DatePickerDialog via text input mode.
- */
-suspend fun E2ETestScope.selectTimeViaInput(hour: String, minute: String) {
-    click(Selector.Tag("toggle_time_picker_mode_button"))
-    click(Selector.Tag("time_picker_ok_button").atIndex(0))
 }
 
 /**
@@ -182,232 +112,159 @@ suspend fun E2ETestScope.selectDateFromCalendar(day: Int, month: Int, year: Int)
 }
 
 private suspend fun E2ETestScope.selectDateFromCalendarNative(day: Int, month: Int, year: Int) {
-    // 1. Navigate Year if needed
     val initialTree = getTree()
-    val headerNode = initialTree.find { it.text?.contains("20") == true } // Anchor for "Month Year"
-    
+    val headerNode = initialTree.find { it.text?.contains("20") == true && !it.text!!.contains(",") && (it.text!!.contains("selecting a year") || it.text!!.length < 20) }
     val currentMonthYear = headerNode?.text?.let { sample.app.parseMonthYear(it) }
     
     if (currentMonthYear != null) {
         val (curMonth, curYear) = currentMonthYear
         
-        // Year Navigation via M3 Year Picker
         if (curYear != year) {
-             click(Selector.Text(headerNode.text!!).atIndex(0)) // Open Year Picker mode
+             click(Selector.Text(headerNode.text!!).atIndex(0)) 
              delay(500)
-             
-             // Find the scrollable year list container
-             val yearTree = getTree()
-             val yearList = yearTree.find { it.tag == "date_picker_year_list" || it.tag == "list" }
+             val yearList = getTree().find { it.tag == "date_picker_year_list" || it.tag == "list" }
              val container = yearList?.tag?.let { Selector.Tag(it) } ?: Selector.Tag("list")
 
-             scrollUntilVisible(
-                 containerSelector = container,
-                 targetSelector = Selector.Text("$year"),
-                 direction = if (year > curYear) ScrollDirection.Down else ScrollDirection.Up
-             )
+             scrollUntilVisible(container, Selector.Text("$year"), if (year > curYear) ScrollDirection.Down else ScrollDirection.Up)
              click(Selector.Text("$year"))
              delay(500)
         }
         
-        // Month Navigation Loop (Month Clicker)
         var tries = 0
-        while (tries < 24) { // Limit to 2 years to prevent infinite loops
+        while (tries < 24) {
             val updatedTree = getTree()
-            val updatedHeader = updatedTree.find { it.text?.contains("20") == true }
+            val updatedHeader = updatedTree.find { it.text?.contains("20") == true && !it.text!!.contains(",") && (it.text!!.contains("selecting a year") || it.text!!.length < 20) }
             val (m, y) = sample.app.parseMonthYear(updatedHeader?.text ?: "") ?: break
-            
-            println("DEBUG: Calendar currently at $m/$y (Target: $month/$year)")
-            
             if (m == month && y == year) break
             
-            val totalTargetMonths = year * 12 + month
-            val totalCurrentMonths = y * 12 + m
-            
-            if (totalTargetMonths > totalCurrentMonths) {
-                // Try several common selectors for M3 DatePicker next button
-                val nextSelector = when {
-                    updatedTree.any { it.text == "Next month" } -> Selector.Text("Next month")
-                    updatedTree.any { it.tag == "next_month_button" } -> Selector.Tag("next_month_button")
-                    else -> Selector.Text("Next month") 
-                }
-                click(nextSelector.atIndex(0))
-            } else {
-                val prevSelector = when {
-                    updatedTree.any { it.text == "Previous month" } -> Selector.Text("Previous month")
-                    else -> Selector.Text("Previous month")
-                }
-                click(prevSelector.atIndex(0))
-            }
-            delay(400) // Wait for month transition animation
+            val totalTarget = year * 12 + month
+            val totalCurrent = y * 12 + m
+            val nextSelector = if (totalTarget > totalCurrent) Selector.Text("Next month") else Selector.Text("Previous month")
+            click(nextSelector.atIndex(0))
+            delay(400)
             tries++
         }
     }
 
-    // 3. Click the day cell
-    // We try to find a node that contains the day number and has the full date string
-    // M3 DatePicker uses full date strings for accessibility labels.
-    // Desktop: "Monday, June 15, 2026"
-    // Android: "Monday 15 June, 2026"
     val finalTree = getTree()
-    
-    // 1. Try to find the full semantic date string (M3 standard)
     var targetNode = finalTree.find { 
         val text = it.text ?: ""
         val parts = text.split(" ", ",")
-        // Contains the exact day, contains the exact year, and has enough parts to be a full date string
         parts.any { it == "$day" } && parts.any { it == "$year" } && parts.size >= 3
     }
-
-    // 2. Fallback to exact number match to bypass the substring matching trap
     if (targetNode == null) {
-        val exactMatches = finalTree.filter { it.text == "$day" || it.text == day.toString().padStart(2, '0') }
-        // Pick the last one to get the most deeply nested (rendered) node, rather than a hidden parent
-        targetNode = exactMatches.lastOrNull()
+        targetNode = finalTree.filter { it.text == "$day" || it.text == day.toString().padStart(2, '0') }.lastOrNull()
     }
 
     if (targetNode != null) {
-        // Since coordinate clicks can be flaky on Android due to nested nodes, 
-        // we use the framework's semantic click, but we explicitly pass the exact text 
-        // we matched to avoid substring issues like "25" matching "2025" or "19".
         click(Selector.Text(targetNode.text!!).atIndex(-1))
     } else {
-        throw AssertionError("Could not find day cell for $day in the semantic tree")
+        throw AssertionError("Could not find day cell for $day")
     }
     
     delay(500)
     click(Selector.Tag("date_picker_ok_button").atIndex(0))
 }
 
+/**
+ * Wasm-specific implementation using the Core Multi-Root fix and Tree Dump findings.
+ */
 private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int, year: Int) {
-    // Wasm geometric fallback.
+    // 1. Initial State Calibration
+    val initialTree = getTree()
+    val dialog = initialTree.find { it.tag == "date_picker_dialog" } ?: throw AssertionError("DatePicker missing")
     
-    // 1. Month / Year Navigation Loop
-    // On Wasm, standard M3 month switching is often available via the Next/Previous buttons
-    // The header text (e.g. "June 2026") might be split across nodes or missing.
-    // Let's implement a robust Month-Clicker loop similar to native.
+    // Find Header (e.g., "June 2026, Switch to selecting a year")
+    val headerNode = initialTree.find { it.text?.contains("20") == true && it.text?.contains("selecting a year") == true }
+    val headerText = headerNode?.text ?: ""
+    val (curMonth, curYear) = sample.app.parseMonthYear(headerText.split(",").firstOrNull() ?: "") ?: (6 to 2026)
+
+    // 2. Year Navigation (NATIVE SEMANTIC)
+    if (curYear != year) {
+        click(Selector.Text(headerText))
+        delay(1500)
+        
+        // Year list is VISIBLE thanks to core fix.
+        val yearTargetText = "Navigate to year $year"
+        val target = Selector.Text(yearTargetText)
+        
+        // We use the first node starting with "Navigate to year" as the scroll container anchor if list tag is missing
+        scrollUntilVisible(Selector.Auto("Navigate to year"), target, if (year > curYear) ScrollDirection.Down else ScrollDirection.Up)
+        click(target.atIndex(-1))
+        delay(1500)
+        
+        // Wake up ping
+        clickAtStill(dialog.bounds.left + 20.0, dialog.bounds.top + 20.0)
+        delay(500)
+    }
+
+    // 3. Month Navigation Loop (Native Semantic + Patient Observer)
     var tries = 0
     while (tries < 24) {
         val currentTree = getTree()
-        
-        // Find header: look for a node matching a year (e.g. "202")
-        val headerNode = currentTree.find { it.text?.contains("202") == true }
-        if (headerNode == null) {
-             println("DEBUG: Wasm Calendar missing year header.")
-             break
+        val currentHeader = currentTree.find { it.text?.contains("20") == true && it.text?.contains("selecting a year") == true }
+        if (currentHeader == null) {
+             tries++; continue
         }
         
-        val currentMonthYear = sample.app.parseMonthYear(headerNode.text ?: "")
-        if (currentMonthYear == null) {
-            println("DEBUG: Wasm Calendar failed to parse month/year from: ${headerNode.text}")
-            break
-        }
+        val currentHeaderText = currentHeader.text!!
+        val (m, y) = sample.app.parseMonthYear(currentHeaderText.split(",").firstOrNull() ?: "") ?: break
+        if (m == month && y == year) break
         
-        val (curMonth, curYear) = currentMonthYear
-        println("DEBUG: Wasm Calendar currently at $curMonth/$curYear (Target: $month/$year)")
+        val nextSelector = if ((year * 12 + month) > (y * 12 + m)) Selector.Text("Change to next month") else Selector.Text("Change to previous month")
+        click(nextSelector)
         
-        if (curMonth == month && curYear == year) break
-        
-        // Use month clickers for year switching too, since Year list is hard geometrically
-        val totalTargetMonths = year * 12 + month
-        val totalCurrentMonths = curYear * 12 + curMonth
-        
-        if (totalTargetMonths > totalCurrentMonths) {
-            val nextBtn = currentTree.find { it.tag == "next_month_button" }
-            if (nextBtn != null) {
-                clickAtFast(nextBtn.bounds.centerX, nextBtn.bounds.centerY)
-            } else if (currentTree.any { it.text == "Next month" }) {
-                click(Selector.Text("Next month").atIndex(0))
-            } else {
-                // Geometric fallback: M3 Next chevron is at far right of the dialog, aligning with the Month/Year header.
-                // The Month/Year header is usually below "Select date". Let's align with the headerNode Y.
-                val dialogNode = currentTree.find { it.tag == "date_picker_dialog" }
-                val nextX = (dialogNode?.bounds?.right ?: 820.0) - 36.0 
-                val nextY = headerNode.bounds.centerY
-                clickAtFast(nextX, nextY)
-            }
-        } else {
-            val prevBtn = currentTree.find { it.tag == "previous_month_button" }
-            if (prevBtn != null) {
-                clickAtFast(prevBtn.bounds.centerX, prevBtn.bounds.centerY)
-            } else if (currentTree.any { it.text == "Previous month" }) {
-                click(Selector.Text("Previous month").atIndex(0))
-            } else {
-                // Geometric fallback: M3 Prev chevron is to the left of the Next chevron
-                val dialogNode = currentTree.find { it.tag == "date_picker_dialog" }
-                val prevX = (dialogNode?.bounds?.right ?: 820.0) - 84.0 
-                val prevY = headerNode.bounds.centerY
-                clickAtFast(prevX, prevY)
+        // Wait for change
+        var changed = false
+        for (i in 0 until 15) {
+            delay(400)
+            val updatedText = getTree().find { it.text?.contains("20") == true && it.text?.contains("selecting a year") == true }?.text ?: ""
+            if (updatedText != currentHeaderText && updatedText.isNotEmpty()) {
+                changed = true
+                break
             }
         }
-        delay(400)
+        if (!changed) break
         tries++
     }
-    
-    val tree = getTree()
 
-    // 1. Calibrate Columns using the day-of-week headers
-    // M3 DatePicker on Wasm shows "Monday", "Tuesday", etc. as individual nodes above the list.
-    val dayNames = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
-    val headerNodes = dayNames.mapNotNull { name -> tree.find { it.text == name } }
+    // 4. Final Day Selection
+    delay(2000)
+    val finalTree = getTree()
     
-    if (headerNodes.isEmpty()) throw AssertionError("Could not find day-of-week headers for calibration")
+    // Attempt semantic match first (e.g. "Monday, 15 June 2026")
+    val monthName = sample.app.getMonthName(month)
+    val dayTarget = "$day $monthName $year" // Material 3 format in dump
+    val dayNode = finalTree.find { 
+        val text = it.text ?: ""
+        text.contains(dayTarget) && !text.contains("\n")
+    }
     
-    // Sort by X to ensure we have the correct column order
-    val sortedHeaders = headerNodes.sortedBy { it.bounds.left }
-    val colWidth = sortedHeaders[1].bounds.left - sortedHeaders[0].bounds.left
-    val firstColX = sortedHeaders[0].bounds.centerX
-    
-    // 2. Find the list node and calibrate Rows
-    val listNode = tree.find { it.tag == "list" }
-        ?: throw AssertionError("Could not find calendar list node")
-    
-    val gridTop = listNode.bounds.top
-    val rowHeight = colWidth // M3 cells are usually square
-    
-    // 3. Determine Day 1's position
-    // We parse the list text to find " 1 " or similar
-    val listText = listNode.text ?: ""
-    val day1Line = listText.split("\n").find { it.contains(" 1 ") || it.endsWith(" 1") || it.contains(", 1 ") }
-        ?: throw AssertionError("Could not find Day 1 in list text to calibrate start day")
-    
-    val day1OfWeek = dayNames.indexOfFirst { day1Line.contains(it, ignoreCase = true) }
-    if (day1OfWeek == -1) throw AssertionError("Could not determine day of week for Day 1 from: $day1Line")
+    if (dayNode != null) {
+        click(Selector.Text(dayNode.text!!).atIndex(-1))
+    } else {
+        // Precise geometric fallback using Monday anchor
+        val monHeader = finalTree.find { it.text == "Monday" } ?: throw AssertionError("Monday header missing for grid calibration")
+        val dayList = finalTree.find { it.text?.contains(",") == true && it.bounds.top > monHeader.bounds.top } ?: throw AssertionError("Day grid missing")
+        
+        val gridTop = monHeader.bounds.bottom
+        val startOffset = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+            .indexOfFirst { (dayList.text ?: "").split("\n").firstOrNull()?.contains(it, ignoreCase = true) == true }.coerceAtLeast(0)
 
-    // 4. Calculate target coordinates
-    val absoluteIndex = day1OfWeek + (day - 1)
-    val targetCol = absoluteIndex % 7
-    val targetRow = absoluteIndex / 7
-    
-    val targetX = firstColX + (targetCol * colWidth)
-    val targetY = gridTop + (targetRow + 0.5) * rowHeight
-    
-    // 5. Perform the click using high-precision "Still Tap"
-    clickAtStill(targetX, targetY)
+        val colW = (dayList.bounds.right - dayList.bounds.left) / 7.0
+        val absIdx = startOffset + (day - 1)
+        
+        clickAtStill(dayList.bounds.left + (absIdx % 7 + 0.5) * colW, gridTop + (absIdx / 7 + 0.5) * 48.0)
+    }
     
     delay(500)
-    
-    // 6. Robust OK button click
-    val finalTree = getTree()
-    val okSelector = when {
-        finalTree.any { it.tag == "date_picker_ok_button" } -> Selector.Tag("date_picker_ok_button")
-        finalTree.any { it.text?.contains("OK", ignoreCase = true) == true } -> Selector.Text("OK")
-        else -> Selector.Tag("date_picker_ok_button")
-    }
-    click(okSelector)
+    click(Selector.Tag("date_picker_ok_button").atIndex(0))
 }
 
-/**
- * Drags a slider physically by calculating its bounds.
- */
 suspend fun E2ETestScope.dragSliderPhysically(selector: Selector, percent: Float) {
     val node = resolveNode(selector)
     val bounds = node.bounds
-    val width = bounds.right - bounds.left
-    val startX = bounds.centerX
-    val startY = bounds.centerY
-    val targetX = bounds.left + (width * percent)
-    drag(fromX = startX, fromY = startY, toX = targetX, toY = startY, durationMs = 500L)
+    drag(fromX = bounds.centerX, fromY = bounds.centerY, toX = bounds.left + ((bounds.right - bounds.left) * percent), toY = bounds.centerY, durationMs = 500L)
 }
 
 suspend fun E2ETestScope.dragSliderPhysically(tag: String, percent: Float) {
@@ -420,83 +277,76 @@ suspend fun E2ETestScope.clickAtFast(x: Double, y: Double) {
 }
 
 suspend fun E2ETestScope.clickAtStill(x: Double, y: Double) {
-    drag(fromX = x, fromY = y, toX = x + 5.0, toY = y + 15.0, durationMs = 400L)
-    delay(1500L)
+    drag(fromX = x, fromY = y, toX = x + 5.0, toY = y + 5.0, durationMs = 300L)
+    delay(1000L)
+}
+
+suspend fun E2ETestScope.selectTimeFromDial(hour: String, minute: String, is24Hour: Boolean = true) {
+    if (isWasmTarget()) selectTimeFromDialGeometrically(hour.toInt(), minute.toInt(), is24Hour)
+    else selectTimeFromDialNative(hour, minute, is24Hour)
+}
+
+private suspend fun E2ETestScope.selectTimeFromDialNative(hourText: String, minuteText: String, is24Hour: Boolean = true) {
+    waitFor("time_picker_dialog")
+    delay(500)
+    if (!is24Hour) {
+        val hInt = hourText.toInt()
+        click(Selector.Text(if (hInt >= 12) "p.m." else "a.m.").atIndex(-1))
+        delay(300)
+    }
+    click(Selector.Auto("Select hour").atIndex(-1))
+    delay(300)
+    val hInt = hourText.toInt()
+    val displayHour = if (!is24Hour) (if (hInt == 0) 12 else if (hInt > 12) hInt - 12 else hInt) else hInt
+    val hourLabel = getTree().find { it.text?.contains("$displayHour", ignoreCase = true) == true }?.text ?: displayHour.toString()
+    click(Selector.Text(hourLabel).atIndex(-1))
+    delay(500)
+    click(Selector.Auto("Select minutes").atIndex(-1))
+    delay(300)
+    val minuteLabel = getTree().find { it.text?.contains(minuteText, ignoreCase = true) == true }?.text ?: minuteText
+    click(Selector.Text(minuteLabel).atIndex(-1))
+    delay(500)
+    click(Selector.Tag("time_picker_ok_button").atIndex(0))
+}
+
+suspend fun E2ETestScope.selectTimeViaInput(hour: String, minute: String) {
+    click(Selector.Tag("toggle_time_picker_mode_button"))
+    click(Selector.Tag("time_picker_ok_button").atIndex(0))
 }
 
 suspend fun E2ETestScope.selectTimeFromDialGeometrically(hour: Int, minute: Int, is24Hour: Boolean = true) {
     val dialNode = resolveNode(Selector.Tag("time_picker_dial"))
     val initialTree = getTree()
-    val hourBtn = initialTree.firstOrNull { it.text?.contains("Select hour", ignoreCase = true) == true }
-        ?: throw AssertionError("Could not find hour button.")
-        
+    val hourBtn = initialTree.firstOrNull { it.text?.contains("Select hour", ignoreCase = true) == true } ?: throw AssertionError("Hour button missing")
     val width = dialNode.bounds.right - dialNode.bounds.left
     val height = dialNode.bounds.bottom - dialNode.bounds.top
     val isLandscape = width > height
     val dialSize = if (isLandscape) height else width
-    
     val centerX = if (isLandscape) dialNode.bounds.right - (dialSize / 2.0) - 8.0 else dialNode.bounds.centerX
     val centerY = dialNode.bounds.centerY
-    
     val maxRadius = (dialSize / 2.0) - 12.0
-    
     if (!is24Hour) {
         val amPmNode = getTree().firstOrNull { it.text?.contains("a.m.", ignoreCase = true) == true || it.text?.contains("p.m.", ignoreCase = true) == true }
-        if (amPmNode != null) {
-            val isPm = hour >= 12
-            val targetX = if (isPm) amPmNode.bounds.right - 25.0 else amPmNode.bounds.left + 25.0
-            clickAtFast(targetX, amPmNode.bounds.centerY)
-            delay(1000)
-        }
+        if (amPmNode != null) clickAtFast(if (hour >= 12) amPmNode.bounds.right - 25.0 else amPmNode.bounds.left + 25.0, amPmNode.bounds.centerY)
+        delay(1000)
     }
-
-    val displayHour = if (!is24Hour) {
-        if (hour == 0) 12 else if (hour > 12) hour - 12 else hour
-    } else {
-        hour
-    }
-
+    val displayHour = if (!is24Hour) (if (hour == 0) 12 else if (hour > 12) hour - 12 else hour) else hour
     val hourAngle = (displayHour - 3) * (PI / 6.0)
     val rScales = if (is24Hour && (hour == 0 || hour >= 13)) listOf(0.55, 0.85) else listOf(0.85, 0.55)
-    
     var hourFound = false
     clickAtFast(hourBtn.bounds.centerX, hourBtn.bounds.centerY)
-
     for (rScale in rScales) {
         for (aNudge in listOf(0.0, -0.06, 0.06, -0.12, 0.12)) {
-            val tx = centerX + (maxRadius * rScale) * cos(hourAngle + aNudge)
-            val ty = centerY + (maxRadius * rScale) * sin(hourAngle + aNudge)
-            clickAtStill(tx, ty)
-            
-            for (w in 1..8) {
-                val currentText = getTree().find { it.text?.contains("Select hour", ignoreCase = true) == true }?.text ?: ""
-                val digits = currentText.filter { it.isDigit() }
-                if (digits == displayHour.toString()) {
-                    hourFound = true; break
-                }
-                delay(500)
-            }
+            clickAtStill(centerX + (maxRadius * rScale) * cos(hourAngle + aNudge), centerY + (maxRadius * rScale) * sin(hourAngle + aNudge))
+            repeat(8) { if (getTree().find { it.text?.contains("Select hour", ignoreCase = true) == true }?.text?.filter { it.isDigit() } == displayHour.toString()) { hourFound = true; return@repeat }; delay(500) }
             if (hourFound) break
             clickAtFast(hourBtn.bounds.centerX, hourBtn.bounds.centerY)
         }
         if (hourFound) break
     }
-
-    if (!hourFound) throw AssertionError("Failed to select hour $hour")
-
-    val safeMinBtnX = hourBtn.bounds.right + 75.0
-    val safeMinBtnY = hourBtn.bounds.centerY
-    clickAtFast(safeMinBtnX, safeMinBtnY)
+    if (!hourFound) throw AssertionError("Failed select hour $hour")
+    clickAtFast(hourBtn.bounds.right + 75.0, hourBtn.bounds.centerY)
     delay(2000)
-
-    val minuteAngle = (minute - 15) * (PI / 30.0)
-    val tx = centerX + (maxRadius * 0.85) * cos(minuteAngle)
-    val ty = centerY + (maxRadius * 0.85) * sin(minuteAngle)
-    clickAtStill(tx, ty)
-    
-    try {
-        click(Selector.Tag("time_picker_ok_button"))
-    } catch (e: Throwable) {
-        clickAtFast(840.0, 500.0) 
-    }
+    clickAtStill(centerX + (maxRadius * 0.85) * cos((minute - 15) * (PI / 30.0)), centerY + (maxRadius * 0.85) * sin((minute - 15) * (PI / 30.0)))
+    try { click(Selector.Tag("time_picker_ok_button")) } catch (e: Throwable) { clickAtFast(840.0, 500.0) }
 }

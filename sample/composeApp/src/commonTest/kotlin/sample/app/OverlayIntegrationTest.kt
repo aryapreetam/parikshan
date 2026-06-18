@@ -9,6 +9,9 @@ import sample.app.setup.selectDateFromCalendar
 import sample.app.setup.selectTimeFromDial
 import sample.app.setup.selectTimeFromDialGeometrically
 import sample.app.setup.selectTimeViaInput
+import sample.app.setup.isWasmTarget
+import sample.app.setup.clickAtStill
+import sample.app.setup.clickDropdown
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import io.github.aryapreetam.parikshan.resolveNode
 import io.github.aryapreetam.parikshan.protocol.atIndex
@@ -23,7 +26,7 @@ class OverlayIntegrationTest {
     openAppNavigation(); click("nav_overlay_playground")
 
     // Open Dropdown Menu via ExposedDropdownMenuBox
-    click("dropdown_anchor")
+    clickDropdown("dropdown_anchor")
     click(Selector.Text("Option Blue"))
     
 	assertVisible("Selected Blue from Dropdown")
@@ -35,16 +38,16 @@ class OverlayIntegrationTest {
     openAppNavigation(); click("nav_overlay_playground")
 
     // Open Dropdown Menu via ExposedDropdownMenuBox
-    click("dropdown_anchor")
+    clickDropdown("Select an option")
     
     // Scroll down inside the dropdown menu to find 'Purple'
     scrollUntilVisible(
-     containerSelector = Selector.Tag("dropdown_menu"),
-     targetSelector = Selector.Text("Option Purple")
-   )
+      containerSelector = Selector.Tag("dropdown_menu"),
+      targetSelector = Selector.Text("Option Purple")
+    )
     click(Selector.Text("Option Purple"))
     
-	assertVisible("Selected Purple from Dropdown")
+	  assertVisible("Selected Purple from Dropdown")
   }
 
   @Test
@@ -91,14 +94,7 @@ class OverlayIntegrationTest {
     assertContains("overlay_result_message", "Date Selected:")
   }
 
-  @Test
-  fun testDumpAndroidTree() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_overlay_playground")
-    click("date_picker_trigger_button")
-    val tree = getTree()
-    tree.forEach { println("NODE: tag=${it.tag}, text=${it.text}, bounds=${it.bounds}") }
-  }
+
 
   @Test
   fun testCalendarDateSelectionCurrentMonth() = e2eTest {
@@ -126,6 +122,10 @@ class OverlayIntegrationTest {
 
     click("date_picker_trigger_button")
     assertVisible("date_picker_dialog")
+
+    println("DEBUG DESKTOP TREE START:")
+    getTree().forEach { println("NODE: tag='${it.tag}' text='${it.text}' visible=${it.visible} bounds=${it.bounds}") }
+    println("DEBUG DESKTOP TREE END")
 
     // Select December 25, 2025 (Past date)
     selectDateFromCalendar(day = 25, month = 12, year = 2025)

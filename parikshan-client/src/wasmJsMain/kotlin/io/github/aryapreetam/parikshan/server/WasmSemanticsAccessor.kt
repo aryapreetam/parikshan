@@ -65,12 +65,21 @@ internal object WasmSemanticsAccessor {
     val contentDescription = if (contentDescriptionList.isNotEmpty()) {
       contentDescriptionList.joinToString("").takeIf { it.isNotBlank() }.orEmpty()
     } else ""
-
     return when {
       contentDescription.isNotBlank() && spokenText.isNotBlank() -> "$contentDescription $spokenText"
       contentDescription.isNotBlank() -> contentDescription
       spokenText.isNotBlank() -> spokenText
       else -> null
+    }
+  }
+
+  private fun collectDescendantTexts(node: SemanticsNode, result: MutableList<String>) {
+    for (child in node.children) {
+      val t = directTextOf(child)
+      if (!t.isNullOrBlank()) {
+        result.add(t)
+      }
+      collectDescendantTexts(child, result)
     }
   }
 
@@ -103,13 +112,19 @@ internal object WasmSemanticsAccessor {
     val discovered = discoveredSnapshots()
     
     val merged = mutableMapOf<String, NodeSnapshot>()
+    val genericTags = setOf(
+      "button", "dialog", "grid", "list", "listitem", "menu", "menuitem", 
+      "tab", "textbox", "heading", "checkbox", "progressbar", 
+      "combobox", "scrollbar", "slider", "switch", "status", "alert"
+    )
     
     // Identity key strategy:
-    // 1. If tag is non-empty, use tag. This handles the majority of Compose nodes.
-    // 2. If tag is empty, use fuzzy rounded coordinates (5px grid).
+    // 1. If tag is non-empty and not generic, use tag. This handles the majority of Compose nodes.
+    // 2. If tag is empty or generic, use fuzzy rounded coordinates (5px grid) to avoid key collision.
     fun identityKey(node: NodeSnapshot): String {
       val b = node.bounds
-      return if (node.tag.isNotEmpty()) {
+      val isGeneric = node.tag.isEmpty() || node.tag in genericTags
+      return if (!isGeneric) {
         "tag:${node.tag}"
       } else {
         val rx = (b.left / 5).toInt() * 5
@@ -171,7 +186,26 @@ internal object WasmSemanticsAccessor {
       } catch (_: Throwable) {}
     }
 
-    val text = directTextOf(node)
+    val rawText = directTextOf(node)
+    val text = if (rawText != null) {
+      val isInteractive = node.config.getOrNull(SemanticsActions.OnClick) != null ||
+        node.config.getOrNull(SemanticsActions.SetText) != null ||
+        node.config.getOrNull(SemanticsProperties.Role) != null ||
+        node.config.getOrNull(SemanticsProperties.Selected) != null
+      if (isInteractive) {
+        rawText
+      } else {
+        val descendantTexts = mutableListOf<String>()
+        collectDescendantTexts(node, descendantTexts)
+        if (descendantTexts.isNotEmpty() && descendantTexts.none { it.trim() == rawText.trim() }) {
+          null
+        } else {
+          rawText
+        }
+      }
+    } else {
+      null
+    }
     val bounds = node.boundsInWindow
     val hasArea = bounds.width > 0f && bounds.height > 0f
 
@@ -297,9 +331,6 @@ internal object WasmSemanticsAccessor {
       val semanticResult = actionToInvoke?.invoke() == true
       val physicalResult = performPhysicalClick(node)
       if (semanticResult || physicalResult) return true
-      if (matchesTag(node, "dropdown_anchor")) {
-        if (clickA11yNode("Select an option", 0)) return true
-      }
     }
 
     return clickA11yNode(selector.raw, selector.index ?: 0)
@@ -309,9 +340,6 @@ internal object WasmSemanticsAccessor {
     val bounds = node.boundsInWindow
     val positions = buildList {
       add(Offset(bounds.left + bounds.width / 2f, bounds.top + bounds.height / 2f))
-      if (matchesTag(node, "dropdown_anchor")) {
-        add(Offset(bounds.right - 16f, bounds.top + bounds.height / 2f))
-      }
     }
     return positions.any { performPhysicalClickAt(it.x, it.y) }
   }

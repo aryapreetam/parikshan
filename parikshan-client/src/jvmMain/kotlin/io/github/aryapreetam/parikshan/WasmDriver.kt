@@ -186,9 +186,6 @@ class WasmDriver private constructor(
           ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
         invokeBridgeClick(selector)
         performPhysicalClick(node.bounds.centerX, node.bounds.centerY)
-        if (selector.raw == "dropdown_anchor") {
-          performPhysicalClick(node.bounds.right - 16.0, node.bounds.centerY)
-        }
         delay(200)
         Response.Ok(command.id)
       }

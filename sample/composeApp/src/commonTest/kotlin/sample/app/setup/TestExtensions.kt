@@ -45,15 +45,157 @@ suspend fun E2ETestScope.clickDropdown(tag: String) {
     clickDropdown(Selector.Auto(tag))
 }
 
+fun resolveDateTextForLocale(day: Int, month: Int, year: Int, tree: List<io.github.aryapreetam.parikshan.protocol.NodeSnapshot>): String {
+    val placeholderNode = tree.find { it.text?.contains("YYYY", ignoreCase = true) == true }
+    val placeholder = placeholderNode?.text ?: ""
+    val clean = placeholder.uppercase()
+    val dayStr = day.toString().padStart(2, '0')
+    val monthStr = month.toString().padStart(2, '0')
+    val yearStr = year.toString()
+    
+    return when {
+        clean.contains("MM") && clean.contains("DD") -> {
+            val separator = if (clean.contains("/")) "/" else if (clean.contains(".")) "." else "-"
+            if (clean.indexOf("MM") < clean.indexOf("DD")) {
+                "$monthStr$separator$dayStr$separator$yearStr"
+            } else {
+                "$dayStr$separator$monthStr$separator$yearStr"
+            }
+        }
+        else -> "$dayStr/$monthStr/$yearStr"
+    }
+}
+
+fun resolveDateTextForLocale(dateText: String, tree: List<io.github.aryapreetam.parikshan.protocol.NodeSnapshot>): String {
+    val placeholderNode = tree.find { it.text?.contains("YYYY", ignoreCase = true) == true }
+    val placeholder = placeholderNode?.text ?: ""
+    val parts = dateText.split('/', '.', '-')
+    if (parts.size != 3) return dateText
+    
+    val p0 = parts[0]
+    val p1 = parts[1]
+    val p2 = parts[2]
+    
+    val v0 = p0.toIntOrNull() ?: return dateText
+    val v1 = p1.toIntOrNull() ?: return dateText
+    
+    val (day, month, year) = if (p0.length == 4) {
+        Triple(p2, p1, p0)
+    } else if (v0 > 12) {
+        Triple(p0, p1, p2)
+    } else if (v1 > 12) {
+        Triple(p1, p0, p2)
+    } else {
+        Triple(p0, p1, p2)
+    }
+    
+    val clean = placeholder.uppercase()
+    return when {
+        clean.contains("MM") && clean.contains("DD") -> {
+            val separator = if (clean.contains("/")) "/" else if (clean.contains(".")) "." else "-"
+            if (clean.indexOf("MM") < clean.indexOf("DD")) {
+                "$month$separator$day$separator$year"
+            } else {
+                "$day$separator$month$separator$year"
+            }
+        }
+        else -> dateText
+    }
+}
+
 /**
  * Interacts with a Material 3 DatePickerDialog via text input mode.
  */
-suspend fun E2ETestScope.selectDateViaInput(dateText: String) {
+suspend fun E2ETestScope.selectDateViaInput(day: Int, month: Int, year: Int) {
     if (isWasmTarget()) {
-        selectDateViaInputWasm(dateText)
+        selectDateViaInputWasm(day, month, year)
     } else {
-        selectDateViaInputNative(dateText)
+        selectDateViaInputNative(day, month, year)
     }
+}
+
+suspend fun E2ETestScope.selectDateViaInput(dateText: String) {
+    val parts = dateText.split('/', '.', '-')
+    if (parts.size != 3) {
+        if (isWasmTarget()) selectDateViaInputWasm(dateText)
+        else selectDateViaInputNative(dateText)
+        return
+    }
+    val p0 = parts[0].toIntOrNull()
+    val p1 = parts[1].toIntOrNull()
+    val p2 = parts[2].toIntOrNull()
+    if (p0 == null || p1 == null || p2 == null) {
+        if (isWasmTarget()) selectDateViaInputWasm(dateText)
+        else selectDateViaInputNative(dateText)
+        return
+    }
+    
+    val (day, month, year) = if (parts[0].length == 4) {
+        Triple(p2, p1, p0)
+    } else if (p0 > 12) {
+        Triple(p0, p1, p2)
+    } else if (p1 > 12) {
+        Triple(p1, p0, p2)
+    } else {
+        Triple(p0, p1, p2)
+    }
+    
+    selectDateViaInput(day = day, month = month, year = year)
+}
+
+private suspend fun E2ETestScope.selectDateViaInputNative(day: Int, month: Int, year: Int) {
+    click(Selector.Auto("Switch to text input mode"))
+    delay(500)
+    
+    val tree = getTree()
+    val inputSelector = when {
+        tree.any { it.text?.contains("Date", ignoreCase = true) == true } -> Selector.Auto("Date")
+        tree.any { it.text?.contains("Enter date", ignoreCase = true) == true } -> Selector.Auto("Enter date")
+        else -> Selector.Auto("Date")
+    }
+    
+    val resolvedDate = resolveDateTextForLocale(day, month, year, tree)
+    val digitsOnly = resolvedDate.filter { it.isDigit() }
+    input(inputSelector, digitsOnly)
+    delay(300)
+    
+    val okSelector = when {
+        getTree().any { it.tag == "date_picker_ok_button" } -> Selector.Tag("date_picker_ok_button")
+        else -> Selector.Text("OK")
+    }
+    click(okSelector.atIndex(0))
+}
+
+private suspend fun E2ETestScope.selectDateViaInputWasm(day: Int, month: Int, year: Int) {
+    click(Selector.Auto("Switch to text input mode"))
+    delay(2000)
+
+    val tree = getTree()
+    val inputSelector = when {
+        tree.any { it.text?.contains("YYYY", ignoreCase = true) == true } -> {
+            val text = tree.first { it.text?.contains("YYYY", ignoreCase = true) == true }.text!!
+            Selector.Auto(text)
+        }
+        tree.any { it.text?.contains("Date", ignoreCase = true) == true } -> {
+            val text = tree.first { it.text?.contains("Date", ignoreCase = true) == true }.text!!
+            Selector.Auto(text)
+        }
+        else -> Selector.Auto("YYYY")
+    }
+    
+    waitFor(inputSelector)
+    click(inputSelector)
+    val resolvedDate = resolveDateTextForLocale(day, month, year, tree)
+    val digitsOnly = resolvedDate.filter { it.isDigit() }
+    input(inputSelector, digitsOnly)
+    delay(1000)
+
+    val treeAfter = getTree()
+    val okSelector = when {
+        treeAfter.any { it.tag == "date_picker_ok_button" } -> Selector.Tag("date_picker_ok_button")
+        else -> Selector.Text("OK")
+    }
+    click(okSelector)
 }
 
 private suspend fun E2ETestScope.selectDateViaInputNative(dateText: String) {
@@ -67,7 +209,9 @@ private suspend fun E2ETestScope.selectDateViaInputNative(dateText: String) {
         else -> Selector.Auto("Date")
     }
     
-    input(inputSelector, dateText)
+    val resolvedDate = resolveDateTextForLocale(dateText, tree)
+    val digitsOnly = resolvedDate.filter { it.isDigit() }
+    input(inputSelector, digitsOnly)
     delay(300)
     
     val okSelector = when {
@@ -83,18 +227,27 @@ private suspend fun E2ETestScope.selectDateViaInputWasm(dateText: String) {
 
     val tree = getTree()
     val inputSelector = when {
-        tree.any { it.text?.contains("YYYY") == true } -> Selector.Auto("YYYY")
-        tree.any { it.text?.contains("Date") == true } -> Selector.Auto("Date")
+        tree.any { it.text?.contains("YYYY", ignoreCase = true) == true } -> {
+            val text = tree.first { it.text?.contains("YYYY", ignoreCase = true) == true }.text!!
+            Selector.Auto(text)
+        }
+        tree.any { it.text?.contains("Date", ignoreCase = true) == true } -> {
+            val text = tree.first { it.text?.contains("Date", ignoreCase = true) == true }.text!!
+            Selector.Auto(text)
+        }
         else -> Selector.Auto("YYYY")
     }
     
     waitFor(inputSelector)
     click(inputSelector)
-    input(inputSelector, dateText)
-    delay(500)
+    val resolvedDate = resolveDateTextForLocale(dateText, tree)
+    val digitsOnly = resolvedDate.filter { it.isDigit() }
+    input(inputSelector, digitsOnly)
+    delay(1000)
 
+    val treeAfter = getTree()
     val okSelector = when {
-        getTree().any { it.tag == "date_picker_ok_button" } -> Selector.Tag("date_picker_ok_button")
+        treeAfter.any { it.tag == "date_picker_ok_button" } -> Selector.Tag("date_picker_ok_button")
         else -> Selector.Text("OK")
     }
     click(okSelector)

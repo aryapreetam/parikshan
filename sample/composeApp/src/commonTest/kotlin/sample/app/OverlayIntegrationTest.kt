@@ -88,10 +88,10 @@ class OverlayIntegrationTest {
     assertVisible("date_picker_dialog")
     
     // Material 3 date picker input mode test. Platform routing handles waits internally.
-    selectDateViaInput("10/24/2026")
+    selectDateViaInput(day = 24, month = 12, year = 2026)
     
     // Verify it successfully dismissed and output updated
-    assertContains("overlay_result_message", "Date Selected:")
+    assertContains("overlay_result_message", "Date Selected: 24/12/2026")
   }
 
 

@@ -19,7 +19,7 @@ allprojects {
 
   plugins.withId("maven-publish") {
     tasks.named("publishToMavenLocal") {
-      dependsOn(gradle.includedBuild("parikshan-gradle-plugin").task(":publishToMavenLocal"))
+      dependsOn(gradle.includedBuild("gradle-plugins").task(":publishToMavenLocal"))
     }
   }
 }

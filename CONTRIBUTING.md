@@ -11,7 +11,7 @@ Parikshan is a complex multi-project build. Understanding the boundaries is crit
 - **`:parikshan-core`**: The protocol and selector resolution engine. (Pure Kotlin, no UI dependencies).
 - **`:parikshan-client`**: The developer-facing E2E DSL and platform drivers.
 - **`:parikshan-server`**: The in-app HTTP/WebSocket bridge that reads Compose semantics.
-- **`:parikshan-gradle-plugin`**: Automates app installation, execution, and video recording.
+- **`:gradle-plugins`**: Contains publication scripts and the automation runner plugin (which automates app installation, execution, and video recording).
 - **`:parikshan`**: The aggregator module (empty, used for documentation and publishing).
 - **`:sample`**: A split-sample architecture containing a library (`composeApp`) and an executable (`androidApp`) used to verify the framework.
 

@@ -1,4 +1,4 @@
-# Module parikshan-gradle-plugin
+# Module gradle-plugins
 
 The Gradle plugin automates environment preparation, app installation, and test execution.
 

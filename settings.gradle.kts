@@ -1,7 +1,6 @@
 rootProject.name = "parikshan-root"
 
 pluginManagement {
-  includeBuild("parikshan-gradle-plugin")
   includeBuild("gradle-plugins")
 
   repositories {
@@ -40,6 +39,5 @@ include(":parikshan")
 include(":parikshan-core")
 include(":parikshan-server")
 include(":parikshan-client")
-// include(":parikshan-gradle-plugin") // Now an included build
 include(":sample:composeApp")
 include(":sample:androidApp")

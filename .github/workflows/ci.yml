@@ -134,12 +134,10 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-      - name: Install Desktop dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgbm1 xvfb
       - name: Run Parikshan Desktop E2E tests
-        run: xvfb-run ./gradlew :sample:composeApp:e2eDesktopTest -Dparikshan.video.enabled=true --no-configuration-cache
+        uses: aryapreetam/parikshan-desktop-action@v1
+        with:
+          command: './gradlew :sample:composeApp:e2eDesktopTest -Dparikshan.video.enabled=true --no-configuration-cache'
       - name: Upload Desktop Videos
         if: always()
         uses: actions/upload-artifact@v4
@@ -160,19 +158,12 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: ${{ env.JAVA_VERSION }}
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-      - name: Install Playwright and dependencies
-        run: |
-          npx playwright install chromium
-          sudo npx playwright install-deps chromium
-          sudo apt-get install -y xvfb
       - name: Run Parikshan Wasm E2E tests
-        run: xvfb-run ./gradlew :sample:composeApp:e2eWasmTest -Dparikshan.video.enabled=true --no-configuration-cache
+        uses: aryapreetam/parikshan-wasm-action@v1
+        with:
+          command: './gradlew :sample:composeApp:e2eWasmTest -Dparikshan.video.enabled=true --no-configuration-cache'
       - name: Upload Wasm Videos
         if: always()
         uses: actions/upload-artifact@v4

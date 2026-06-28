@@ -29,6 +29,7 @@ version = rootProps.getProperty("libVersion") ?: "0.0.1"
 
 dependencies {
   implementation(libs.maven.publish.gradle.plugin)
+  testImplementation(kotlin("test"))
 }
 
 tasks.withType<Jar> {

@@ -132,14 +132,18 @@ class ParikshanGradlePlugin : Plugin<Project> {
 
         doLast {
           val jar = appJarFileProvider.get().asFile
-          
+          val resolvedPort = ParikshanPortConflictHandler.resolvePortAndCleanStale(
+            originalPort = portValue.get(),
+            host = hostValue.get(),
+            logger = project.logger
+          )
           ParikshanDesktopProcess.start(
             jar = jar,
             token = tokenValue,
             logFile = File(buildDirValue.get().asFile, "parikshan/desktop-app.log"),
             manifestFile = desktopLaunchManifestFile.get().asFile,
             appArgs = appArgsValue.get(),
-            host = hostValue.get(), port = portValue.get(),
+            host = hostValue.get(), port = resolvedPort,
             timeoutMs = timeoutMsValue.get(),
             pollMs = pollMsValue.get(),
             title = titleValue.orNull,
@@ -180,7 +184,16 @@ class ParikshanGradlePlugin : Plugin<Project> {
         dependsOn(prepareWasmAssetsTask)
         doLast {
           val outputDir = wasmOutputDir.get().asFile
-          ParikshanWasmServer.start(extension.wasmServerPort.get(), outputDir)
+          val resolvedPort = ParikshanPortConflictHandler.resolvePortAndCleanStale(
+            originalPort = extension.wasmServerPort.get(),
+            host = "127.0.0.1",
+            logger = project.logger
+          )
+          val portFile = project.layout.buildDirectory.file("parikshan/wasm-port.txt").get().asFile
+          portFile.parentFile.mkdirs()
+          portFile.writeText(resolvedPort.toString())
+
+          ParikshanWasmServer.start(resolvedPort, outputDir)
         }
       }
 
@@ -295,7 +308,17 @@ class ParikshanGradlePlugin : Plugin<Project> {
           logger = project.logger
         )
         systemProperty("parikshan.host", extension.host.get())
-        systemProperty("parikshan.port", extension.port.get().toString())
+        doFirst {
+          val manifest = desktopLaunchManifestFile.get().asFile
+          val port = if (manifest.exists()) {
+            val props = java.util.Properties()
+            runCatching { manifest.inputStream().use { props.load(it) } }
+            props.getProperty("port") ?: extension.port.get().toString()
+          } else {
+            extension.port.get().toString()
+          }
+          systemProperty("parikshan.port", port)
+        }
         systemProperty("parikshan.target", "desktop")
         systemProperty("parikshan.token", sessionToken)
         systemProperty("parikshan.desktop.launchManifest", desktopLaunchManifestFile.get().asFile.absolutePath)
@@ -306,7 +329,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
           systemProperty("parikshan.video.enabled", "true")
         }
       }
-
+ 
       project.tasks.register<Test>("e2eWasmTest") {
         group = "verification"
         dependsOn(installPlaywrightTask, startWasmTask)
@@ -320,7 +343,11 @@ class ParikshanGradlePlugin : Plugin<Project> {
         )
         systemProperty("parikshan.target", "wasm")
         systemProperty("parikshan.token", sessionToken)
-        systemProperty("parikshan.wasm.url", "http://127.0.0.1:${extension.wasmServerPort.get()}")
+        doFirst {
+          val portFile = project.layout.buildDirectory.file("parikshan/wasm-port.txt").get().asFile
+          val port = if (portFile.exists()) portFile.readText().trim() else extension.wasmServerPort.get().toString()
+          systemProperty("parikshan.wasm.url", "http://127.0.0.1:$port")
+        }
         if (isBackgroundRequested) {
           systemProperty("parikshan.wasm.headless", "true")
         }
@@ -798,9 +825,16 @@ private object ParikshanDesktopProcess {
     )
   }
   fun stop(host: String = "127.0.0.1", port: Int = 9877, token: String = "", manifestFile: File? = null) {
+    val resolvedPort = if (manifestFile != null && manifestFile.exists()) {
+        val props = java.util.Properties()
+        runCatching { manifestFile.inputStream().use { props.load(it) } }
+        props.getProperty("port")?.toIntOrNull() ?: port
+    } else {
+        port
+    }
     runCatching {
       val json = """{"type":"stopRecording","id":"desktop-stop","sessionName":"any","token":"$token"}"""
-      val url = URL("http://$host:$port/")
+      val url = URL("http://$host:$resolvedPort/")
       val conn = url.openConnection() as HttpURLConnection
       conn.requestMethod = "POST"
       conn.setRequestProperty("Content-Type", "application/json")
@@ -1512,3 +1546,140 @@ private fun escapeJson(value: String): String =
       }
     }
   }
+
+internal object ParikshanPortConflictHandler {
+    fun resolvePortAndCleanStale(originalPort: Int, host: String, logger: org.gradle.api.logging.Logger): Int {
+        if (isPortAvailable(host, originalPort)) {
+            return originalPort
+        }
+        
+        logger.lifecycle("[Parikshan] Port $originalPort is in use on $host. Probing for stale Parikshan instance...")
+        if (isStaleParikshanServer(host, originalPort)) {
+            logger.lifecycle("[Parikshan] Detected stale Parikshan instance on port $originalPort. Attempting to auto-terminate...")
+            val pid = findPidUsingPort(originalPort)
+            if (pid != null) {
+                logger.lifecycle("[Parikshan] Found stale process PID: $pid. Terminating...")
+                terminateProcess(pid)
+                var released = false
+                for (i in 1..20) {
+                    Thread.sleep(100)
+                    if (isPortAvailable(host, originalPort)) {
+                        released = true
+                        break
+                    }
+                }
+                if (released) {
+                    logger.lifecycle("[Parikshan] Stale process terminated and port $originalPort released successfully.")
+                    return originalPort
+                } else {
+                    logger.warn("[Parikshan] Failed to release port $originalPort after terminating PID $pid.")
+                }
+            } else {
+                logger.warn("[Parikshan] Could not resolve PID for stale Parikshan instance on port $originalPort.")
+            }
+        } else {
+            logger.lifecycle("[Parikshan] Port $originalPort is occupied by a non-Parikshan process or is unresponsive.")
+        }
+        
+        var fallbackPort = originalPort + 1
+        while (fallbackPort <= 65535) {
+            if (isPortAvailable(host, fallbackPort)) {
+                logger.lifecycle("[Parikshan] Port $originalPort is busy. Fallback chosen: $fallbackPort")
+                return fallbackPort
+            }
+            fallbackPort++
+        }
+        
+        error("No available ports found in range $originalPort to 65535 on $host")
+    }
+
+    internal fun isPortAvailable(host: String, port: Int): Boolean {
+        return try {
+            java.net.ServerSocket().use { socket ->
+                socket.reuseAddress = true
+                socket.bind(java.net.InetSocketAddress(host, port))
+                true
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    internal fun isStaleParikshanServer(host: String, port: Int): Boolean {
+        var conn: java.net.HttpURLConnection? = null
+        return try {
+            val url = java.net.URL("http://$host:$port/")
+            conn = url.openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("Connection", "close")
+            conn.doOutput = true
+            conn.connectTimeout = 500
+            conn.readTimeout = 500
+            val probePayload = """{"type":"ping","id":"probe","token":"probe"}"""
+            conn.outputStream.use { it.write(probePayload.toByteArray()) }
+            
+            val responseCode = conn.responseCode
+            if (responseCode == 401) {
+                val body = conn.errorStream?.use { it.bufferedReader().readText() }.orEmpty()
+                body.contains("Unauthorized") || body.contains("Token mismatch")
+            } else if (responseCode == 200) {
+                val body = conn.inputStream?.use { it.bufferedReader().readText() }.orEmpty()
+                body.contains("\"type\":\"Ok\"") || body.contains("pong")
+            } else {
+                false
+            }
+        } catch (_: Exception) {
+            false
+        } finally {
+            runCatching { conn?.disconnect() }
+        }
+    }
+
+    internal fun findPidUsingPort(port: Int, excludeCurrentPid: Boolean = true): Long? {
+        val os = System.getProperty("os.name").lowercase()
+        val currentPid = java.lang.ProcessHandle.current().pid()
+        return try {
+            if (os.contains("win")) {
+                val process = ProcessBuilder("cmd", "/c", "netstat -ano").start()
+                val output = process.inputStream.bufferedReader().readText()
+                output.lineSequence()
+                    .filter { it.contains(":$port") && it.contains("LISTENING", ignoreCase = true) }
+                    .map { it.trim().split(Regex("\\s+")).lastOrNull()?.toLongOrNull() }
+                    .filterNotNull()
+                    .filter { !excludeCurrentPid || it != currentPid }
+                    .firstOrNull()
+            } else {
+                val process = ProcessBuilder("lsof", "-t", "-i", ":$port").start()
+                val output = process.inputStream.bufferedReader().readText().trim()
+                output.lineSequence()
+                    .map { it.trim().toLongOrNull() }
+                    .filterNotNull()
+                    .filter { !excludeCurrentPid || it != currentPid }
+                    .firstOrNull()
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    internal fun terminateProcess(pid: Long) {
+        if (pid == java.lang.ProcessHandle.current().pid()) {
+            return
+        }
+        try {
+            val handle = java.lang.ProcessHandle.of(pid).orElse(null) ?: return
+            if (!handle.isAlive) return
+            handle.destroy()
+            runCatching {
+                handle.onExit().get(2, java.util.concurrent.TimeUnit.SECONDS)
+            }.onFailure {
+                if (handle.isAlive) {
+                    handle.destroyForcibly()
+                }
+            }
+        } catch (_: Exception) {
+            // Ignore security or permission exceptions to let the port fallback happen gracefully
+        }
+    }
+}

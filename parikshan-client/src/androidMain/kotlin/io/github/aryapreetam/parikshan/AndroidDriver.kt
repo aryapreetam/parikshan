@@ -36,6 +36,7 @@ import kotlinx.coroutines.runBlocking
 class AndroidDriver private constructor(
   private val composeUiTest: AndroidComposeTestRule<*, *>
 ) : TestDriver {
+  override val targetPlatform: String = "android"
   override fun resolveArtifactPath(relativePath: String): String =
     File(
       composeUiTest.activity.cacheDir,

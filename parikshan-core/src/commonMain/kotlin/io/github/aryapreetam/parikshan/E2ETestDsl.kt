@@ -11,6 +11,7 @@ import kotlinx.coroutines.delay
 import kotlin.random.Random
 
 interface TestDriver {
+  val targetPlatform: String
   suspend fun send(command: Command): Response
 
   suspend fun relaunchApp() {
@@ -50,6 +51,8 @@ class E2ETestScope internal constructor(
   private val driver: TestDriver,
   private val config: E2ETestConfig
 ) {
+  val targetPlatform: String get() = driver.targetPlatform
+
   /**
    * Executes a physical tap or click on the UI element matching the provided [tag].
    *
@@ -654,3 +657,23 @@ private enum class MatchPolicy {
 annotation class ParikshanScenario(
   val testName: String = ""
 )
+
+/**
+ * Returns true if the current test execution target is Web (WasmJs).
+ */
+fun E2ETestScope.isWasm(): Boolean = targetPlatform == "wasm"
+
+/**
+ * Returns true if the current test execution target is JVM Desktop.
+ */
+fun E2ETestScope.isDesktop(): Boolean = targetPlatform == "desktop"
+
+/**
+ * Returns true if the current test execution target is an Android device or emulator.
+ */
+fun E2ETestScope.isAndroid(): Boolean = targetPlatform == "android"
+
+/**
+ * Returns true if the current test execution target is an iOS simulator or device.
+ */
+fun E2ETestScope.isIos(): Boolean = targetPlatform == "ios"

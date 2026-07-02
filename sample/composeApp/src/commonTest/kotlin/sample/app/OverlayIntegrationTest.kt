@@ -9,7 +9,6 @@ import sample.app.setup.selectDateFromCalendar
 import sample.app.setup.selectTimeFromDial
 import sample.app.setup.selectTimeFromDialGeometrically
 import sample.app.setup.selectTimeViaInput
-import sample.app.setup.isWasmTarget
 import sample.app.setup.clickAtStill
 import sample.app.setup.clickDropdown
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection

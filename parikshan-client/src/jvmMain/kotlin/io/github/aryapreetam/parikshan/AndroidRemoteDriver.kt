@@ -17,6 +17,7 @@ class AndroidRemoteDriver private constructor(
   private val baseUrl: String,
   private val sessionToken: String = System.getProperty("parikshan.token") ?: ""
 ) : TestDriver {
+  override val targetPlatform: String = "android"
 
   // State is now managed in companion object to persist across driver instances
 

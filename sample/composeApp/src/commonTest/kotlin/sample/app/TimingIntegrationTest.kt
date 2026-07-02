@@ -1,6 +1,7 @@
 package sample.app
 
 import io.github.aryapreetam.parikshan.E2ETestScope
+import io.github.aryapreetam.parikshan.isWasm
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.e2eTest
 import kotlin.test.Test
@@ -48,7 +49,7 @@ class TimingIntegrationTest {
   }
 
   private suspend fun E2ETestScope.clickReliably(target: String) {
-    if (System.getProperty("parikshan.target") == "wasm") {
+    if (isWasm()) {
        val node = resolveNode(target)
        // Proof-of-work: 0px drag is the most reliable way to click Canvas items
        drag(fromX = node.bounds.centerX, fromY = node.bounds.centerY, toX = node.bounds.centerX, toY = node.bounds.centerY, durationMs = 400L)

@@ -119,6 +119,9 @@ class ParikshanGradlePlugin : Plugin<Project> {
     val tokenValue = sessionToken
     val desktopLaunchManifestFile = project.layout.buildDirectory.file("parikshan/desktop-launch.properties")
 
+    val wasmPortValue = extension.wasmServerPort
+    val wasmPortFile = project.layout.buildDirectory.file("parikshan/wasm-port.txt")
+
     val startDesktopTask =
       project.tasks.register("startParikshanDesktopApp") {
         group = "verification"
@@ -127,6 +130,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
         val appJarFileProvider = project.tasks.named<org.gradle.jvm.tasks.Jar>(appJarTaskNameValue.get())
           .flatMap { it.archiveFile }
         val isBackground = isBackgroundRequested
+        val desktopLogger = logger
 
         inputs.file(appJarFileProvider)
 
@@ -135,7 +139,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
           val resolvedPort = ParikshanPortConflictHandler.resolvePortAndCleanStale(
             originalPort = portValue.get(),
             host = hostValue.get(),
-            logger = project.logger
+            logger = desktopLogger
           )
           ParikshanDesktopProcess.start(
             jar = jar,
@@ -182,14 +186,18 @@ class ParikshanGradlePlugin : Plugin<Project> {
       project.tasks.register("startParikshanWasmApp") {
         group = "verification"
         dependsOn(prepareWasmAssetsTask)
+        val wasmLogger = logger
+        val portValue = wasmPortValue
+        val portFileValue = wasmPortFile
+        val outputDirValue = wasmOutputDir
         doLast {
-          val outputDir = wasmOutputDir.get().asFile
+          val outputDir = outputDirValue.get().asFile
           val resolvedPort = ParikshanPortConflictHandler.resolvePortAndCleanStale(
-            originalPort = extension.wasmServerPort.get(),
+            originalPort = portValue.get(),
             host = "127.0.0.1",
-            logger = project.logger
+            logger = wasmLogger
           )
-          val portFile = project.layout.buildDirectory.file("parikshan/wasm-port.txt").get().asFile
+          val portFile = portFileValue.get().asFile
           portFile.parentFile.mkdirs()
           portFile.writeText(resolvedPort.toString())
 

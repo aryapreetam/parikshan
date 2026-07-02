@@ -17,6 +17,7 @@ class DesktopDriver(
   private val port: Int = 9877,
   private val sessionToken: String = System.getProperty("parikshan.token") ?: ""
 ) : TestDriver {
+  override val targetPlatform: String = "desktop"
 
   override suspend fun send(command: Command): Response {
     // SECURITY: Sign the command with the global session token

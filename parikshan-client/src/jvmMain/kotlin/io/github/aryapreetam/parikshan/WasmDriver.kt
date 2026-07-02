@@ -32,6 +32,7 @@ import kotlinx.serialization.builtins.ListSerializer
 class WasmDriver private constructor(
   private val sessionToken: String = System.getProperty("parikshan.token") ?: ""
 ) : TestDriver {
+  override val targetPlatform: String = "wasm"
 
   private val page: Page
     get() = checkNotNull(sharedPage) { "WasmDriver shared page is not initialized" }

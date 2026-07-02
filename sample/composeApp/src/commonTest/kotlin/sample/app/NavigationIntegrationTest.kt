@@ -1,6 +1,7 @@
 package sample.app
 
 import io.github.aryapreetam.parikshan.E2ETestScope
+import io.github.aryapreetam.parikshan.isWasm
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.e2eTest
 import kotlin.test.Test
@@ -55,7 +56,7 @@ class NavigationIntegrationTest {
 
     // On Wasm, standard AlertDialogs on Canvas sometimes fail to register dismissal clicks.
     // We focus on the core popping logic via a reliable confirmation click.
-    if (!sample.app.setup.isWasmTarget()) {
+    if (!isWasm()) {
         click("cancel_back_btn")
         assertNotVisible("back_intercept_dialog")
         assertVisible("screen_b_title")
@@ -74,7 +75,7 @@ class NavigationIntegrationTest {
   }
 
   private suspend fun E2ETestScope.clickConfirmReliably() {
-    if (sample.app.setup.isWasmTarget()) {
+    if (isWasm()) {
        // Wasm Strategy: Use Text-based selector which is often more reliable than Tag for Canvas Dialogs
        val selector = Selector.Auto("Yes, Go Back")
        repeat(3) {

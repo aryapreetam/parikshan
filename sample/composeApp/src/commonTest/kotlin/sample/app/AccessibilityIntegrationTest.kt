@@ -1,6 +1,7 @@
 package sample.app
 
 import io.github.aryapreetam.parikshan.E2ETestScope
+import io.github.aryapreetam.parikshan.isWasm
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.protocol.atIndex
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
@@ -36,7 +37,7 @@ class AccessibilityIntegrationTest {
     )
 
     // On Native targets, we verify that ambiguous clicks fail.
-    if (!sample.app.setup.isWasmTarget()) {
+    if (!isWasm()) {
         assertFailure("matched multiple visible nodes") {
           click("Duplicate Action Item")
         }

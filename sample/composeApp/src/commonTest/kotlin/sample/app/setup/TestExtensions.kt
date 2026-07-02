@@ -11,13 +11,12 @@ import kotlin.math.sin
 import kotlin.math.PI
 import kotlin.math.abs
 
+import io.github.aryapreetam.parikshan.isWasm
+
 /**
  * Checks if the current E2E test is running against the Wasm target.
  */
-fun isWasmTarget(): Boolean {
-    val target = System.getProperty("parikshan.target") ?: ""
-    return target.equals("wasm", ignoreCase = true)
-}
+fun E2ETestScope.isWasmTarget(): Boolean = isWasm()
 
 /**
  * Interacts with a Material 3 ExposedDropdownMenuBox.

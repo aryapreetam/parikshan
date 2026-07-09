@@ -173,9 +173,18 @@ internal class DesktopSemanticsAccessor(
     selector: Selector,
     direction: ScrollDirection,
     amountPx: Float = 200f
-  ): Boolean =
+  ): Boolean {
+    var success = false
+    System.err.println("Parikshan Server: performScrollBy start for selector='${selector.raw}' amountPx=$amountPx")
+    
     onEdt {
-      var currentNode: SemanticsNode? = findResolvedWindowedNode(selector)?.node ?: return@onEdt false
+      val resolvedNode = findResolvedWindowedNode(selector)
+      if (resolvedNode == null) {
+        System.err.println("Parikshan Server: performScrollBy - resolvedNode is null for selector='${selector.raw}'")
+        return@onEdt
+      }
+      
+      var currentNode: SemanticsNode? = resolvedNode.node
       var action: ((Float, Float) -> Boolean)? = null
       
       while (currentNode != null) {
@@ -184,18 +193,36 @@ internal class DesktopSemanticsAccessor(
         currentNode = currentNode.parent
       }
 
-      if (action == null) return@onEdt false
-
-      val (deltaX, deltaY) =
-        when (direction) {
+      if (action != null) {
+        val (deltaX, deltaY) = when (direction) {
           ScrollDirection.Up -> 0f to -amountPx
           ScrollDirection.Down -> 0f to amountPx
           ScrollDirection.Left -> -amountPx to 0f
           ScrollDirection.Right -> amountPx to 0f
         }
-
-      action.invoke(deltaX, deltaY)
+        try {
+          success = action.invoke(deltaX, deltaY)
+          System.err.println("Parikshan Server: performScrollBy - action.invoke returned success=$success")
+        } catch (e: Exception) {
+          System.err.println("Parikshan Server: performScrollBy - action.invoke failed with exception: ${e.message}")
+        }
+      } else {
+        System.err.println("Parikshan Server: performScrollBy - No SemanticsActions.ScrollBy action found in hierarchy of selector='${selector.raw}'")
+      }
     }
+    
+    // Yield the EDT queue sequentially to allow the launched coroutine and subsequent layout passes to complete
+    if (success) {
+      repeat(3) {
+        onEdt {
+          // yield EDT event loop cycle
+        }
+      }
+    }
+    
+    System.err.println("Parikshan Server: performScrollBy end, returning success=$success")
+    return success
+  }
 
   fun performDrag(
     fromX: Double,

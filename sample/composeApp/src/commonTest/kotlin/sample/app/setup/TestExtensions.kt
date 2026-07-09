@@ -265,57 +265,122 @@ suspend fun E2ETestScope.selectDateFromCalendar(day: Int, month: Int, year: Int)
 
 private suspend fun E2ETestScope.selectDateFromCalendarNative(day: Int, month: Int, year: Int) {
     val initialTree = getTree()
-    val headerNode = initialTree.find { it.text?.contains("20") == true && !it.text!!.contains(",") && (it.text!!.contains("selecting a year") || it.text!!.length < 20) }
-    val currentMonthYear = headerNode?.text?.let { sample.app.parseMonthYear(it) }
+    val dialog = initialTree.find { it.tag == "date_picker_dialog" } ?: throw AssertionError("DatePicker missing")
     
-    if (currentMonthYear != null) {
-        val (curMonth, curYear) = currentMonthYear
-        
-        if (curYear != year) {
-             click(Selector.Text(headerNode.text!!).atIndex(0)) 
-             delay(500)
-             val yearList = getTree().find { it.tag == "date_picker_year_list" || it.tag == "list" }
-             val container = yearList?.tag?.let { Selector.Tag(it) } ?: Selector.Tag("list")
+    var curMonth = 6
+    var curYear = 2026
+    val monthYearNode = initialTree.find { node ->
+      val text = node.text ?: ""
+      text.contains(Regex("20\\d{2}")) && 
+      (1..12).any { m -> text.contains(sample.app.getMonthName(m), ignoreCase = true) }
+    }
+    if (monthYearNode != null) {
+      val text = monthYearNode.text!!
+      val yearMatch = Regex("20\\d{2}").find(text)?.value?.toIntOrNull()
+      if (yearMatch != null) curYear = yearMatch
+      val monthMatch = (1..12).firstOrNull { m -> text.contains(sample.app.getMonthName(m), ignoreCase = true) }
+      if (monthMatch != null) curMonth = monthMatch
+    }
 
-             scrollUntilVisible(container, Selector.Text("$year"), if (year > curYear) ScrollDirection.Down else ScrollDirection.Up)
-             click(Selector.Text("$year"))
-             delay(500)
+    if (curYear != year) {
+        val selectYearNode = initialTree.find { it.text?.contains("selecting a year", ignoreCase = true) == true }
+          ?: throw AssertionError("Could not find year selection toggle button")
+        click(Selector.Text(selectYearNode.text!!))
+        delay(1500)
+        
+        val yearTargetText = "Navigate to year $year"
+        val target = Selector.Text(yearTargetText)
+        
+        scrollUntilVisible(Selector.Auto("Navigate to year"), target, if (year > curYear) ScrollDirection.Down else ScrollDirection.Up)
+        click(target.atIndex(-1))
+        delay(1500)
+        
+        clickAtStill(dialog.bounds.left + 20.0, dialog.bounds.top + 20.0)
+        delay(500)
+    }
+
+    var tries = 0
+    while (tries < 24) {
+        val currentTree = getTree()
+        var cMonth = 6
+        var cYear = 2026
+        val cMonthYearNode = currentTree.find { node ->
+          val text = node.text ?: ""
+          text.contains(Regex("20\\d{2}")) && 
+          (1..12).any { m -> text.contains(sample.app.getMonthName(m), ignoreCase = true) }
+        }
+        if (cMonthYearNode != null) {
+          val text = cMonthYearNode.text!!
+          val yearMatch = Regex("20\\d{2}").find(text)?.value?.toIntOrNull()
+          if (yearMatch != null) cYear = yearMatch
+          val monthMatch = (1..12).firstOrNull { m -> text.contains(sample.app.getMonthName(m), ignoreCase = true) }
+          if (monthMatch != null) cMonth = monthMatch
         }
         
-        var tries = 0
-        while (tries < 24) {
-            val updatedTree = getTree()
-            val updatedHeader = updatedTree.find { it.text?.contains("20") == true && !it.text!!.contains(",") && (it.text!!.contains("selecting a year") || it.text!!.length < 20) }
-            val (m, y) = sample.app.parseMonthYear(updatedHeader?.text ?: "") ?: break
-            if (m == month && y == year) break
-            
-            val totalTarget = year * 12 + month
-            val totalCurrent = y * 12 + m
-            val nextSelector = if (totalTarget > totalCurrent) Selector.Text("Next month") else Selector.Text("Previous month")
-            click(nextSelector.atIndex(0))
+        if (cMonth == month && cYear == year) break
+        
+        val nextSelector = if ((year * 12 + month) > (cYear * 12 + cMonth)) {
+            Selector.Auto("next month")
+        } else {
+            Selector.Auto("previous month")
+        }
+        click(nextSelector)
+        
+        var changed = false
+        val prevText = cMonthYearNode?.text ?: ""
+        for (i in 0 until 15) {
             delay(400)
-            tries++
+            val updatedTree = getTree()
+            val updatedNodeText = updatedTree.find { node ->
+              val text = node.text ?: ""
+              text.contains(Regex("20\\d{2}")) && 
+              (1..12).any { m -> text.contains(sample.app.getMonthName(m), ignoreCase = true) }
+            }?.text ?: ""
+            if (updatedNodeText != prevText && updatedNodeText.isNotEmpty()) {
+                changed = true
+                break
+            }
         }
+        if (!changed) break
+        tries++
     }
 
+    delay(1000)
     val finalTree = getTree()
-    var targetNode = finalTree.find { 
+    
+    val monthName = sample.app.getMonthName(month)
+    val dayNode = finalTree.find { 
         val text = it.text ?: ""
-        val parts = text.split(" ", ",")
-        parts.any { it == "$day" } && parts.any { it == "$year" } && parts.size >= 3
+        !text.contains("\n") &&
+        text.contains(monthName, ignoreCase = true) &&
+        text.contains(year.toString()) &&
+        text.split(Regex("[\\s,]+")).contains(day.toString())
     }
-    if (targetNode == null) {
-        targetNode = finalTree.filter { it.text == "$day" || it.text == day.toString().padStart(2, '0') }.lastOrNull()
-    }
-
-    if (targetNode != null) {
-        click(Selector.Text(targetNode.text!!).atIndex(-1))
+    
+    if (dayNode != null) {
+        click(Selector.Text(dayNode.text!!).atIndex(-1))
     } else {
-        throw AssertionError("Could not find day cell for $day")
+        val monHeader = finalTree.find { it.text == "Monday" } ?: throw AssertionError("Monday header missing for grid calibration")
+        val dayList = finalTree.find { it.text?.contains(",") == true && it.bounds.top > monHeader.bounds.top } ?: throw AssertionError("Day grid missing")
+        
+        val gridTop = monHeader.bounds.bottom
+        val startOffset = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+            .indexOfFirst { (dayList.text ?: "").split("\n").firstOrNull()?.contains(it, ignoreCase = true) == true }.coerceAtLeast(0)
+
+        val colW = (dayList.bounds.right - dayList.bounds.left) / 7.0
+        val absIdx = startOffset + (day - 1)
+        
+        clickAtStill(dayList.bounds.left + (absIdx % 7 + 0.5) * colW, gridTop + (absIdx / 7 + 0.5) * 48.0)
     }
     
     delay(500)
-    click(Selector.Tag("date_picker_ok_button").atIndex(0))
+    val okButton = finalTree.find { it.tag == "date_picker_ok_button" || it.text == "OK" }
+      ?: throw AssertionError("Could not find date picker OK button")
+    if (okButton.tag == "date_picker_ok_button") {
+        click(Selector.Tag("date_picker_ok_button").atIndex(0))
+    } else {
+        click(Selector.Text("OK").atIndex(-1))
+    }
 }
 
 /**

@@ -162,7 +162,9 @@ class DesktopDriver(
         addAll(appArgs)
       }
 
-    return ProcessBuilder(command)
+    val pb = ProcessBuilder(command)
+    pb.environment()["NSAppSleepDisabled"] = "YES"
+    return pb
       .redirectErrorStream(true)
       .redirectOutput(ProcessBuilder.Redirect.appendTo(logFile))
       .start()

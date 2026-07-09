@@ -86,7 +86,7 @@ private class DesktopBootstrapController(
           System.err.println("Parikshan: Server started on ${config.host}:${config.port}")
           
           if (isBackground) {
-              onEdt { window.toBack() }
+              onEdt { window.isAlwaysOnTop = true }
           }
           return
         }
@@ -115,7 +115,7 @@ private class DesktopBootstrapController(
           System.err.println("Parikshan: Applying background settings to window '${window.title}'")
           window.focusableWindowState = false
           window.setAutoRequestFocus(false)
-          window.toBack()
+          window.isAlwaysOnTop = true
         }
       }
     }

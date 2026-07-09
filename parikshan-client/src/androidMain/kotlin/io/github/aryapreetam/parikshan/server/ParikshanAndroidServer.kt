@@ -147,7 +147,7 @@ object ParikshanAndroidServer {
           if (command != null) {
             // SECURITY: Validate Token
             if (sessionToken.isNotEmpty() && command.token != sessionToken) {
-                println("[ParikshanAndroidServer] BLOCKED: Invalid session token")
+                println("[ParikshanAndroidServer] BLOCKED: Invalid session token. Expected: '$sessionToken', Got: '${command.token}'")
                 sendHttpResponse(output, 401, ProtocolJson.encodeResponse(Response.Error(command.id, "Unauthorized: Invalid Session Token")))
                 return
             }

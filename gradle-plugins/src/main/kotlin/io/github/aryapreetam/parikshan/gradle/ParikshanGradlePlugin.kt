@@ -585,6 +585,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
         dependsOn(androidPreflightTask, installTask, testInstallTask)
         doLast {
           val serial = ParikshanAndroidRecorder.resolveDeviceSerial(androidLogger, androidProjectDir, androidSerial)
+          ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", androidApplicationId).start().waitFor()
           ProcessBuilder("adb", "-s", serial, "forward", "tcp:9879", "tcp:9879").start().waitFor()
           val testPackage = "$androidApplicationId.test"
           androidLogger.lifecycle("Parikshan Android: Starting instrumentation...")
@@ -620,8 +621,55 @@ class ParikshanGradlePlugin : Plugin<Project> {
         }
       }
 
+      val manifestFile = desktopLaunchManifestFile
+      val wasmOutputDirVal = wasmOutputDir
+      val wasmPortFileVal = wasmPortFile
+      val extAppArgs = extension.appArgs
+      val discoveredE2eClasses = e2eTestClasses
+
+      val junitConsoleConfig = project.configurations.detachedConfiguration(
+        project.dependencies.create("org.junit.platform:junit-platform-console-standalone:1.10.2")
+      )
+
+      val targetAndroidAppId = androidApplicationId
+      val targetIosPort = iosPort
+
+      project.tasks.register<E2ETestTask>("e2eTest") {
+        group = "verification"
+        description = "Run E2E tests for multiple targets concurrently (e.g. desktop,wasm)"
+        
+        dependsOn(hostTestTask.get().testClassesDirs.buildDependencies)
+        dependsOn(installPlaywrightTask)
+        dependsOn(prepareWasmAssetsTask)
+        dependsOn(extension.appJarTaskName.get())
+        
+        hostTestClassesDirs.setFrom(hostTestTask.get().testClassesDirs)
+        hostTestClasspath.setFrom(hostTestTask.get().classpath)
+        junitConsoleJars.setFrom(junitConsoleConfig)
+        this.e2eTestClasses.set(project.provider { discoveredE2eClasses })
+        host.set(extension.host)
+        originalDesktopPort.set(extension.port)
+        originalWasmPort.set(extension.wasmServerPort)
+        
+        val appJarFileProvider = project.tasks.named<org.gradle.jvm.tasks.Jar>(extension.appJarTaskName.get())
+          .flatMap { it.archiveFile }
+        appJarFile.set(appJarFileProvider)
+        
+        this.desktopLaunchManifestFile.set(manifestFile)
+        this.wasmOutputDir.set(wasmOutputDirVal)
+        this.wasmPortFile.set(wasmPortFileVal)
+        this.appArgs.set(extAppArgs)
+        token.set(sessionToken)
+        this.title.set(extension.desktopWindowTitle)
+        buildDir.set(project.layout.buildDirectory)
+        projectRootDir.set(project.rootDir.absolutePath)
+        targetAndroidAppId?.let { this@register.androidApplicationId.set(it) }
+        this@register.iosPort.set(targetIosPort)
+        this@register.iosBundleId.set(getIosBundleId())
+      }
+
       project.tasks.configureEach {
-        val isE2eTask = name in setOf("e2eDesktopTest", "e2eWasmTest", "e2eIosTest", "e2eAndroidTest")
+        val isE2eTask = name in setOf("e2eDesktopTest", "e2eWasmTest", "e2eIosTest", "e2eAndroidTest", "e2eTest")
         if (isE2eTask) return@configureEach
 
         // Robustly find any task that has a test filter (Test, KotlinJsTest, KotlinNativeTest, etc.)
@@ -644,7 +692,7 @@ class ParikshanGradlePlugin : Plugin<Project> {
   }
 }
 
-private object ParikshanWasmServer {
+internal object ParikshanWasmServer {
     private var server: com.sun.net.httpserver.HttpServer? = null
     fun start(port: Int, root: File) {
         stop()
@@ -786,7 +834,7 @@ private object ParikshanAndroidRecorder {
   }
 }
 
-private object ParikshanDesktopProcess {
+internal object ParikshanDesktopProcess {
   private var process: Process? = null
   fun start(jar: File, token: String, logFile: File, manifestFile: File, appArgs: List<String>, host: String, port: Int, timeoutMs: Long, pollMs: Long, title: String?, background: Boolean) {
     stop(host = host, port = port, token = token, manifestFile = manifestFile)
@@ -812,7 +860,9 @@ private object ParikshanDesktopProcess {
         add("io.github.aryapreetam.parikshan.server.ParikshanDesktopLauncher")
         addAll(appArgs)
       }
-    val startedProcess = ProcessBuilder(command)
+    val pb = ProcessBuilder(command)
+    pb.environment()["NSAppSleepDisabled"] = "YES"
+    val startedProcess = pb
       .redirectErrorStream(true)
       .redirectOutput(logFile)
       .start()
@@ -959,6 +1009,16 @@ private fun Project.configureParikshanDependencies(isE2EActive: Boolean) {
       // Fallback for non-KMP or failed resolution
       if (configurations.findByName("jvmMainImplementation") != null) {
           addParikshanDependency("jvmMainImplementation", ":parikshan-server", "io.github.aryapreetam:parikshan-server:$pluginVersion")
+      }
+
+      val appProject = findAndroidAppProject()
+      if (appProject != null) {
+          appProject.configurations.configureEach {
+              if (name == "androidTestImplementation") {
+                  appProject.addParikshanDependency("androidTestImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client:$pluginVersion")
+                  appProject.addParikshanDependency("androidTestImplementation", "androidx.test:runner:1.6.2", "androidx.test:runner:1.6.2")
+              }
+          }
       }
   }
 }

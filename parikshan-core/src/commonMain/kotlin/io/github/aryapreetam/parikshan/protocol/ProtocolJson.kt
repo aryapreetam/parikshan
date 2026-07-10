@@ -3,6 +3,12 @@ package io.github.aryapreetam.parikshan.protocol
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
+import io.github.aryapreetam.parikshan.InternalParikshanApi
+
+/**
+ * @suppress
+ */
+@InternalParikshanApi
 object ProtocolJson {
   val instance: Json =
     Json {

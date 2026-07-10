@@ -10,6 +10,10 @@ import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
 import kotlin.random.Random
 
+/**
+ * @suppress
+ */
+@InternalParikshanApi
 interface TestDriver {
   val targetPlatform: String
   suspend fun send(command: Command): Response
@@ -615,6 +619,10 @@ class E2ETestScope internal constructor(
   }
 }
 
+/**
+ * @suppress
+ */
+@InternalParikshanApi
 suspend fun e2eTest(
   driver: TestDriver,
   config: E2ETestConfig = E2ETestConfig(),

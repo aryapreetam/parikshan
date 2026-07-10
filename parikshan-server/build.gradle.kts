@@ -37,3 +37,9 @@ mavenPublishing {
     description.set("Server library for Parikshan Compose Multiplatform E2E")
   }
 }
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+  compilerOptions {
+    freeCompilerArgs.add("-opt-in=io.github.aryapreetam.parikshan.InternalParikshanApi")
+  }
+}

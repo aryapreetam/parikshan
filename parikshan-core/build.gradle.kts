@@ -17,6 +17,9 @@ dokka {
 }
 
 kotlin {
+  sourceSets.all {
+    languageSettings.optIn("io.github.aryapreetam.parikshan.InternalParikshanApi")
+  }
   jvmToolchain(17)
   androidLibrary {
     namespace = "io.github.aryapreetam.parikshan.core"

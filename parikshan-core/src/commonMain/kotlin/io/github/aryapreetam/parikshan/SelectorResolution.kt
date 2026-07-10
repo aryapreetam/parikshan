@@ -14,6 +14,10 @@ data class ResolvedSelector(
   enum class MatchType { Tag, Text }
 }
 
+/**
+ * @suppress
+ */
+@InternalParikshanApi
 fun Selector.resolveNode(nodes: List<NodeSnapshot>, requireVisible: Boolean = true): ResolvedSelector {
   return when (this) {
     is Selector.Auto -> resolveAuto(nodes = nodes, requireVisible = requireVisible)

@@ -20,6 +20,37 @@ abstract class E2ETestTask : DefaultTask() {
   var targets: String = "desktop,wasm,android,ios"
 
   @get:Input
+  @get:Optional
+  @set:Option(option = "device", description = "Target device/emulator name or serial (convenience fallback)")
+  var device: String = ""
+
+  @get:Input
+  @get:Optional
+  @set:Option(option = "android-device", description = "Target Android device/emulator serial override")
+  var androidDevice: String = ""
+
+  @get:Input
+  @get:Optional
+  @set:Option(option = "ios-device", description = "Target iOS simulator name or UDID override")
+  var iosDevice: String = ""
+
+  @get:Input
+  @get:Optional
+  abstract val gradleAndroidSerial: Property<String>
+
+  @get:Input
+  @get:Optional
+  abstract val gradleIosDevice: Property<String>
+
+  @get:Input
+  @get:Optional
+  abstract val gradleDevice: Property<String>
+
+  @get:Input
+  @get:Optional
+  abstract val gradleSerial: Property<String>
+
+  @get:Input
   abstract val projectRootDir: Property<String>
 
   @get:Input
@@ -90,19 +121,19 @@ abstract class E2ETestTask : DefaultTask() {
   @TaskAction
   fun runOrchestratedTests() {
     val logger = logger
+    
+    // Clear stale test results from previous runs
+    val testResultsDir = File(buildDir.get().asFile, "test-results/e2eTest")
+    testResultsDir.deleteRecursively()
+    testResultsDir.mkdirs()
+
     val discoveredClasses = e2eTestClasses.get()
     
     val filteredClasses = if (testsPattern.isBlank()) {
       discoveredClasses
     } else {
-      val cleanPattern = testsPattern.trim().replace("*", ".*").replace("?", ".?")
-      val regex = Regex(cleanPattern, RegexOption.IGNORE_CASE)
       discoveredClasses.filter { clazz ->
-          clazz.contains(regex) || clazz.contains(testsPattern) || 
-          (testsPattern.contains('.') && (
-              clazz.startsWith(testsPattern.substringBeforeLast('.')) || 
-              Regex(testsPattern.substringBeforeLast('.').trim().replace("*", ".*").replace("?", ".?"), RegexOption.IGNORE_CASE).containsMatchIn(clazz)
-          ))
+        E2EFilterMatcher.isClassMatched(clazz, testsPattern)
       }
     }
     
@@ -117,6 +148,62 @@ abstract class E2ETestTask : DefaultTask() {
     if (activeTargets.isEmpty()) {
       throw GradleException("No execution targets specified in --targets")
     }
+
+    val hasAndroid = activeTargets.contains("android")
+    val hasIos = activeTargets.contains("ios")
+
+    var resolvedAndroidSerial: String? = null
+    var resolvedIosDevice: String? = null
+
+    if (androidDevice.isNotBlank()) {
+      resolvedAndroidSerial = androidDevice.trim()
+    }
+    if (iosDevice.isNotBlank()) {
+      resolvedIosDevice = iosDevice.trim()
+    }
+
+    if (device.isNotBlank()) {
+      val devTrimmed = device.trim()
+      if (hasAndroid && hasIos) {
+        val matchesAndroid = getConnectedAndroidSerials().contains(devTrimmed)
+        val matchesIos = getAvailableIosSimulators().any { it.name == devTrimmed || it.udid == devTrimmed }
+
+        if (matchesAndroid && matchesIos) {
+          throw GradleException("Ambiguous target device '$devTrimmed': matches both a connected Android device serial and an available iOS simulator name/UDID. Please use explicit --android-device and --ios-device options instead.")
+        } else if (matchesAndroid) {
+          if (resolvedAndroidSerial == null) {
+            resolvedAndroidSerial = devTrimmed
+          }
+        } else if (matchesIos) {
+          if (resolvedIosDevice == null) {
+            resolvedIosDevice = devTrimmed
+          }
+        } else {
+          throw GradleException("Target device '$devTrimmed' specified via --device matches neither a connected Android device nor an available iOS simulator. Please check connected/available devices or use explicit --android-device and --ios-device options.")
+        }
+      } else if (hasAndroid) {
+        if (resolvedAndroidSerial == null) {
+          resolvedAndroidSerial = devTrimmed
+        }
+      } else if (hasIos) {
+        if (resolvedIosDevice == null) {
+          resolvedIosDevice = devTrimmed
+        }
+      }
+    }
+
+    val finalAndroidSerial = resolvedAndroidSerial
+      ?: gradleDevice.orNull?.takeIf { it.isNotBlank() }
+      ?: gradleSerial.orNull?.takeIf { it.isNotBlank() }
+      ?: gradleAndroidSerial.orNull?.takeIf { it.isNotBlank() }
+      ?: System.getenv("PARIKSHAN_ANDROID_SERIAL")?.takeIf { it.isNotBlank() }
+
+    val finalIosDevice = resolvedIosDevice
+      ?: gradleDevice.orNull?.takeIf { it.isNotBlank() }
+      ?: gradleSerial.orNull?.takeIf { it.isNotBlank() }
+      ?: gradleIosDevice.orNull?.takeIf { it.isNotBlank() }
+      ?: System.getenv("PARIKSHAN_IOS_DEVICE")?.takeIf { it.isNotBlank() }
+      ?: "iPhone 16"
 
     val logDir = File(buildDir.get().asFile, "parikshan/logs")
     logDir.mkdirs()
@@ -141,7 +228,7 @@ abstract class E2ETestTask : DefaultTask() {
     activeTargets.forEach { target ->
       val future = executor.submit<TargetResult> {
         try {
-          executeTarget(target, filteredClasses, activeProcesses)
+          executeTarget(target, filteredClasses, activeProcesses, finalAndroidSerial, finalIosDevice)
         } catch (e: Exception) {
           TargetResult(target, false, e.message ?: "Execution failed")
         }
@@ -173,7 +260,13 @@ abstract class E2ETestTask : DefaultTask() {
 
   private data class TargetResult(val target: String, val success: Boolean, val message: String)
 
-  private fun executeTarget(target: String, classes: List<String>, activeProcesses: MutableList<Process>): TargetResult {
+  private fun executeTarget(
+    target: String,
+    classes: List<String>,
+    activeProcesses: MutableList<Process>,
+    finalAndroidSerial: String?,
+    finalIosDevice: String
+  ): TargetResult {
     val logger = logger
     logger.lifecycle("Parikshan [$target]: Starting target E2E execution...")
 
@@ -268,21 +361,25 @@ abstract class E2ETestTask : DefaultTask() {
       }
 
       "android" -> {
-        if (!isAndroidDeviceOnline()) {
-          val isExplicit = targets.split(",").map { it.trim().lowercase() }.contains("android")
-          if (isExplicit && targets != "desktop,wasm,android,ios") {
-            return TargetResult("android", false, "Android target requested but no online device was found.")
-          } else {
-            logger.lifecycle("Parikshan: Skipping target 'android' because no active emulator or device was detected.")
-            return TargetResult("android", true, "Skipped (no device detected)")
-          }
+        val isExplicit = targets.split(",").map { it.trim().lowercase() }.contains("android")
+        val isAndroidE2EExplicit = isExplicit && targets != "desktop,wasm,android,ios"
+        val hasAndroidDeviceSpecified = androidDevice.isNotBlank() || device.isNotBlank() || gradleAndroidSerial.orNull?.isNotBlank() == true || gradleDevice.orNull?.isNotBlank() == true || gradleSerial.orNull?.isNotBlank() == true
+        val shouldExecuteAndroid = isAndroidE2EExplicit || hasAndroidDeviceSpecified || isAndroidDeviceOnline(finalAndroidSerial)
+
+        if (!shouldExecuteAndroid) {
+          logger.lifecycle("Parikshan: Skipping target 'android' because no active emulator or device was detected.")
+          return TargetResult("android", true, "Skipped (no device detected)")
         }
 
         logger.lifecycle("Parikshan [android]: Device detected. Starting E2E execution...")
         val gradlew = getGradlewExecutable(File(projectRootDir.get()))
         
         // 1. Start App
-        val startProcess = ProcessBuilder(gradlew, ":sample:composeApp:startParikshanAndroidApp", "-Pparikshan.token=${token.get()}", "-Pparikshan.e2e.active=true").apply {
+        val startArgs = mutableListOf(gradlew, ":sample:composeApp:startParikshanAndroidApp", "-Pparikshan.token=${token.get()}", "-Pparikshan.e2e.active=true")
+        if (!finalAndroidSerial.isNullOrBlank()) {
+          startArgs.add("-Pparikshan.android.serial=$finalAndroidSerial")
+        }
+        val startProcess = ProcessBuilder(startArgs).apply {
           cleanXcodeEnv(this)
           redirectErrorStream(true)
           val logF = File(buildDir.get().asFile, "parikshan/logs/android-start.log")
@@ -298,15 +395,19 @@ abstract class E2ETestTask : DefaultTask() {
         var testFailureMessage: String? = null
         classes.forEach { testClass ->
           logger.lifecycle("Parikshan [android]: Running $testClass...")
+          val testSystemProps = mutableMapOf(
+            "parikshan.target" to "android",
+            "parikshan.host" to "127.0.0.1",
+            "parikshan.port" to "9879",
+            "parikshan.token" to token.get()
+          )
+          if (!finalAndroidSerial.isNullOrBlank()) {
+            testSystemProps["parikshan.android.serial"] = finalAndroidSerial
+          }
           val exitCode = spawnTestJvm(
             target = "android",
             testClass = testClass,
-            systemProperties = mapOf(
-              "parikshan.target" to "android",
-              "parikshan.host" to "127.0.0.1",
-              "parikshan.port" to "9879",
-              "parikshan.token" to token.get()
-            ),
+            systemProperties = testSystemProps,
             activeProcesses = activeProcesses
           )
           if (exitCode != 0) {
@@ -316,7 +417,11 @@ abstract class E2ETestTask : DefaultTask() {
         }
 
         // 3. Stop App
-        val stopProcess = ProcessBuilder(gradlew, ":sample:composeApp:stopParikshanAndroidApp").apply {
+        val stopArgs = mutableListOf(gradlew, ":sample:composeApp:stopParikshanAndroidApp")
+        if (!finalAndroidSerial.isNullOrBlank()) {
+          stopArgs.add("-Pparikshan.android.serial=$finalAndroidSerial")
+        }
+        val stopProcess = ProcessBuilder(stopArgs).apply {
           cleanXcodeEnv(this)
         }.start()
         stopProcess.waitFor()
@@ -328,24 +433,30 @@ abstract class E2ETestTask : DefaultTask() {
       }
 
       "ios" -> {
-        if (!isIosSimulatorBooted()) {
-          val isExplicit = targets.split(",").map { it.trim().lowercase() }.contains("ios")
-          if (isExplicit && targets != "desktop,wasm,android,ios") {
-            return TargetResult("ios", false, "iOS target requested but no booted simulator was found.")
-          } else {
-            logger.lifecycle("Parikshan: Skipping target 'ios' because no booted iOS simulator was detected.")
-            return TargetResult("ios", true, "Skipped (no booted simulator detected)")
-          }
+        val isExplicit = targets.split(",").map { it.trim().lowercase() }.contains("ios")
+        val isIosE2EExplicit = isExplicit && targets != "desktop,wasm,android,ios"
+        val hasIosDeviceSpecified = iosDevice.isNotBlank() || device.isNotBlank() || gradleIosDevice.orNull?.isNotBlank() == true || gradleDevice.orNull?.isNotBlank() == true || gradleSerial.orNull?.isNotBlank() == true
+        val shouldExecuteIos = isIosE2EExplicit || hasIosDeviceSpecified || isIosSimulatorBooted(finalIosDevice)
+
+        if (!shouldExecuteIos) {
+          logger.lifecycle("Parikshan: Skipping target 'ios' because no booted iOS simulator was detected and no explicit device was targeted.")
+          return TargetResult("ios", true, "Skipped (no device detected)")
         }
 
-        val udid = getBootedIosSimulatorUdid() ?: ""
+        val udid = getIosSimulatorUdid(finalIosDevice) ?: getBootedIosSimulatorUdid() ?: ""
         val bundleId = iosBundleId.getOrElse("")
 
-        logger.lifecycle("Parikshan [ios]: Booted simulator detected ($udid). Starting E2E execution...")
+        logger.lifecycle("Parikshan [ios]: Simulator target: '$finalIosDevice' ($udid). Starting E2E execution...")
         val gradlew = getGradlewExecutable(File(projectRootDir.get()))
         
         // 1. Start App
-        val startProcess = ProcessBuilder(gradlew, ":sample:composeApp:startIosApp", "-Pparikshan.token=${token.get()}", "-Pparikshan.e2e.active=true").apply {
+        val startProcess = ProcessBuilder(
+          gradlew, 
+          ":sample:composeApp:startIosApp", 
+          "-Pparikshan.token=${token.get()}", 
+          "-Pparikshan.e2e.active=true",
+          "-Pparikshan.ios.device=$finalIosDevice"
+        ).apply {
           cleanXcodeEnv(this)
           redirectErrorStream(true)
           val logF = File(buildDir.get().asFile, "parikshan/logs/ios-start.log")
@@ -370,7 +481,8 @@ abstract class E2ETestTask : DefaultTask() {
               "parikshan.port" to iosPort.get().toString(),
               "parikshan.token" to token.get(),
               "parikshan.ios.bundleId" to bundleId,
-              "parikshan.ios.udid" to udid
+              "parikshan.ios.udid" to udid,
+              "parikshan.ios.device" to finalIosDevice
             ),
             activeProcesses = activeProcesses
           )
@@ -381,7 +493,11 @@ abstract class E2ETestTask : DefaultTask() {
         }
 
         // 3. Stop App
-        val stopProcess = ProcessBuilder(gradlew, ":sample:composeApp:stopIosApp").apply {
+        val stopProcess = ProcessBuilder(
+          gradlew, 
+          ":sample:composeApp:stopIosApp",
+          "-Pparikshan.ios.device=$finalIosDevice"
+        ).apply {
           cleanXcodeEnv(this)
         }.start()
         stopProcess.waitFor()
@@ -398,7 +514,9 @@ abstract class E2ETestTask : DefaultTask() {
     }
   }
 
-  private fun isAndroidDeviceOnline(): Boolean {
+  private data class IosSim(val name: String, val udid: String, val isBooted: Boolean)
+
+  private fun getConnectedAndroidSerials(): List<String> {
     return try {
       val process = ProcessBuilder("adb", "devices").start()
       val output = process.inputStream.bufferedReader().readText()
@@ -406,7 +524,51 @@ abstract class E2ETestTask : DefaultTask() {
       output.lineSequence()
         .drop(1)
         .map { it.trim() }
-        .any { it.isNotEmpty() && (it.contains("device") && !it.contains("authorized")) }
+        .filter { it.isNotEmpty() }
+        .mapNotNull { line ->
+          val parts = line.split(Regex("\\s+"))
+          if (parts.size >= 2 && parts[1] == "device") parts[0] else null
+        }
+        .toList()
+    } catch (_: Exception) {
+      emptyList()
+    }
+  }
+
+  private fun getAvailableIosSimulators(): List<IosSim> {
+    return try {
+      val process = ProcessBuilder("xcrun", "simctl", "list", "devices", "available").start()
+      val output = process.inputStream.bufferedReader().readText()
+      process.waitFor()
+      val sims = mutableListOf<IosSim>()
+      output.lineSequence().forEach { line ->
+        if (line.contains("(")) {
+          val name = line.substringBefore("(").trim()
+          val udid = line.substringAfter("(").substringBefore(")")
+          val state = line.substringAfterLast("(").substringBefore(")")
+          if (name.isNotEmpty() && udid.isNotEmpty()) {
+            sims += IosSim(name, udid, state.contains("Booted", ignoreCase = true))
+          }
+        }
+      }
+      sims
+    } catch (_: Exception) {
+      emptyList()
+    }
+  }
+
+  private fun isAndroidDeviceOnline(targetSerial: String? = null): Boolean {
+    return try {
+      val process = ProcessBuilder("adb", "devices").start()
+      val output = process.inputStream.bufferedReader().readText()
+      process.waitFor()
+      output.lineSequence()
+        .drop(1)
+        .map { it.trim() }
+        .any { line ->
+          line.isNotEmpty() && (line.contains("device") && !line.contains("authorized")) &&
+            (targetSerial == null || line.startsWith(targetSerial))
+        }
     } catch (_: Exception) {
       false
     }
@@ -423,6 +585,23 @@ abstract class E2ETestTask : DefaultTask() {
     }
   }
 
+  private fun isIosSimulatorBooted(requested: String): Boolean {
+    return try {
+      val process = ProcessBuilder("xcrun", "simctl", "list", "devices").start()
+      val output = process.inputStream.bufferedReader().readText()
+      process.waitFor()
+      output.lineSequence()
+        .filter { it.contains("(Booted)") }
+        .any { line ->
+          val name = line.substringBefore("(").trim()
+          val udid = line.substringAfter("(").substringBefore(")")
+          requested == name || requested == udid
+        }
+    } catch (_: Exception) {
+      false
+    }
+  }
+
   private fun getBootedIosSimulatorUdid(): String? {
     return try {
       val process = ProcessBuilder("xcrun", "simctl", "list", "devices").start()
@@ -434,6 +613,27 @@ abstract class E2ETestTask : DefaultTask() {
           val regex = Regex("[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}")
           regex.find(line)?.value
         }
+    } catch (_: Exception) {
+      null
+    }
+  }
+
+  private fun getIosSimulatorUdid(requested: String): String? {
+    return try {
+      val process = ProcessBuilder("xcrun", "simctl", "list", "devices", "available").start()
+      val output = process.inputStream.bufferedReader().readText()
+      process.waitFor()
+      var udid: String? = null
+      output.lineSequence().forEach { line ->
+        if (line.contains("(")) {
+          val name = line.substringBefore("(").trim()
+          val currentUdid = line.substringAfter("(").substringBefore(")")
+          if (currentUdid.isNotEmpty() && (requested == name || requested == currentUdid)) {
+            udid = currentUdid
+          }
+        }
+      }
+      udid
     } catch (_: Exception) {
       null
     }
@@ -604,13 +804,22 @@ abstract class E2ETestTask : DefaultTask() {
     }
     val detail = if (totalFound > 0) {
       if (success) {
-        "All $totalSuccessful tests passed."
+        if (totalSuccessful == 1) {
+          "1 test passed."
+        } else {
+          "All $totalSuccessful tests passed."
+        }
       } else {
-        "$totalSuccessful/$totalFound tests passed ($totalFailed failed)."
+        val testWord = if (totalFound == 1) "test" else "tests"
+        "$totalSuccessful/$totalFound $testWord passed ($totalFailed failed)."
       }
     } else {
       if (success) {
-        "All ${classes.size} test classes executed successfully."
+        if (classes.size == 1) {
+          "1 test class executed successfully."
+        } else {
+          "All ${classes.size} test classes executed successfully."
+        }
       } else {
         failureMessage ?: "Test execution failed."
       }

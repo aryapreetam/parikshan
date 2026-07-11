@@ -1,0 +1,5 @@
+/* Font overrides for code elements */
+code, kbd, pre, .md-typeset pre code {
+    font-family: "JetBrains Mono", "Monaco", "Courier New", monospace !important;
+}
+

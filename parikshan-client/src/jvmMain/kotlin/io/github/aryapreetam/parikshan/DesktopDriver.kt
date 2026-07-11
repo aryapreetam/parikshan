@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
 /**
  * JVM-side driver that talks to the Parikshan server running inside a Desktop app.
  */
-class DesktopDriver(
+internal class DesktopDriver(
   private val host: String = "127.0.0.1",
   private val port: Int = 9877,
   private val sessionToken: String = System.getProperty("parikshan.token") ?: ""

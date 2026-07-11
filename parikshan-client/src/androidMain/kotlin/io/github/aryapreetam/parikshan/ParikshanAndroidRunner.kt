@@ -14,6 +14,8 @@ import org.junit.runner.RunWith
  * The Gradle plugin will execute this test class via `adb shell am instrument`.
  * It launches the user's default app activity, starts the in-app HTTP server,
  * and passes the ComposeTestRule to it so it can execute remote E2E commands.
+ *
+ * @suppress
  */
 @RunWith(AndroidJUnit4::class)
 class ParikshanAndroidRunner {

@@ -4,15 +4,6 @@ plugins {
   alias(libs.plugins.compose)
   alias(libs.plugins.compose.compiler)
   id("parikshan.publishing")
-  alias(libs.plugins.dokka)
-}
-
-dokka {
-  moduleName.set("parikshan-server")
-  dokkaSourceSets.configureEach {
-    includes.from("src/main/kotlin/Module.md")
-    includes.from("src/main/kotlin/io/github/aryapreetam/parikshan/server/package.md")
-  }
 }
 
 kotlin {

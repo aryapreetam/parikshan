@@ -1,4 +1,5 @@
-name: Publish Multiplatform Release
+# Publish Multiplatform Release
+name: Release
 
 on:
   push:
@@ -187,49 +188,17 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      # 1. Build Site Root (Docsify from README)
-      - name: Prepare Site Root
+      # 1. Build Site Root (MkDocs Material)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install MkDocs Material
         run: |
-          mkdir -p site
-          cat > site/index.html <<'EOF'
-          <!DOCTYPE html>
-          <html>
-          <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>parikshan</title>
-          <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify-themeable@0/dist/css/theme-simple.css">
-          </head>
-          <body>
-          <div id="app"></div>
-          <script type="module">
-          import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-          mermaid.initialize({ startOnLoad: false, theme: 'default' });
-          window.$docsify = {
-            name: 'parikshan',
-            repo: 'https://github.com/aryapreetam/parikshan',
-            homepage: 'README.MD',
-            loadSidebar: false,
-            loadNavbar: false,
-            coverpage: false,
-            plugins: [
-              function(hook, vm) {
-                hook.doneEach(function() {
-                  mermaid.run({ querySelector: '.mermaid' });
-                });
-              }
-            ]
-          }
-          </script>
-          <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/docsify.min.js"></script>
-          <script src="https://cdn.jsdelivr.net/npm/docsify-themeable@0"></script>
-          </body>
-          </html>
-          EOF
-          cp README.MD site/
-          cp CONTRIBUTING.md site/
-          cp -r readme_images site/ || true
-          cp -r docs site/ || true
+          python -m pip install --upgrade pip
+          pip install mkdocs-material
+      - name: Build MkDocs Site
+        run: mkdocs build --clean
 
       # 2. Add API Reference (Dokka)
       - name: Generate API Docs

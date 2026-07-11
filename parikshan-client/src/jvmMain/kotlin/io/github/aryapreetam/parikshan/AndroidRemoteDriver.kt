@@ -13,7 +13,7 @@ import java.net.URI
  * running inside the real Android app on the emulator/device.
  * Uses HTTP POST over an adb forwarded port (e.g. 9879).
  */
-class AndroidRemoteDriver private constructor(
+internal class AndroidRemoteDriver private constructor(
   private val baseUrl: String,
   private val sessionToken: String = System.getProperty("parikshan.token") ?: ""
 ) : TestDriver {

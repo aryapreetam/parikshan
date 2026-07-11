@@ -12,7 +12,7 @@ import java.net.URI
 /**
  * JVM-side driver that talks to the Parikshan server running inside the iOS app.
  */
-class IosRemoteDriver private constructor(
+internal class IosRemoteDriver private constructor(
   private val baseUrl: String,
   private val sessionToken: String = System.getProperty("parikshan.token") ?: ""
 ) : TestDriver {

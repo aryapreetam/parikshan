@@ -29,7 +29,7 @@ import kotlinx.serialization.builtins.ListSerializer
  * JVM-side driver for Compose/Wasm. It opens the app in Playwright and invokes the
  * in-browser Parikshan bridge installed by Modifier.testTag instrumentation.
  */
-class WasmDriver private constructor(
+internal class WasmDriver private constructor(
   private val sessionToken: String = System.getProperty("parikshan.token") ?: ""
 ) : TestDriver {
   override val targetPlatform: String = "wasm"

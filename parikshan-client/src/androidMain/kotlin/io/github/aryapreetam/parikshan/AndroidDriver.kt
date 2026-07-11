@@ -33,7 +33,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.runBlocking
 
 @OptIn(ExperimentalTestApi::class)
-class AndroidDriver private constructor(
+internal class AndroidDriver private constructor(
   private val composeUiTest: AndroidComposeTestRule<*, *>
 ) : TestDriver {
   override val targetPlatform: String = "android"
@@ -232,15 +232,7 @@ class AndroidDriver private constructor(
         val node = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${command.selector?.raw ?: command.tag}'")
         val target = scrollTargetFor(node) ?: node
-        val bridgeHandled =
-          ParikshanTagBridgeHooks.performScroll(
-            tag = command.tag, // keep fallback
-            direction = command.direction,
-            viewportHeightPx = target.boundsInRoot.height
-          )
-        if (!bridgeHandled) {
-          performDeviceSwipe(target, command.direction)
-        }
+        performDeviceSwipe(target, command.direction)
         composeUiTest.waitForIdle()
         Response.Ok(command.id)
       }

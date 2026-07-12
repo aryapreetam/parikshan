@@ -8,7 +8,7 @@
 package io.github.aryapreetam.parikshan
 
 import androidx.compose.runtime.*
-import io.github.aryapreetam.parikshan.server.ParikshanIosServer
+import io.github.aryapreetam.parikshan.server.IosServer
 import io.github.aryapreetam.parikshan.server.ComposeRootRegistry
 import io.github.aryapreetam.parikshan.server.IosSemanticsAccessor
 import platform.UIKit.*
@@ -27,7 +27,7 @@ import platform.Foundation.*
 
 @Suppress("FunctionName")
 fun ParikshanUIViewController(content: @Composable () -> Unit): UIViewController {
-    ParikshanIosServer.startIfNeeded()
+    IosServer.startIfNeeded()
     return ParikshanTestViewController(content)
 }
 

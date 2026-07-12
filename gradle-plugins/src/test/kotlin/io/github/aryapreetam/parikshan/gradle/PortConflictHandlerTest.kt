@@ -17,20 +17,20 @@ class PortConflictHandlerTest {
     @Test
     fun testIsPortAvailable() {
         val port = findFreeLocalPort()
-        assertTrue(ParikshanPortConflictHandler.isPortAvailable("127.0.0.1", port), "Port $port should be available")
+        assertTrue(PortConflictHandler.isPortAvailable("127.0.0.1", port), "Port $port should be available")
 
         ServerSocket(port, 50, java.net.InetAddress.getByName("127.0.0.1")).use {
-            assertFalse(ParikshanPortConflictHandler.isPortAvailable("127.0.0.1", port), "Port $port should be busy")
+            assertFalse(PortConflictHandler.isPortAvailable("127.0.0.1", port), "Port $port should be busy")
         }
 
-        assertTrue(ParikshanPortConflictHandler.isPortAvailable("127.0.0.1", port), "Port $port should be available again after closing ServerSocket")
+        assertTrue(PortConflictHandler.isPortAvailable("127.0.0.1", port), "Port $port should be available again after closing ServerSocket")
     }
 
     @Test
     fun testFindPidUsingPort() {
         val port = findFreeLocalPort()
         ServerSocket(port, 50, java.net.InetAddress.getByName("127.0.0.1")).use {
-            val pid = ParikshanPortConflictHandler.findPidUsingPort(port, excludeCurrentPid = false)
+            val pid = PortConflictHandler.findPidUsingPort(port, excludeCurrentPid = false)
             assertNotNull(pid, "PID should not be null when server is listening on port $port")
             assertEquals(ProcessHandle.current().pid(), pid, "Resolved PID should match the current process PID")
         }
@@ -49,7 +49,7 @@ class PortConflictHandlerTest {
         mockServer.start()
 
         try {
-            assertTrue(ParikshanPortConflictHandler.isStaleParikshanServer("127.0.0.1", port), "Should detect fake stale server")
+            assertTrue(PortConflictHandler.isStaleTestServer("127.0.0.1", port), "Should detect fake stale server")
         } finally {
             mockServer.stop(0)
         }
@@ -68,7 +68,7 @@ class PortConflictHandlerTest {
         mockServer.start()
 
         try {
-            assertFalse(ParikshanPortConflictHandler.isStaleParikshanServer("127.0.0.1", port), "Should not flag generic server as stale Parikshan instance")
+            assertFalse(PortConflictHandler.isStaleTestServer("127.0.0.1", port), "Should not flag generic server as stale Parikshan instance")
         } finally {
             mockServer.stop(0)
         }
@@ -77,7 +77,7 @@ class PortConflictHandlerTest {
     @Test
     fun testResolvePortAndCleanStaleWithAvailablePort() {
         val port = findFreeLocalPort()
-        val resolved = ParikshanPortConflictHandler.resolvePortAndCleanStale(port, "127.0.0.1", mockLogger)
+        val resolved = PortConflictHandler.resolvePortAndCleanStale(port, "127.0.0.1", mockLogger)
         assertEquals(port, resolved)
     }
 
@@ -85,9 +85,9 @@ class PortConflictHandlerTest {
     fun testResolvePortAndCleanStaleWithDynamicFallback() {
         val busyPort = findFreeLocalPort()
         ServerSocket(busyPort, 50, java.net.InetAddress.getByName("127.0.0.1")).use {
-            val resolved = ParikshanPortConflictHandler.resolvePortAndCleanStale(busyPort, "127.0.0.1", mockLogger)
+            val resolved = PortConflictHandler.resolvePortAndCleanStale(busyPort, "127.0.0.1", mockLogger)
             assertTrue(resolved != busyPort, "Resolved port $resolved should not match busy port $busyPort")
-            assertTrue(ParikshanPortConflictHandler.isPortAvailable("127.0.0.1", resolved), "Resolved port $resolved should be free")
+            assertTrue(PortConflictHandler.isPortAvailable("127.0.0.1", resolved), "Resolved port $resolved should be free")
         }
     }
 
@@ -107,16 +107,16 @@ class PortConflictHandlerTest {
             var serverStarted = false
             for (i in 1..50) {
                 Thread.sleep(100)
-                if (!ParikshanPortConflictHandler.isPortAvailable("127.0.0.1", port)) {
+                if (!PortConflictHandler.isPortAvailable("127.0.0.1", port)) {
                     serverStarted = true
                     break
                 }
             }
             assertTrue(serverStarted, "Mock server process should have started and bound to port $port")
 
-            val resolved = ParikshanPortConflictHandler.resolvePortAndCleanStale(port, "127.0.0.1", mockLogger)
+            val resolved = PortConflictHandler.resolvePortAndCleanStale(port, "127.0.0.1", mockLogger)
             assertEquals(port, resolved, "Should resolve to the same port after auto-killing stale server")
-            assertTrue(ParikshanPortConflictHandler.isPortAvailable("127.0.0.1", port), "Port $port should be free and available again")
+            assertTrue(PortConflictHandler.isPortAvailable("127.0.0.1", port), "Port $port should be free and available again")
         } finally {
             if (process.isAlive) {
                 process.destroyForcibly()

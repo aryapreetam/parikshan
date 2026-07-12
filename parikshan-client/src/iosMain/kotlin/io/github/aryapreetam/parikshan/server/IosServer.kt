@@ -63,9 +63,9 @@ import kotlin.native.concurrent.Worker
 // --- DEFINITIVE EAGER INITIALIZATION ---
 // This top-level property forces the server to start as soon as the Kotlin framework is loaded by the iOS app.
 @Suppress("unused")
-private val parikshanEagerBoot = ParikshanIosServer.startIfNeeded()
+private val parikshanEagerBoot = IosServer.startIfNeeded()
 
-object ParikshanIosServer {
+object IosServer {
   private val running = AtomicInt(0)
   private val serverFd = AtomicInt(-1)
   private var sessionToken: String = ""
@@ -73,7 +73,7 @@ object ParikshanIosServer {
   fun startIfNeeded(port: Int = 9878) {
     if (!running.compareAndSet(0, 1)) return
 
-    println("[ParikshanIosServer] BOOTING on port $port")
+    println("[IosServer] BOOTING on port $port")
     val worker = Worker.start(name = "parikshan-ios-server")
     worker.executeAfter(0L) {
       // Resolve token from environment
@@ -81,7 +81,7 @@ object ParikshanIosServer {
       if (tokenC != null) {
         sessionToken = platform.Foundation.NSString.stringWithUTF8String(tokenC) ?: ""
       }
-      println("[ParikshanIosServer] Server starting with token: ${sessionToken.take(8)}...")
+      println("[IosServer] Server starting with token: ${sessionToken.take(8)}...")
       runServer(port)
     }
   }
@@ -99,7 +99,7 @@ object ParikshanIosServer {
     memScoped {
       val fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
       if (fd < 0) {
-        println("[ParikshanIosServer] Failed to create socket")
+        println("[IosServer] Failed to create socket")
         running.value = 0
         return
       }
@@ -116,7 +116,7 @@ object ParikshanIosServer {
       addr.sin_addr.s_addr = 0u // INADDR_ANY
 
       if (bind(fd, addr.ptr.reinterpret(), sizeOf<sockaddr_in>().convert()) < 0) {
-        println("[ParikshanIosServer] Failed to bind to port $port")
+        println("[IosServer] Failed to bind to port $port")
         close(fd)
         running.value = 0
         return
@@ -128,7 +128,7 @@ object ParikshanIosServer {
         return
       }
 
-      println("[ParikshanIosServer] Securely listening on port $port")
+      println("[IosServer] Securely listening on port $port")
 
       while (running.value == 1) {
         val clientFd = accept(fd, null, null)
@@ -190,7 +190,7 @@ object ParikshanIosServer {
 
         // SECURITY: Token validation
         if (sessionToken.isNotEmpty() && command.token != sessionToken) {
-            println("[ParikshanIosServer] ACCESS DENIED: Invalid token")
+            println("[IosServer] ACCESS DENIED: Invalid token")
             sendHttpResponse(clientFd, 401, ProtocolJson.encodeResponse(Response.Error(command.id, "Unauthorized")))
             break
         }

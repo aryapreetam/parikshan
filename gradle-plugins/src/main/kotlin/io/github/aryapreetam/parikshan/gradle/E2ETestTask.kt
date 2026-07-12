@@ -218,7 +218,7 @@ abstract class E2ETestTask : DefaultTask() {
           try { it.destroy() } catch (_: Exception) {}
         }
       }
-      try { ParikshanWasmServer.stop() } catch (_: Exception) {}
+      try { WasmServer.stop() } catch (_: Exception) {}
     }
     Runtime.getRuntime().addShutdownHook(shutdownHook)
 
@@ -227,10 +227,14 @@ abstract class E2ETestTask : DefaultTask() {
 
     activeTargets.forEach { target ->
       val future = executor.submit<TargetResult> {
+        val targetStartTime = System.currentTimeMillis()
         try {
-          executeTarget(target, filteredClasses, activeProcesses, finalAndroidSerial, finalIosDevice)
+          val result = executeTarget(target, filteredClasses, activeProcesses, finalAndroidSerial, finalIosDevice)
+          val duration = System.currentTimeMillis() - targetStartTime
+          result.copy(durationMs = duration)
         } catch (e: Exception) {
-          TargetResult(target, false, e.message ?: "Execution failed")
+          val duration = System.currentTimeMillis() - targetStartTime
+          TargetResult(target, false, e.message ?: "Execution failed", duration)
         }
       }
       futures.add(future)
@@ -248,7 +252,8 @@ abstract class E2ETestTask : DefaultTask() {
     logger.lifecycle("========================================")
     results.forEach { res ->
       val status = if (res.success) "SUCCESS" else "FAILED"
-      logger.lifecycle("[${res.target.uppercase()}] $status - ${res.message}")
+      val durationStr = formatDuration(res.durationMs)
+      logger.lifecycle("[${res.target.uppercase()}] $status - ${res.message} ($durationStr)")
     }
     logger.lifecycle("========================================\n")
 
@@ -258,7 +263,12 @@ abstract class E2ETestTask : DefaultTask() {
     }
   }
 
-  private data class TargetResult(val target: String, val success: Boolean, val message: String)
+  private data class TargetResult(
+    val target: String,
+    val success: Boolean,
+    val message: String,
+    val durationMs: Long = 0L
+  )
 
   private fun executeTarget(
     target: String,
@@ -272,12 +282,12 @@ abstract class E2ETestTask : DefaultTask() {
 
     when (target) {
       "desktop" -> {
-        val resolvedPort = ParikshanPortConflictHandler.resolvePortAndCleanStale(
+        val resolvedPort = PortConflictHandler.resolvePortAndCleanStale(
           originalPort = originalDesktopPort.get(),
           host = host.get(),
           logger = logger
         )
-        ParikshanDesktopProcess.start(
+        DesktopProcess.start(
           jar = appJarFile.get().asFile,
           token = token.get(),
           logFile = File(buildDir.get().asFile, "parikshan/desktop-app-logs.log"),
@@ -307,7 +317,7 @@ abstract class E2ETestTask : DefaultTask() {
           )
           if (exitCode != 0) {
             printTestFailures("desktop", testClass)
-            ParikshanDesktopProcess.stop(
+            DesktopProcess.stop(
               host = host.get(),
               port = resolvedPort,
               token = token.get(),
@@ -317,7 +327,7 @@ abstract class E2ETestTask : DefaultTask() {
           }
         }
 
-        ParikshanDesktopProcess.stop(
+        DesktopProcess.stop(
           host = host.get(),
           port = resolvedPort,
           token = token.get(),
@@ -327,7 +337,7 @@ abstract class E2ETestTask : DefaultTask() {
       }
 
       "wasm" -> {
-        val resolvedPort = ParikshanPortConflictHandler.resolvePortAndCleanStale(
+        val resolvedPort = PortConflictHandler.resolvePortAndCleanStale(
           originalPort = originalWasmPort.get(),
           host = "127.0.0.1",
           logger = logger
@@ -336,7 +346,7 @@ abstract class E2ETestTask : DefaultTask() {
         portFile.parentFile.mkdirs()
         portFile.writeText(resolvedPort.toString())
 
-        ParikshanWasmServer.start(resolvedPort, wasmOutputDir.get().asFile)
+        WasmServer.start(resolvedPort, wasmOutputDir.get().asFile)
 
         classes.forEach { testClass ->
           logger.lifecycle("Parikshan [wasm]: Running $testClass...")
@@ -356,7 +366,7 @@ abstract class E2ETestTask : DefaultTask() {
           }
         }
 
-        ParikshanWasmServer.stop()
+        WasmServer.stop()
         return createTargetResult("wasm", true, classes)
       }
 
@@ -702,7 +712,7 @@ abstract class E2ETestTask : DefaultTask() {
       }
     }
 
-    val reportsDir = File(buildDir.get().asFile, "test-results/e2eTest/$target").absolutePath
+    val reportsDir = File(buildDir.get().asFile, "test-results/e2eTest/$target/$testClass").absolutePath
     pbArgs.add("-Dparikshan.video.outputDir=" + File(buildDir.get().asFile, "parikshan/videos/$target").absolutePath)
     pbArgs.add("org.junit.platform.console.ConsoleLauncher")
     pbArgs.add("--reports-dir")
@@ -825,5 +835,16 @@ abstract class E2ETestTask : DefaultTask() {
       }
     }
     return TargetResult(target, success, detail)
+  }
+
+  private fun formatDuration(ms: Long): String {
+    val totalSecs = ms / 1000
+    val mins = totalSecs / 60
+    val secs = totalSecs % 60
+    return if (mins > 0) {
+      "${mins}m ${secs}s"
+    } else {
+      "${secs}s"
+    }
   }
 }

@@ -28,18 +28,18 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-object ParikshanServer {
-  private val activeServer = AtomicReference<RunningParikshanServer?>(null)
+object E2ETestServer {
+  private val activeServer = AtomicReference<RunningE2ETestServer?>(null)
 
   fun start(
     window: ComposeWindow,
-    config: ParikshanServerConfig = ParikshanServerConfig()
-  ): ParikshanServerHandle {
+    config: TestServerConfig = TestServerConfig()
+  ): TestServerHandle {
     activeServer.get()?.let { existing ->
       existing.stop()
     }
 
-    val server = RunningParikshanServer(window = window, config = config) {
+    val server = RunningE2ETestServer(window = window, config = config) {
       activeServer.set(null)
     }
     server.start()
@@ -48,11 +48,11 @@ object ParikshanServer {
   }
 }
 
-private class RunningParikshanServer(
+private class RunningE2ETestServer(
   private val window: ComposeWindow,
-  private val config: ParikshanServerConfig,
+  private val config: TestServerConfig,
   private val onStopped: () -> Unit
-) : ParikshanServerHandle {
+) : TestServerHandle {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
   private val semantics = DesktopSemanticsAccessor(window)
   private val injector = DesktopEventInjector()

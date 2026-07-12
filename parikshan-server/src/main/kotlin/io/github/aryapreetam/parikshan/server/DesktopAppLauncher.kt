@@ -7,7 +7,7 @@ import java.lang.reflect.Method
 import java.lang.reflect.Modifier
 import javax.swing.SwingUtilities
 
-object ParikshanDesktopLauncher {
+object DesktopAppLauncher {
   @JvmStatic
   fun main(args: Array<String>) {
     val appMainClassName =
@@ -15,7 +15,7 @@ object ParikshanDesktopLauncher {
         ?.trim()
         ?.takeIf { it.isNotEmpty() }
         ?: error(
-          "Missing required system property '$PARIKSHAN_DESKTOP_APP_MAIN_CLASS_PROPERTY' for the Parikshan desktop launcher."
+          "Missing required system property '$PARIKSHAN_DESKTOP_APP_MAIN_CLASS_PROPERTY' for the desktop app launcher."
         )
     val windowTitleOverride =
       System.getProperty(PARIKSHAN_DESKTOP_WINDOW_TITLE_PROPERTY)
@@ -28,7 +28,7 @@ object ParikshanDesktopLauncher {
 
     val bootstrap =
       DesktopBootstrapController(
-        config = ParikshanServerConfig.fromSystemProperties(),
+        config = TestServerConfig.fromSystemProperties(),
         requiredWindowTitle = windowTitleOverride
       )
     bootstrap.start()
@@ -45,12 +45,12 @@ object ParikshanDesktopLauncher {
 }
 
 private class DesktopBootstrapController(
-  private val config: ParikshanServerConfig,
+  private val config: TestServerConfig,
   private val requiredWindowTitle: String?,
   private val pollIntervalMs: Long = 100L
 ) {
   @Volatile
-  private var handle: ParikshanServerHandle? = null
+  private var handle: TestServerHandle? = null
 
   @Volatile
   private var lastStatusMessage: String? = null
@@ -82,7 +82,7 @@ private class DesktopBootstrapController(
         is WindowSelection.Ready -> {
           val window = selection.window
           System.err.println("Parikshan: Found visible Compose window. Starting server...")
-          handle = ParikshanServer.start(window = window, config = config)
+          handle = E2ETestServer.start(window = window, config = config)
           System.err.println("Parikshan: Server started on ${config.host}:${config.port}")
           
           if (isBackground) {

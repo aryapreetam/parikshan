@@ -222,8 +222,7 @@ class E2ETestScope internal constructor(
     selector: Selector,
     expected: String
   ) {
-    // assertText now has "waiting built-in" for the content to match,
-    // which is the world-class standard for E2E testing.
+    // assertText includes built-in waiting for the content to match.
     waitForVisibleText(selector = selector, expected = expected, policy = MatchPolicy.EXACT)
     settleAfterCommand()
   }

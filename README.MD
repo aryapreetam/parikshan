@@ -12,9 +12,13 @@
   </a>
 </p>
 
+<p align="center">
+  <img src="docs/assets/demo.png" width="100%" alt="Parikshan E2E Execution Demo"/>
+</p>
+
 ### Features
 
-- Write one test in Kotlin, run it on Android, iOS, Desktop, and Web (Wasm).
+- Write test in Kotlin, run it on Android, iOS, Desktop, and Web (Wasm).
 - No test related dependencies OR code in the main app.
 - Built-in screenshot capture and video recording (including headless CI).
 

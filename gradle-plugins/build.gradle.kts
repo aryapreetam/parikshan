@@ -52,7 +52,7 @@ gradlePlugin {
   plugins {
     create("parikshan") {
       id = "io.github.aryapreetam.parikshan"
-      implementationClass = "io.github.aryapreetam.parikshan.gradle.ParikshanGradlePlugin"
+      implementationClass = "io.github.aryapreetam.parikshan.gradle.ParikshanPlugin"
       displayName = "Parikshan Gradle Plugin"
       description = "Visible end-to-end UI automation engine for Compose Multiplatform"
       tags.set(listOf("compose", "multiplatform", "testing", "e2e"))

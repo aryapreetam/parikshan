@@ -1,13 +1,13 @@
 package io.github.aryapreetam.parikshan.server
 
-data class ParikshanServerConfig(
+data class TestServerConfig(
   val host: String = "127.0.0.1",
   val port: Int = 9877,
   val path: String = "/",
   val waitPollIntervalMs: Long = 120L
 ) {
   companion object {
-    fun fromSystemProperties(defaults: ParikshanServerConfig = ParikshanServerConfig()): ParikshanServerConfig {
+    fun fromSystemProperties(defaults: TestServerConfig = TestServerConfig()): TestServerConfig {
       val host =
         System.getProperty("parikshan.host")
           ?.trim()
@@ -29,6 +29,6 @@ data class ParikshanServerConfig(
   }
 }
 
-interface ParikshanServerHandle {
+interface TestServerHandle {
   fun stop()
 }

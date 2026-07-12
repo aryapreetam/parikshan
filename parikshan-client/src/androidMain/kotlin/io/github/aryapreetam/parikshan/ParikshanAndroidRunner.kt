@@ -4,7 +4,7 @@ import android.content.Intent
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import io.github.aryapreetam.parikshan.server.ParikshanAndroidServer
+import io.github.aryapreetam.parikshan.server.AndroidServer
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -24,7 +24,7 @@ class ParikshanAndroidRunner {
   val composeRule = createEmptyComposeRule()
 
   @Test
-  fun startParikshanServer() {
+  fun startTestServer() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
 
@@ -40,10 +40,10 @@ class ParikshanAndroidRunner {
     val args = InstrumentationRegistry.getArguments()
     val sessionToken = args.getString("parikshan_token") ?: ""
 
-    // Start the Parikshan server and pass the compose rule
-    ParikshanAndroidServer.start(composeRule, port = 9879, sessionToken = sessionToken)
+    // Start the test server and pass the compose rule
+    AndroidServer.start(composeRule, port = 9879, sessionToken = sessionToken)
 
     // Wait for shutdown command
-    ParikshanAndroidServer.awaitShutdown()
+    AndroidServer.awaitShutdown()
   }
 }

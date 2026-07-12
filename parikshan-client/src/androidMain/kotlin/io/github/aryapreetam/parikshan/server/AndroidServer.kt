@@ -39,7 +39,7 @@ import androidx.test.uiautomator.UiDevice
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalTestApi::class)
-object ParikshanAndroidServer {
+object AndroidServer {
   private val running = AtomicBoolean(false)
   private var serverThread: Thread? = null
   private val shutdownLatch = CountDownLatch(1)
@@ -80,13 +80,13 @@ object ParikshanAndroidServer {
     // Resolve session token from instrumentation args
     val args = InstrumentationRegistry.getArguments()
     this.sessionToken = sessionToken ?: args.getString("parikshan_token") ?: ""
-    println("[ParikshanAndroidServer] Starting with token: ${this.sessionToken.take(8)}...")
+    println("[AndroidServer] Starting with token: ${this.sessionToken.take(8)}...")
     
     composeRule = rule
     serverThread = Thread {
       runServer(port)
     }.apply {
-      name = "ParikshanAndroidServer"
+      name = "AndroidServer"
       start()
     }
   }
@@ -98,7 +98,7 @@ object ParikshanAndroidServer {
   private fun runServer(port: Int) {
     try {
       ServerSocket(port, 50, java.net.InetAddress.getByName("127.0.0.1")).use { serverSocket ->
-        println("[ParikshanAndroidServer] Securely listening on loopback:$port")
+        println("[AndroidServer] Securely listening on loopback:$port")
         while (running.get()) {
           try {
             val client = serverSocket.accept()
@@ -122,7 +122,7 @@ object ParikshanAndroidServer {
         val input = socket.getInputStream()
         val output = socket.getOutputStream()
 
-        // Byte-accurate HTTP Header Parsing
+        // HTTP Header Parsing
         val headerLines = readHeaders(input)
         var contentLength = 0
         for (header in headerLines) {
@@ -132,7 +132,7 @@ object ParikshanAndroidServer {
         }
 
         if (contentLength > 0) {
-          // Accurate byte reading to avoid UTF-8 truncation
+          // Byte reading to avoid UTF-8 truncation
           val bodyBytes = ByteArray(contentLength)
           var totalRead = 0
           while (totalRead < contentLength) {
@@ -147,12 +147,12 @@ object ParikshanAndroidServer {
           if (command != null) {
             // SECURITY: Validate Token
             if (sessionToken.isNotEmpty() && command.token != sessionToken) {
-                println("[ParikshanAndroidServer] BLOCKED: Invalid session token. Expected: '$sessionToken', Got: '${command.token}'")
-                sendHttpResponse(output, 401, ProtocolJson.encodeResponse(Response.Error(command.id, "Unauthorized: Invalid Session Token")))
-                return
-            }
-
-            println("[ParikshanAndroidServer] Executing: ${command::class.simpleName}")
+                 println("[AndroidServer] BLOCKED: Invalid session token. Expected: '$sessionToken', Got: '${command.token}'")
+                 sendHttpResponse(output, 401, ProtocolJson.encodeResponse(Response.Error(command.id, "Unauthorized: Invalid Session Token")))
+                 return
+             }
+ 
+             println("[AndroidServer] Executing: ${command::class.simpleName}")
             val response = try {
               handleCommand(command)
             } catch (e: Throwable) {

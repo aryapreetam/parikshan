@@ -158,7 +158,7 @@ internal class DesktopDriver(
         windowTitle?.let { add("-Dparikshan.desktop.windowTitle=$it") }
         add("-cp")
         add(jarPath)
-        add("io.github.aryapreetam.parikshan.server.ParikshanDesktopLauncher")
+        add("io.github.aryapreetam.parikshan.server.DesktopAppLauncher")
         addAll(appArgs)
       }
 

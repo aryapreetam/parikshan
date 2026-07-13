@@ -539,6 +539,17 @@ internal class WasmDriver private constructor(
     private var lastRequestedVideoPath: String? = null
     private var playwrightTempDir: Path? = null
 
+    private fun isKeepAliveEnabled(): Boolean =
+      System.getProperty("parikshan.keepAlive") == "true" || System.getenv("PARIKSHAN_KEEP_ALIVE") == "true"
+
+    private fun isPortOpen(port: Int): Boolean {
+      return try {
+        java.net.Socket("127.0.0.1", port).use { true }
+      } catch (_: Exception) {
+        false
+      }
+    }
+
     init {
       Runtime.getRuntime().addShutdownHook(Thread({
         val targetPath = lastRequestedVideoPath
@@ -564,8 +575,10 @@ internal class WasmDriver private constructor(
         val rawVideoPath = runCatching { videoObj?.path() }.getOrNull()
         System.err.println("WasmVideo: Playwright reports video path: $rawVideoPath")
 
-        runCatching { sharedBrowser?.close() }
-        runCatching { sharedPlaywright?.close() }
+        if (!isKeepAliveEnabled()) {
+          runCatching { sharedBrowser?.close() }
+          runCatching { sharedPlaywright?.close() }
+        }
 
         if (targetPath != null && rawVideoPath != null) {
           runCatching {
@@ -581,7 +594,7 @@ internal class WasmDriver private constructor(
                 registerWasmVideoPath(targetPath)
                 runCatching { Files.deleteIfExists(rawVideoPath) }
               } catch (e: Throwable) {
-                System.err.println("WasmVideo: Error copying video to $targetPath: ${'$'}{e.message}")
+                System.err.println("WasmVideo: Error copying video to $targetPath: ${e.message}")
                 e.printStackTrace()
               }
             } else {
@@ -609,27 +622,69 @@ internal class WasmDriver private constructor(
     suspend fun connect(config: ParikshanWasmConfig = ParikshanWasmConfig.fromSystemProperties()): WasmDriver = connectMutex.withLock {
       val isBrowserAlive = sharedBrowser?.isConnected == true
       val isPageClosed = sharedPage?.isClosed ?: true
+      val isKeepAlive = isKeepAliveEnabled()
 
       if (!isBrowserAlive || sharedPlaywright == null) {
         // Initial setup or browser crashed
         runCatching { sharedPage?.close() }
         runCatching { sharedContext?.close() }
-        runCatching { sharedBrowser?.close() }
-        runCatching { sharedPlaywright?.close() }
-        
-        val playwright = Playwright.create()
-        sharedPlaywright = playwright
-        val launchOptions = BrowserType.LaunchOptions().setHeadless(config.headless)
-        launchOptions.setArgs(listOf(
-          "--window-size=${config.viewportWidth + 50},${config.viewportHeight + 100}",
-          "--disable-gpu",
-          "--use-gl=angle",
-          "--use-angle=swiftshader",
-          "--no-sandbox"
-        ))
-        
-        val browser = playwright.chromium().launch(launchOptions)
-        sharedBrowser = browser
+        if (!isKeepAlive) {
+          runCatching { sharedBrowser?.close() }
+          runCatching { sharedPlaywright?.close() }
+        }
+
+        if (isKeepAlive && isPortOpen(9222)) {
+          val playwright = Playwright.create()
+          sharedPlaywright = playwright
+          sharedBrowser = playwright.chromium().connectOverCDP("http://127.0.0.1:9222")
+        } else {
+          val playwright = Playwright.create()
+          sharedPlaywright = playwright
+          val launchOptions = BrowserType.LaunchOptions().setHeadless(config.headless)
+          launchOptions.setArgs(listOf(
+            "--window-size=${config.viewportWidth + 50},${config.viewportHeight + 100}",
+            "--disable-gpu",
+            "--use-gl=angle",
+            "--use-angle=swiftshader",
+            "--no-sandbox"
+          ))
+
+          if (isKeepAlive) {
+            val executable = playwright.chromium().executablePath()
+            val args = mutableListOf(
+              executable,
+              "--remote-debugging-port=9222",
+              "--window-size=${config.viewportWidth + 50},${config.viewportHeight + 100}",
+              "--disable-gpu",
+              "--no-sandbox"
+            )
+            if (config.headless) {
+              args.add("--headless")
+            }
+            val pb = ProcessBuilder(args)
+            val logFile = Files.createTempFile("parikshan-chrome-", ".log").toFile()
+            pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile))
+            pb.redirectError(ProcessBuilder.Redirect.appendTo(logFile))
+            pb.start()
+
+            var success = false
+            for (i in 1..20) {
+              if (isPortOpen(9222)) {
+                success = true
+                break
+              }
+              delay(100)
+            }
+            playwright.close()
+
+            val realPlaywright = Playwright.create()
+            sharedPlaywright = realPlaywright
+            sharedBrowser = realPlaywright.chromium().connectOverCDP("http://127.0.0.1:9222")
+          } else {
+            val browser = playwright.chromium().launch(launchOptions)
+            sharedBrowser = browser
+          }
+        }
       }
 
       if (sharedPage == null || isPageClosed) {

@@ -32,7 +32,22 @@ The following system properties can be passed when running Parikshan test tasks:
 
 ---
 
+## Task Options
+
+The main `e2eTest` task supports task-specific CLI options:
+
+* **`--keep-alive`**: Keeps the target application and browser instances running after the test run finishes. Subsequent test executions will perform health checks and skip recompilation and re-launching if the source code and assets are unchanged.
+
+---
+
 ## Command Line Examples
+
+### Run Tests with Keep-Alive Enabled
+To keep application and browser instances running for subsequent fast iterations:
+
+```bash
+./gradlew :composeApp:e2eTest --targets=desktop --keep-alive
+```
 
 ### Run a Specific Test
 Use the standard Gradle `--tests` flag to run a specific test class or method:

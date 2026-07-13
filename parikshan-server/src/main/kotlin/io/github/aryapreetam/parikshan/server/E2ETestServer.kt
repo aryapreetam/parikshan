@@ -10,6 +10,7 @@ import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import io.ktor.server.routing.routing
+import io.ktor.server.routing.get
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.Frame
@@ -100,6 +101,29 @@ private class RunningE2ETestServer(
     install(WebSockets)
 
     routing {
+      get("/health") {
+        val expectedToken = System.getProperty("parikshan.token")
+        val token = call.request.queryParameters["token"] ?: call.request.headers["X-Parikshan-Token"]
+        if (!expectedToken.isNullOrEmpty() && token != expectedToken) {
+          call.respondText("Unauthorized: Token mismatch", status = HttpStatusCode.Unauthorized)
+          return@get
+        }
+
+        val edtHealthy = withTimeoutOrNull(1000) {
+          val deferred = kotlinx.coroutines.CompletableDeferred<Boolean>()
+          javax.swing.SwingUtilities.invokeLater {
+            deferred.complete(true)
+          }
+          deferred.await()
+        } ?: false
+
+        if (edtHealthy) {
+          call.respondText("""{"status":"healthy"}""", contentType = io.ktor.http.ContentType.Application.Json)
+        } else {
+          call.respondText("UI thread deadlocked", status = HttpStatusCode.InternalServerError)
+        }
+      }
+
       post("/") {
         val raw = call.receiveText()
         val command = runCatching { ProtocolJson.decodeCommand(raw) }.getOrNull()

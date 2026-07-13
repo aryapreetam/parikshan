@@ -280,6 +280,18 @@ class ParikshanPlugin : Plugin<Project> {
         gradleIosDevice.set(project.providers.gradleProperty("parikshan.ios.device").orElse(project.providers.systemProperty("parikshan.ios.device")))
         gradleDevice.set(project.providers.gradleProperty("device").orElse(project.providers.systemProperty("device")))
         gradleSerial.set(project.providers.gradleProperty("serial").orElse(project.providers.systemProperty("serial")))
+
+        val prodSources = project.resolveProductionSources()
+        this.productionSources.setFrom(prodSources)
+
+        val appProject = project.findAndroidAppProject()
+        if (appProject != null) {
+          this.androidApkDir.set(appProject.layout.buildDirectory.dir("outputs/apk/debug"))
+          this.iosAppDir.set(appProject.layout.buildDirectory.dir("cocoapods/synthetic/IOS/build/Release-iphonesimulator"))
+        } else {
+          this.androidApkDir.set(project.layout.buildDirectory.dir("outputs/apk/debug"))
+          this.iosAppDir.set(project.layout.buildDirectory.dir("cocoapods/synthetic/IOS/build/Release-iphonesimulator"))
+        }
       }
 
       project.tasks.configureEach {

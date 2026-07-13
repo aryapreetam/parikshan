@@ -107,7 +107,8 @@ internal fun Test.configureE2eHostTestExecution(
     "parikshan.ios.xcodeProject",
     "parikshan.ios.xcodeScheme",
     "parikshan.ios.udid",
-    "parikshan.android.serial"
+    "parikshan.android.serial",
+    "parikshan.keepAlive"
   )
 
   for (propName in propsToForward) {
@@ -430,5 +431,84 @@ internal fun Project.registerE2eTestWithReport(
     configure()
   }
   return testTask
+}
+
+internal fun Project.resolveProductionSources(): List<File> {
+  val dirs = mutableListOf<File>()
+  
+  // 1. Kotlin Multiplatform Extension resolution (Layout-agnostic)
+  val kmp = extensions.findByName("kotlin")
+  if (kmp != null) {
+    try {
+      @Suppress("UNCHECKED_CAST")
+      val targets = kmp.javaClass.getMethod("getTargets").invoke(kmp) as org.gradle.api.NamedDomainObjectCollection<Any>
+      targets.forEach { target ->
+        runCatching {
+          @Suppress("UNCHECKED_CAST")
+          val compilations = target.javaClass.getMethod("getCompilations").invoke(target) as org.gradle.api.NamedDomainObjectCollection<Any>
+          val mainCompilation = compilations.findByName("main")
+          if (mainCompilation != null) {
+            @Suppress("UNCHECKED_CAST")
+            val allSourceSets = mainCompilation.javaClass.getMethod("getAllKotlinSourceSets").invoke(mainCompilation) as Set<Any>
+            allSourceSets.forEach { sourceSet ->
+              runCatching {
+                val kotlinSrcSet = sourceSet.javaClass.getMethod("getKotlin").invoke(sourceSet) as? org.gradle.api.file.SourceDirectorySet
+                kotlinSrcSet?.srcDirs?.let { dirs.addAll(it) }
+              }
+              runCatching {
+                val resourcesSrcSet = sourceSet.javaClass.getMethod("getResources").invoke(sourceSet) as? org.gradle.api.file.SourceDirectorySet
+                resourcesSrcSet?.srcDirs?.let { dirs.addAll(it) }
+              }
+            }
+          }
+        }
+      }
+    } catch (_: Exception) {
+    }
+  }
+
+  // 2. Standard Android plugin resolution
+  val android = extensions.findByName("android")
+  if (android != null) {
+    try {
+      @Suppress("UNCHECKED_CAST")
+      val sourceSets = android.javaClass.getMethod("getSourceSets").invoke(android) as org.gradle.api.NamedDomainObjectCollection<Any>
+      val mainSourceSet = sourceSets.findByName("main")
+      if (mainSourceSet != null) {
+        runCatching {
+          val javaSrcSet = mainSourceSet.javaClass.getMethod("getJava").invoke(mainSourceSet) as? org.gradle.api.file.SourceDirectorySet
+          javaSrcSet?.srcDirs?.let { dirs.addAll(it) }
+        }
+        runCatching {
+          val resSrcSet = mainSourceSet.javaClass.getMethod("getRes").invoke(mainSourceSet) as? org.gradle.api.file.SourceDirectorySet
+          resSrcSet?.srcDirs?.let { dirs.addAll(it) }
+        }
+      }
+    } catch (_: Exception) {
+    }
+  }
+
+  // 3. Standard Java plugin resolution
+  val java = extensions.findByName("java")
+  if (java != null) {
+    try {
+      @Suppress("UNCHECKED_CAST")
+      val sourceSets = java.javaClass.getMethod("getSourceSets").invoke(java) as org.gradle.api.NamedDomainObjectCollection<Any>
+      val mainSourceSet = sourceSets.findByName("main")
+      if (mainSourceSet != null) {
+        runCatching {
+          val allJava = mainSourceSet.javaClass.getMethod("getAllJava").invoke(mainSourceSet) as? org.gradle.api.file.SourceDirectorySet
+          allJava?.srcDirs?.let { dirs.addAll(it) }
+        }
+        runCatching {
+          val resources = mainSourceSet.javaClass.getMethod("getResources").invoke(mainSourceSet) as? org.gradle.api.file.SourceDirectorySet
+          resources?.srcDirs?.let { dirs.addAll(it) }
+        }
+      }
+    } catch (_: Exception) {
+    }
+  }
+
+  return dirs.filter { it.exists() }.distinct()
 }
 

@@ -37,6 +37,34 @@ The following system properties can be passed when running Parikshan test tasks:
 The main `e2eTest` task supports task-specific CLI options:
 
 * **`--keep-alive`**: Keeps the target application and browser instances running after the test run finishes. Subsequent test executions will perform health checks and skip recompilation and re-launching if the source code and assets are unchanged.
+* **`--reclaim-ports`**: Force terminates any conflicting background applications holding default test ports (`9879` for Android, `9878` for iOS) instead of shifting to fallback ports.
+
+### The Port Shift and Reclaim Strategy
+
+When executing tests, Parikshan checks if the target port is occupied. If a conflict is detected:
+* **Default Behavior (Port Shifting):** Parikshan automatically allocates the next available port (e.g. `9880`, `9881`) on both host and device. This allows multiple different applications to run tests concurrently on the same emulator or simulator.
+* **Reclaim Behavior (with `--reclaim-ports`):** Parikshan issues a termination command (`am force-stop` on Android or `simctl terminate` on iOS) to the conflicting application's bundle identifier, frees the port, and executes the tests on the default port.
+
+#### When to use `--reclaim-ports`
+* **CI/CD Pipelines:** Use it in non-interactive builds to ensure a hermetic, clean test run on standard ports.
+* **Process Cleanup:** Use it when you want to quickly kill stale background instances from previous debugging sessions without manual command-line intervention.
+
+#### Cautions & Tradeoffs
+* **Interrupts Concurrent Runs:** If you are actively running test suites for different applications concurrently on the same emulator, using `--reclaim-ports` will immediately terminate the other application, causing its tests to fail.
+* **Process Termination:** It performs a hard process termination. Any unsaved diagnostic state in the conflicting application will be lost.
+
+---
+
+## Project Properties
+
+You can also set the reclaim ports behavior globally in your `gradle.properties` file or pass it as a project property:
+
+* **`parikshan.reclaimPorts`**: Set to `true` to enable reclaim behavior by default for all test runs.
+
+Example in `gradle.properties`:
+```properties
+parikshan.reclaimPorts=true
+```
 
 ---
 
@@ -68,4 +96,17 @@ Specify the serial of the target device when multiple emulators are running:
 
 ```bash
 ./gradlew :composeApp:e2eAndroidTest -Dparikshan.android.serial="emulator-5556"
+```
+
+### Reclaim Default Ports during Conflict
+Force terminate any conflicting processes holding standard ports and run E2E tests:
+
+```bash
+./gradlew :composeApp:e2eTest --reclaim-ports
+```
+
+Or via project property:
+
+```bash
+./gradlew :composeApp:e2eTest -Pparikshan.reclaimPorts=true
 ```

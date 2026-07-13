@@ -73,16 +73,17 @@ object IosServer {
   fun startIfNeeded(port: Int = 9878) {
     if (!running.compareAndSet(0, 1)) return
 
-    println("[IosServer] BOOTING on port $port")
     val worker = Worker.start(name = "parikshan-ios-server")
     worker.executeAfter(0L) {
-      // Resolve token from environment
+      // Resolve token and port from environment
       val tokenC = getenv("PARIKSHAN_TOKEN") ?: getenv("SIMCTL_CHILD_PARIKSHAN_TOKEN")
       if (tokenC != null) {
         sessionToken = platform.Foundation.NSString.stringWithUTF8String(tokenC) ?: ""
       }
-      println("[IosServer] Server starting with token: ${sessionToken.take(8)}...")
-      runServer(port)
+      val portC = getenv("PARIKSHAN_PORT") ?: getenv("SIMCTL_CHILD_PARIKSHAN_PORT")
+      val resolvedPort = portC?.let { platform.Foundation.NSString.stringWithUTF8String(it)?.toIntOrNull() } ?: port
+      println("[IosServer] Server starting with token: ${sessionToken.take(8)}... on port $resolvedPort")
+      runServer(resolvedPort)
     }
   }
 
@@ -153,7 +154,8 @@ object IosServer {
         
         // HEALTH CHECK (GET)
         if (headStr.startsWith("GET ")) {
-            sendHttpResponse(clientFd, 200, """{"type":"ok","id":"health"}""")
+            val bundleId = platform.Foundation.NSBundle.mainBundle.bundleIdentifier ?: "unknown"
+            sendHttpResponse(clientFd, 200, """{"type":"ok","id":"health","applicationId":"$bundleId"}""")
             break
         }
 

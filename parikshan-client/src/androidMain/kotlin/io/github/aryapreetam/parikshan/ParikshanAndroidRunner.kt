@@ -27,21 +27,30 @@ class ParikshanAndroidRunner {
   fun startTestServer() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
+    val args = InstrumentationRegistry.getArguments()
 
-    // Launch the default launcher activity of the target app
-    val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-      ?: error("Could not find launch intent for package ${context.packageName}")
-    
+    val launcherClass = args.getString("launcher_class")
+    val intent = if (!launcherClass.isNullOrBlank()) {
+      val fullyQualified = if (launcherClass.startsWith(".")) {
+        "${context.packageName}$launcherClass"
+      } else {
+        launcherClass
+      }
+      Intent().setClassName(context.packageName, fullyQualified)
+    } else {
+      context.packageManager.getLaunchIntentForPackage(context.packageName)
+        ?: error("Could not find launch intent for package ${context.packageName}")
+    }
+
     intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_NEW_TASK)
-    
     context.startActivity(intent)
 
-    // Resolve token from instrumentation arguments
-    val args = InstrumentationRegistry.getArguments()
     val sessionToken = args.getString("parikshan_token") ?: ""
+    val portStr = args.getString("parikshan_port")
+    val resolvedPort = portStr?.toIntOrNull() ?: 9879
 
     // Start the test server and pass the compose rule
-    AndroidServer.start(composeRule, port = 9879, sessionToken = sessionToken)
+    AndroidServer.start(composeRule, port = resolvedPort, sessionToken = sessionToken)
 
     // Wait for shutdown command
     AndroidServer.awaitShutdown()

@@ -7,6 +7,9 @@ import org.gradle.api.tasks.testing.Test
 import org.gradle.kotlin.dsl.register
 import java.io.File
 
+import javax.xml.parsers.DocumentBuilderFactory
+import org.w3c.dom.Element
+
 internal object AndroidTargetConfigurer {
   fun configure(
     project: Project,
@@ -19,11 +22,27 @@ internal object AndroidTargetConfigurer {
     hostTestTask: org.gradle.api.tasks.TaskProvider<Test>
   ) {
     val androidProjectDirVal = project.projectDir
-    val androidApplicationIdVal = AndroidRecorder.resolveAndroidApplicationId(project)
-      ?: throw GradleException(
-        "Parikshan Android: Could not resolve the Android applicationId. " +
-          "Set defaultConfig.applicationId in the Android application module."
-      )
+    
+    val mergedManifestDirProvider = AndroidComponentsHelper.getMergedManifestDirectory(project)
+
+    val androidApplicationIdProvider = project.provider {
+      val directId = AndroidRecorder.resolveAndroidApplicationId(project)
+      if (directId != null) return@provider directId
+
+      val manifestDir = mergedManifestDirProvider.orNull?.asFile
+      if (manifestDir != null) {
+        val manifestFile = File(manifestDir, "AndroidManifest.xml")
+        val parsed = parseAndroidManifest(manifestFile, project.logger, null)
+        parsed.packageName
+      } else {
+        null
+      }
+    }
+
+    val overrideLauncher = extension.androidLaunchActivityClassName.orNull
+      ?: project.providers.gradleProperty("parikshan.androidLaunchActivityClassName")
+           .orElse(project.providers.systemProperty("parikshan.androidLaunchActivityClassName"))
+           .orNull
 
     fun resolveAndroidRuntimeProperty(name: String): String? =
       project.providers.gradleProperty(name).orElse(project.providers.systemProperty(name)).orNull
@@ -54,8 +73,11 @@ internal object AndroidTargetConfigurer {
       group = "verification"
       doLast {
         val serial = AndroidRecorder.resolveDeviceSerial(logger, androidProjectDirVal, androidSerialVal)
-        ProcessBuilder("adb", "-s", serial, "forward", "--remove", "tcp:9879").start().waitFor()
-        ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", androidApplicationIdVal).start().waitFor()
+        val portVal = project.providers.gradleProperty("parikshan.port").orNull ?: "9879"
+        ProcessBuilder("adb", "-s", serial, "forward", "--remove", "tcp:$portVal").start().waitFor()
+        val appId = androidApplicationIdProvider.orNull
+          ?: throw GradleException("Parikshan Android: Could not resolve the Android application ID.")
+        ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", appId).start().waitFor()
       }
     }
 
@@ -68,11 +90,42 @@ internal object AndroidTargetConfigurer {
       dependsOn(androidPreflightTask, installTask, testInstallTask)
       doLast {
         val serial = AndroidRecorder.resolveDeviceSerial(logger, androidProjectDirVal, androidSerialVal)
-        ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", androidApplicationIdVal).start().waitFor()
-        ProcessBuilder("adb", "-s", serial, "forward", "tcp:9879", "tcp:9879").start().waitFor()
-        val testPackage = "$androidApplicationIdVal.test"
+
+        val manifestDir = mergedManifestDirProvider.orNull?.asFile
+        val parsed = manifestDir?.let { dir ->
+          val manifestFile = File(dir, "AndroidManifest.xml")
+          parseAndroidManifest(manifestFile, logger, overrideLauncher)
+        }
+
+        val appId = parsed?.packageName ?: androidApplicationIdProvider.orNull
+          ?: throw GradleException("Parikshan Android: Could not resolve the Android application ID.")
+        val resolvedLauncher = parsed?.launcherActivity
+
+        logger.lifecycle("Parikshan Android: Resolved applicationId: $appId")
+        if (resolvedLauncher != null) {
+          logger.lifecycle("Parikshan Android: Resolved launcherActivity: $resolvedLauncher")
+        }
+
+        val portVal = project.providers.gradleProperty("parikshan.port").orNull ?: "9879"
+        ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", appId).start().waitFor()
+        ProcessBuilder("adb", "-s", serial, "forward", "tcp:$portVal", "tcp:$portVal").start().waitFor()
+        val testPackage = "$appId.test"
         logger.lifecycle("Parikshan Android: Starting instrumentation...")
-        ProcessBuilder("adb", "-s", serial, "shell", "am", "instrument", "-w", "-e", "class", "io.github.aryapreetam.parikshan.ParikshanAndroidRunner", "-e", "parikshan_token", sessionTokenVal, "$testPackage/androidx.test.runner.AndroidJUnitRunner").start()
+
+        val command = mutableListOf(
+          "adb", "-s", serial, "shell", "am", "instrument", "-w",
+          "-e", "class", "io.github.aryapreetam.parikshan.ParikshanAndroidRunner",
+          "-e", "parikshan_token", sessionTokenVal,
+          "-e", "parikshan_port", portVal
+        )
+        if (resolvedLauncher != null) {
+          command.add("-e")
+          command.add("launcher_class")
+          command.add(resolvedLauncher)
+        }
+        command.add("$testPackage/androidx.test.runner.AndroidJUnitRunner")
+
+        ProcessBuilder(command).start()
       }
     }
 
@@ -103,6 +156,131 @@ internal object AndroidTargetConfigurer {
       }
     }
   }
+
+  internal fun parseAndroidManifest(manifestFile: File, logger: Logger, overrideActivity: String?): ParsedManifest {
+    if (!manifestFile.exists()) {
+      logger.debug("Parikshan: Manifest file does not exist at ${manifestFile.absolutePath}")
+      return ParsedManifest(packageName = null, launcherActivity = overrideActivity)
+    }
+
+    try {
+      val factory = DocumentBuilderFactory.newInstance()
+      val builder = factory.newDocumentBuilder()
+      val doc = builder.parse(manifestFile)
+      doc.documentElement.normalize()
+
+      val manifestElement = doc.documentElement
+      val packageName = manifestElement.getAttribute("package").takeIf { it.isNotBlank() }
+
+      if (overrideActivity != null && overrideActivity.isNotBlank()) {
+        return ParsedManifest(packageName = packageName, launcherActivity = overrideActivity)
+      }
+
+      val launcherActivities = mutableListOf<String>()
+      val activityNodes = doc.getElementsByTagName("activity")
+      for (i in 0 until activityNodes.length) {
+        val activityEl = activityNodes.item(i) as Element
+        val activityName = activityEl.getAttribute("android:name")
+        if (activityName.isBlank()) continue
+
+        val intentFilters = activityEl.getElementsByTagName("intent-filter")
+        for (j in 0 until intentFilters.length) {
+          val filterEl = intentFilters.item(j) as Element
+          var isMain = false
+          var isLauncher = false
+
+          val actions = filterEl.getElementsByTagName("action")
+          for (k in 0 until actions.length) {
+            val actionEl = actions.item(k) as Element
+            if (actionEl.getAttribute("android:name") == "android.intent.action.MAIN") {
+              isMain = true
+              break
+            }
+          }
+
+          val categories = filterEl.getElementsByTagName("category")
+          for (k in 0 until categories.length) {
+            val categoryEl = categories.item(k) as Element
+            if (categoryEl.getAttribute("android:name") == "android.intent.category.LAUNCHER") {
+              isLauncher = true
+              break
+            }
+          }
+
+          if (isMain && isLauncher) {
+            launcherActivities.add(activityName)
+            break
+          }
+        }
+      }
+
+      // Also check activity-alias
+      val aliasNodes = doc.getElementsByTagName("activity-alias")
+      for (i in 0 until aliasNodes.length) {
+        val aliasEl = aliasNodes.item(i) as Element
+        val aliasName = aliasEl.getAttribute("android:name")
+        if (aliasName.isBlank()) continue
+
+        val intentFilters = aliasEl.getElementsByTagName("intent-filter")
+        for (j in 0 until intentFilters.length) {
+          val filterEl = intentFilters.item(j) as Element
+          var isMain = false
+          var isLauncher = false
+
+          val actions = filterEl.getElementsByTagName("action")
+          for (k in 0 until actions.length) {
+            val actionEl = actions.item(k) as Element
+            if (actionEl.getAttribute("android:name") == "android.intent.action.MAIN") {
+              isMain = true
+              break
+            }
+          }
+
+          val categories = filterEl.getElementsByTagName("category")
+          for (k in 0 until categories.length) {
+            val categoryEl = categories.item(k) as Element
+            if (categoryEl.getAttribute("android:name") == "android.intent.category.LAUNCHER") {
+              isLauncher = true
+              break
+            }
+          }
+
+          if (isMain && isLauncher) {
+            launcherActivities.add(aliasName)
+            break
+          }
+        }
+      }
+
+      val resolvedLauncher = when {
+        launcherActivities.isEmpty() -> null
+        launcherActivities.size == 1 -> launcherActivities.first()
+        else -> {
+          logger.lifecycle("Parikshan WARNING: Multiple launcher activities found in AndroidManifest.xml: $launcherActivities. Falling back to first one.")
+          launcherActivities.first()
+        }
+      }
+
+      val fullyQualifiedLauncher = if (resolvedLauncher != null && packageName != null) {
+        if (resolvedLauncher.startsWith(".")) {
+          "$packageName$resolvedLauncher"
+        } else if (!resolvedLauncher.contains(".")) {
+          "$packageName.$resolvedLauncher"
+        } else {
+          resolvedLauncher
+        }
+      } else {
+        resolvedLauncher
+      }
+
+      return ParsedManifest(packageName = packageName, launcherActivity = fullyQualifiedLauncher)
+    } catch (e: Exception) {
+      logger.warn("Parikshan: Failed to parse merged AndroidManifest.xml", e)
+      return ParsedManifest(packageName = null, launcherActivity = overrideActivity)
+    }
+  }
+
+  internal data class ParsedManifest(val packageName: String?, val launcherActivity: String?)
 
   private data class AndroidDevice(val serial: String, val state: String)
 

@@ -180,19 +180,22 @@ internal object IosTargetConfigurer {
 
         val appBundle = appBuildProducts.listFiles()?.firstOrNull { it.name.endsWith(".app") } ?: throw GradleException("No .app bundle")
 
+        val activePort = project.providers.gradleProperty("parikshan.ios.port").orNull?.toIntOrNull() ?: iosPortVal
         logger.lifecycle("Parikshan iOS: Launching app...")
         ProcessBuilder("xcrun", "simctl", "terminate", simulator.udid, iosBundleIdProvider.get()).start().waitFor()
         ProcessBuilder("xcrun", "simctl", "install", simulator.udid, appBundle.absolutePath).start().waitFor()
         ProcessBuilder("xcrun", "simctl", "launch", simulator.udid, iosBundleIdProvider.get()).apply {
           environment()["SIMCTL_CHILD_PARIKSHAN_TOKEN"] = sessionTokenVal
           environment()["PARIKSHAN_TOKEN"] = sessionTokenVal
+          environment()["SIMCTL_CHILD_PARIKSHAN_PORT"] = activePort.toString()
+          environment()["PARIKSHAN_PORT"] = activePort.toString()
         }.start().waitFor()
 
-        logger.lifecycle("Parikshan iOS: Waiting for server on port $iosPortVal...")
+        logger.lifecycle("Parikshan iOS: Waiting for server on port $activePort...")
         val deadline = System.currentTimeMillis() + 90_000
         var serverReady = false
         while (System.currentTimeMillis() <= deadline) {
-          if (postIosPing(iosPortVal, sessionTokenVal)) {
+          if (postIosPing(activePort, sessionTokenVal)) {
             serverReady = true
             break
           }

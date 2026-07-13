@@ -99,13 +99,16 @@ class ParikshanPlugin : Plugin<Project> {
 
     project.afterEvaluate {
       val isE2EActive = isE2ERequested
+      val hasKmp = project.pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform")
+      val hasAndroid = project.pluginManager.hasPlugin("com.android.application") ||
+                       project.pluginManager.hasPlugin("com.android.library") ||
+                       project.pluginManager.hasPlugin("com.android.kotlin.multiplatform.library")
 
       project.configureParikshanDependencies(isE2EActive)
 
       val e2eTestClasses = project.discoverE2eTestClasses()
       val hostTestTaskName = project.resolveHostTestTaskName(extension.desktopTestTaskName.orNull)
       val hostTestTask = project.tasks.named<Test>(hostTestTaskName)
-      val wasmDistributionTaskName = project.resolveWasmDistributionTaskName(extension.wasmDistributionTaskName.orNull)
 
       val wasmOutputDirProvider = wasmOutputDir
       val wasmDevDirProvider = wasmDevDir
@@ -114,82 +117,99 @@ class ParikshanPlugin : Plugin<Project> {
       val buildDirProvider = project.layout.buildDirectory
       val gradleLogger = project.logger
 
-      prepareWasmAssetsTask.configure {
-        dependsOn(wasmDistributionTaskName)
-        dependsOn("wasmJsProcessResources")
-        doLast {
-          val output = wasmOutputDirProvider.get().asFile
-          output.deleteRecursively()
-          output.mkdirs()
-          val distDir = if (wasmDevDirProvider.get().asFile.exists()) wasmDevDirProvider.get().asFile else wasmProdDirProvider.get().asFile
-          if (distDir.exists()) distDir.copyRecursively(output, overwrite = true)
-          val buildDir = buildDirProvider.get().asFile
-          listOf("processedResources/wasmJs/main", "kotlin-multiplatform-resources/assemble-hierarchically/wasmJsResolveSelfResources", "kotlin-multiplatform-resources/aggregated-resources/wasmJs")
-            .map { File(buildDir, it) }.filter { it.exists() }.forEach { resDir ->
-              gradleLogger.lifecycle("Parikshan Wasm: Copying resources from ${resDir.absolutePath}")
-              resDir.copyRecursively(output, overwrite = true)
+      if (hasKmp) {
+        val wasmDistributionTaskName = project.resolveWasmDistributionTaskName(extension.wasmDistributionTaskName.orNull)
+        prepareWasmAssetsTask.configure {
+          dependsOn(wasmDistributionTaskName)
+          dependsOn("wasmJsProcessResources")
+          doLast {
+            val output = wasmOutputDirProvider.get().asFile
+            output.deleteRecursively()
+            output.mkdirs()
+            val distDir = if (wasmDevDirProvider.get().asFile.exists()) wasmDevDirProvider.get().asFile else wasmProdDirProvider.get().asFile
+            if (distDir.exists()) distDir.copyRecursively(output, overwrite = true)
+            val buildDir = buildDirProvider.get().asFile
+            listOf("processedResources/wasmJs/main", "kotlin-multiplatform-resources/assemble-hierarchically/wasmJsResolveSelfResources", "kotlin-multiplatform-resources/aggregated-resources/wasmJs")
+              .map { File(buildDir, it) }.filter { it.exists() }.forEach { resDir ->
+                gradleLogger.lifecycle("Parikshan Wasm: Copying resources from ${resDir.absolutePath}")
+                resDir.copyRecursively(output, overwrite = true)
+              }
+            val indexHtml = File(output, "index.html")
+            if (!indexHtml.exists()) {
+              val srcIndex = File(wasmResourcesDirProvider.get().asFile, "index.html")
+              if (srcIndex.exists()) srcIndex.copyTo(indexHtml)
             }
-          val indexHtml = File(output, "index.html")
-          if (!indexHtml.exists()) {
-            val srcIndex = File(wasmResourcesDirProvider.get().asFile, "index.html")
-            if (srcIndex.exists()) srcIndex.copyTo(indexHtml)
           }
         }
+
+        installPlaywrightTask.configure {
+          classpath = hostTestTask.get().classpath
+        }
+
+        DesktopTargetConfigurer.configure(
+          project = project,
+          extension = extension,
+          sessionToken = sessionToken,
+          isBackgroundRequested = isBackgroundRequested,
+          isVideoRequested = isVideoRequested,
+          e2eTestClasses = e2eTestClasses,
+          hostTestTask = hostTestTask,
+          desktopLaunchManifestFile = desktopLaunchManifestFile.get().asFile
+        )
+
+        WasmTargetConfigurer.configure(
+          project = project,
+          extension = extension,
+          sessionToken = sessionToken,
+          isBackgroundRequested = isBackgroundRequested,
+          isVideoRequested = isVideoRequested,
+          e2eTestClasses = e2eTestClasses,
+          hostTestTask = hostTestTask,
+          wasmOutputDir = wasmOutputDir.get().asFile,
+          wasmPortFile = wasmPortFile.get().asFile,
+          prepareWasmAssetsTask = prepareWasmAssetsTask,
+          installPlaywrightTask = installPlaywrightTask
+        )
+
+        IosTargetConfigurer.configure(
+          project = project,
+          extension = extension,
+          sessionToken = sessionToken,
+          isBackgroundRequested = isBackgroundRequested,
+          isVideoRequested = isVideoRequested,
+          e2eTestClasses = e2eTestClasses,
+          hostTestTask = hostTestTask,
+          prepareIosBootSourceTask = prepareIosBootSourceTask
+        )
       }
 
-      installPlaywrightTask.configure {
-        classpath = hostTestTask.get().classpath
+      if (hasAndroid) {
+        AndroidTargetConfigurer.configure(
+          project = project,
+          extension = extension,
+          sessionToken = sessionToken,
+          isE2EActive = isE2EActive,
+          isBackgroundRequested = isBackgroundRequested,
+          isVideoRequested = isVideoRequested,
+          e2eTestClasses = e2eTestClasses,
+          hostTestTask = hostTestTask
+        )
       }
 
-      // Delegate configurations to single-responsibility classes
-      DesktopTargetConfigurer.configure(
-        project = project,
-        extension = extension,
-        sessionToken = sessionToken,
-        isBackgroundRequested = isBackgroundRequested,
-        isVideoRequested = isVideoRequested,
-        e2eTestClasses = e2eTestClasses,
-        hostTestTask = hostTestTask,
-        desktopLaunchManifestFile = desktopLaunchManifestFile.get().asFile
-      )
+      val targetAndroidAppIdProvider = project.provider {
+        val directId = AndroidTargetConfigurer.AndroidRecorder.resolveAndroidApplicationId(project)
+        if (directId != null) return@provider directId
 
-      WasmTargetConfigurer.configure(
-        project = project,
-        extension = extension,
-        sessionToken = sessionToken,
-        isBackgroundRequested = isBackgroundRequested,
-        isVideoRequested = isVideoRequested,
-        e2eTestClasses = e2eTestClasses,
-        hostTestTask = hostTestTask,
-        wasmOutputDir = wasmOutputDir.get().asFile,
-        wasmPortFile = wasmPortFile.get().asFile,
-        prepareWasmAssetsTask = prepareWasmAssetsTask,
-        installPlaywrightTask = installPlaywrightTask
-      )
-
-      IosTargetConfigurer.configure(
-        project = project,
-        extension = extension,
-        sessionToken = sessionToken,
-        isBackgroundRequested = isBackgroundRequested,
-        isVideoRequested = isVideoRequested,
-        e2eTestClasses = e2eTestClasses,
-        hostTestTask = hostTestTask,
-        prepareIosBootSourceTask = prepareIosBootSourceTask
-      )
-
-      AndroidTargetConfigurer.configure(
-        project = project,
-        extension = extension,
-        sessionToken = sessionToken,
-        isE2EActive = isE2EActive,
-        isBackgroundRequested = isBackgroundRequested,
-        isVideoRequested = isVideoRequested,
-        e2eTestClasses = e2eTestClasses,
-        hostTestTask = hostTestTask
-      )
-
-      val targetAndroidAppId = AndroidTargetConfigurer.AndroidRecorder.resolveAndroidApplicationId(project)
+        val mergedManifestDir = AndroidComponentsHelper.getMergedManifestDirectory(project)
+        val manifestDir = mergedManifestDir.orNull?.asFile
+        if (manifestDir != null) {
+          val manifestFile = File(manifestDir, "AndroidManifest.xml")
+          val parsed = AndroidTargetConfigurer.parseAndroidManifest(manifestFile, project.logger, null)
+          parsed.packageName
+        } else {
+          null
+        }
+      }
       val iosPort = project.providers.gradleProperty("parikshan.ios.port").orElse(project.providers.systemProperty("parikshan.ios.port")).orNull?.toIntOrNull() ?: 9878
 
       fun getIosBundleId(): String {
@@ -242,12 +262,14 @@ class ParikshanPlugin : Plugin<Project> {
           val activeTargets = e2eTask.targets.split(",").map { it.trim().lowercase() }
           buildList {
             add(hostTestTask.get().testClassesDirs.buildDependencies)
-            if (activeTargets.contains("wasm") || activeTargets.contains("web")) {
-              add(installPlaywrightTask)
-              add(prepareWasmAssetsTask)
-            }
-            if (activeTargets.contains("desktop")) {
-              add(extension.appJarTaskName.get())
+            if (hasKmp) {
+              if (activeTargets.contains("wasm") || activeTargets.contains("web")) {
+                add(installPlaywrightTask)
+                add(prepareWasmAssetsTask)
+              }
+              if (activeTargets.contains("desktop") && project.tasks.names.contains(extension.appJarTaskName.get())) {
+                add(extension.appJarTaskName.get())
+              }
             }
           }
         })
@@ -256,13 +278,29 @@ class ParikshanPlugin : Plugin<Project> {
         hostTestClasspath.setFrom(hostTestTask.get().classpath)
         junitConsoleJars.setFrom(junitConsoleConfig)
         this.e2eTestClasses.set(project.provider { e2eTestClasses })
+        projectPath.set(project.path)
         host.set(extension.host)
         originalDesktopPort.set(extension.port)
         originalWasmPort.set(extension.wasmServerPort)
         
-        val appJarFileProvider = project.tasks.named<org.gradle.jvm.tasks.Jar>(extension.appJarTaskName.get())
-          .flatMap { it.archiveFile }
-        appJarFile.set(appJarFileProvider)
+        val defaultTargets = buildList {
+          if (hasKmp) {
+            add("desktop")
+            add("wasm")
+            add("ios")
+          }
+          if (hasAndroid) {
+            add("android")
+          }
+        }.joinToString(",")
+        
+        this.targets = defaultTargets
+        
+        if (hasKmp && project.tasks.names.contains(extension.appJarTaskName.get())) {
+          val appJarFileProvider = project.tasks.named<org.gradle.jvm.tasks.Jar>(extension.appJarTaskName.get())
+            .flatMap { it.archiveFile }
+          appJarFile.set(appJarFileProvider)
+        }
         
         this.desktopLaunchManifestFile.set(desktopLaunchManifestFile)
         this.wasmOutputDir.set(wasmOutputDir)
@@ -272,9 +310,9 @@ class ParikshanPlugin : Plugin<Project> {
         this.title.set(extension.desktopWindowTitle)
         buildDir.set(project.layout.buildDirectory)
         projectRootDir.set(project.rootDir.absolutePath)
-        targetAndroidAppId?.let { this@register.androidApplicationId.set(it) }
+        this@register.androidApplicationId.set(targetAndroidAppIdProvider)
         this@register.iosPort.set(iosPort)
-        this@register.iosBundleId.set(project.provider { getIosBundleId() })
+        this@register.iosBundleId.set(project.provider { if (hasKmp) getIosBundleId() else "" })
 
         gradleAndroidSerial.set(project.providers.gradleProperty("parikshan.android.serial").orElse(project.providers.systemProperty("parikshan.android.serial")))
         gradleIosDevice.set(project.providers.gradleProperty("parikshan.ios.device").orElse(project.providers.systemProperty("parikshan.ios.device")))

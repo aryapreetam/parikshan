@@ -169,7 +169,12 @@ object AndroidServer {
           }
         } else {
           // Health check
-          sendHttpResponse(output, 200, """{"type":"ok","id":"health"}""")
+          val appId = try {
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext.packageName
+          } catch (_: Throwable) {
+            "unknown"
+          }
+          sendHttpResponse(output, 200, """{"type":"ok","id":"health","applicationId":"$appId"}""")
         }
       }
     } catch (e: Exception) {

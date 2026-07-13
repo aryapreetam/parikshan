@@ -18,10 +18,6 @@ internal fun Test.configureE2eHostTestExecution(
   target: String,
   logger: Logger
 ) {
-  if (e2eTestClasses.isEmpty()) {
-    throw GradleException("No E2E test classes discovered in src/commonTest")
-  }
-
   outputs.upToDateWhen { false }
   val videoOutputDirProvider = project.providers.gradleProperty("parikshan.video.outputDir")
       .orElse(project.providers.systemProperty("parikshan.video.outputDir"))
@@ -29,7 +25,11 @@ internal fun Test.configureE2eHostTestExecution(
       .orElse(project.layout.buildDirectory.dir("parikshan/videos/${target.lowercase()}").map { it.asFile })
 
   testClassesDirs = hostTestClassesDirs
-  classpath = hostTestClasspath
+  val launcherConfig = project.configurations.detachedConfiguration(
+      project.dependencies.create("org.junit.platform:junit-platform-launcher:1.10.2"),
+      project.dependencies.create("org.junit.vintage:junit-vintage-engine:5.10.2")
+  )
+  classpath = hostTestClasspath.plus(launcherConfig)
   reports.junitXml.outputLocation.set(
     project.layout.buildDirectory.dir("test-results/e2eTest/${target.lowercase()}")
   )
@@ -43,6 +43,11 @@ internal fun Test.configureE2eHostTestExecution(
   }
 
   doFirst {
+    if (e2eTestClasses.isEmpty()) {
+      val sourceDirName = if (project.extensions.findByName("kotlin") != null) "src/commonTest" else "src/test"
+      throw GradleException("No E2E test classes discovered in $sourceDirName containing 'e2eTest { ... }' invocation.")
+    }
+
     val existingClassDirs = testClassesDirs.files.filter { it.exists() }
     if (existingClassDirs.isEmpty()) {
       throw GradleException(
@@ -129,22 +134,20 @@ internal fun Test.configureE2eHostTestExecution(
 
 internal fun Project.resolveHostTestTaskName(override: String?): String {
   if (override != null) return override
-  val kmp = extensions.findByName("kotlin") ?: return "jvmTest"
-  try {
+  val kmp = extensions.findByName("kotlin")
+  val isKmp = kmp != null && runCatching { kmp.javaClass.getMethod("getTargets") }.isSuccess
+
+  if (isKmp && kmp != null) {
+    try {
       @Suppress("UNCHECKED_CAST")
       val targets = kmp.javaClass.getMethod("getTargets").invoke(kmp) as NamedDomainObjectCollection<Any>
       
-      logger.debug("Parikshan: Found ${targets.size} Kotlin Multiplatform targets")
-      targets.forEach { logger.debug("Parikshan: Target name=${(it as Named).name}, class=${it.javaClass.name}") }
-
       val jvmTargets = targets.filter { target ->
           val targetName = (target as Named).name
           val className = target.javaClass.name
-          val match = className.contains("KotlinJvmTarget", ignoreCase = true) || 
+          className.contains("KotlinJvmTarget", ignoreCase = true) || 
                     targetName.contains("jvm", ignoreCase = true) || 
                     targetName.contains("desktop", ignoreCase = true)
-          if (match) logger.debug("Parikshan: Matched target=$targetName as JVM test host target")
-          match
       }
       
       val target = jvmTargets.find { (it as Named).name in listOf("desktop", "jvm") }
@@ -152,15 +155,17 @@ internal fun Project.resolveHostTestTaskName(override: String?): String {
           
       if (target != null) {
           val name = (target as Named).name
-          val taskName = "${name}Test"
-          logger.debug("Parikshan: Resolved hostTestTaskName=$taskName")
-          return taskName
+          return "${name}Test"
       }
-  } catch (e: Exception) { 
-      logger.debug("Parikshan: Exception while resolving host test task name", e)
+    } catch (_: Exception) {}
   }
-  logger.debug("Parikshan: Falling back to jvmTest")
-  return "jvmTest"
+
+  return when {
+      tasks.names.contains("testDebugUnitTest") -> "testDebugUnitTest"
+      tasks.names.contains("test") -> "test"
+      tasks.names.contains("jvmTest") -> "jvmTest"
+      else -> "test"
+  }
 }
 
 internal fun Project.resolveWasmDistributionTaskName(override: String?): String {
@@ -184,18 +189,25 @@ internal fun Project.findAndroidAppProject(): Project? {
 }
 
 internal fun Project.discoverE2eTestClasses(): List<String> {
-  val commonTestKotlin = layout.projectDirectory.dir("src/commonTest/kotlin").asFile
-  if (!commonTestKotlin.exists()) {
-    return emptyList()
+  val dirsToCheck = mutableListOf<File>()
+  val hasKmp = pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform")
+  if (hasKmp) {
+      dirsToCheck.add(layout.projectDirectory.dir("src/commonTest/kotlin").asFile)
+  } else {
+      dirsToCheck.add(layout.projectDirectory.dir("src/test/java").asFile)
+      dirsToCheck.add(layout.projectDirectory.dir("src/test/kotlin").asFile)
   }
 
-  return commonTestKotlin
-    .walkTopDown()
-    .filter { it.isFile && it.extension == "kt" }
-    .flatMap { file -> discoverE2eTestClassesInFile(file).asSequence() }
+  return dirsToCheck
+    .filter { it.exists() }
+    .flatMap { dir ->
+        dir.walkTopDown()
+            .filter { it.isFile && (it.extension == "kt" || it.extension == "java") }
+            .flatMap { file -> discoverE2eTestClassesInFile(file).asSequence() }
+            .toList()
+    }
     .distinct()
     .sorted()
-    .toList()
 }
 
 private fun discoverE2eTestClassesInFile(file: File): List<String> {
@@ -347,19 +359,67 @@ internal fun Project.configureParikshanDependencies(isE2EActive: Boolean) {
   // Resolve version dynamically from loaded plugin class metadata.
   val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.1"
 
-  // Test DSL is always available in commonTest
-  addParikshanDependency("commonTestImplementation", ":parikshan", "io.github.aryapreetam:parikshan:$pluginVersion")
-  addParikshanDependency("commonTestImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client:$pluginVersion")
+  val hasKmp = pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform")
+  if (hasKmp) {
+      addParikshanDependency("commonTestImplementation", ":parikshan", "io.github.aryapreetam:parikshan:$pluginVersion")
+      addParikshanDependency("commonTestImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client:$pluginVersion")
+  } else if (pluginManager.hasPlugin("com.android.application")) {
+      addParikshanDependency("testImplementation", ":parikshan", "io.github.aryapreetam:parikshan-jvm:$pluginVersion")
+      addParikshanDependency("testImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client-jvm:$pluginVersion")
+      addParikshanDependency("testImplementation", "org.junit.platform:junit-platform-launcher:1.10.2", "org.junit.platform:junit-platform-launcher:1.10.2")
+      addParikshanDependency("testImplementation", "org.junit.vintage:junit-vintage-engine:5.10.2", "org.junit.vintage:junit-vintage-engine:5.10.2")
+  }
 
-  configurations.configureEach {
-    if (name.startsWith("jvmTest")) {
-      exclude(mapOf("group" to "org.jetbrains.kotlin", "module" to "kotlin-test-junit"))
-    }
+  if (!hasKmp) {
+      configurations.configureEach {
+          if (name.contains("UnitTest", ignoreCase = true) || name.startsWith("test")) {
+              exclude(mapOf("group" to "io.github.aryapreetam", "module" to "parikshan-client"))
+              exclude(mapOf("group" to "io.github.aryapreetam", "module" to "parikshan"))
+          }
+      }
+  } else {
+      configurations.configureEach {
+          if (name.startsWith("jvmTest")) {
+              exclude(mapOf("group" to "org.jetbrains.kotlin", "module" to "kotlin-test-junit"))
+          }
+      }
   }
 
   // The client engine is only injected into the production binary during active E2E tasks.
   if (isE2EActive) {
-      addParikshanDependency("commonMainImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client:$pluginVersion")
+      if (hasKmp) {
+          addParikshanDependency("commonMainImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client:$pluginVersion")
+      } else if (pluginManager.hasPlugin("com.android.application") || pluginManager.hasPlugin("com.android.library")) {
+          try {
+              val manifestDir = File(project.layout.buildDirectory.asFile.get(), "parikshan/manifest")
+              manifestDir.mkdirs()
+              val manifestFile = File(manifestDir, "AndroidManifest.xml")
+              manifestFile.writeText(
+                  """
+                  <?xml version="1.0" encoding="utf-8"?>
+                  <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+                      <uses-permission android:name="android.permission.INTERNET" />
+                  </manifest>
+                  """.trimIndent()
+              )
+              val android = extensions.findByName("android")
+              if (android != null) {
+                  val getSourceSets = android.javaClass.getMethod("getSourceSets")
+                  val sourceSets = getSourceSets.invoke(android) as? NamedDomainObjectCollection<*>
+                  if (sourceSets != null) {
+                      val debugSourceSet = sourceSets.findByName("debug")
+                      if (debugSourceSet != null) {
+                          val getManifest = debugSourceSet.javaClass.getMethod("getManifest")
+                          val manifest = getManifest.invoke(debugSourceSet)
+                          val srcFileMethod = manifest.javaClass.getMethod("srcFile", Any::class.java)
+                          srcFileMethod.invoke(manifest, manifestFile)
+                      }
+                  }
+              }
+          } catch (e: Exception) {
+              logger.warn("Parikshan: Failed to dynamically inject E2E manifest with INTERNET permission", e)
+          }
+      }
       
       // Inject server into all JVM targets
       val kmp = extensions.findByName("kotlin")

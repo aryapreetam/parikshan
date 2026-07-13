@@ -97,6 +97,29 @@ internal object PortConflictHandler {
         }
     }
 
+    fun queryApplicationId(host: String, port: Int): String? {
+        var conn: HttpURLConnection? = null
+        return try {
+            val url = URL("http://$host:$port/")
+            conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.setRequestProperty("Connection", "close")
+            conn.connectTimeout = 500
+            conn.readTimeout = 500
+            if (conn.responseCode == 200) {
+                val body = conn.inputStream?.use { it.bufferedReader().readText() }.orEmpty()
+                val match = Regex("\"applicationId\"\\s*:\\s*\"([^\"]+)\"").find(body)
+                match?.groupValues?.get(1)
+            } else {
+                null
+            }
+        } catch (_: Exception) {
+            null
+        } finally {
+            runCatching { conn?.disconnect() }
+        }
+    }
+
     internal fun findPidUsingPort(port: Int, excludeCurrentPid: Boolean = true): Long? {
         val os = System.getProperty("os.name").lowercase()
         val currentPid = ProcessHandle.current().pid()

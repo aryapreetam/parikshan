@@ -175,6 +175,7 @@ sealed class Command {
     val durationMs: Long = 300L,
     override var token: String = ""
   ) : Command()
+
 }
 
 /**

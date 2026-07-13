@@ -12,12 +12,19 @@ Use the following system properties to configure video capture:
 | **`parikshan.video.outputDir`** | `String` | `"build/parikshan/videos/"` | The directory where output video files are written. |
 | **`parikshan.video.fps`** | `Int` | `10` | The frame rate of the output video. Must be between `1` and `30`. |
 | **`parikshan.video.showCursor`** | `Boolean` | `true` | Highlights the simulated cursor positions in the video. |
-| **`parikshan.video.strategy`** | `String` | `"screenshot_sequence"` | Capture strategy. Options: `"screenshot_sequence"`, `"native"`. |
+| **`parikshan.video.granularity`** | `String` | `"TEST"` | Video recording granularity. Options: `"RUN"`, `"CLASS"`, `"TEST"`, `"SESSION"`. |
 | **`parikshan.video.stepDelayMs`** | `Long` | `null` | Optional duration in milliseconds to pause after each action step. |
 | **`parikshan.video.postRollMs`** | `Long` | `null` | Optional duration in milliseconds to continue recording after the test finishes. |
 | **`parikshan.video.width`** | `Int` | `null` | Width resolution override in pixels. |
 | **`parikshan.video.height`** | `Int` | `null` | Height resolution override in pixels. |
 | **`parikshan.video.deviceScaleFactor`** | `Double` | `null` | Scale factor for retina/high-DPI screens (e.g. `2.0`). |
+
+### Video Granularity Levels
+
+* **`RUN`**: Records a single continuous video covering all executed test classes and test methods in the run session.
+* **`CLASS`**: Records one video per test class.
+* **`TEST`**: Records one video per test method (default).
+* **`SESSION`**: Records a single video for the lifetime of the application server session.
 
 ---
 

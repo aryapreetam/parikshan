@@ -54,8 +54,14 @@ kotlin {
     }
 
     jvmMain.dependencies {
+      api("org.jetbrains.kotlin:kotlin-test-junit5")
+      api("org.jetbrains.kotlin:kotlin-test")
       implementation(libs.ktor.client.cio)
       implementation(libs.playwright.java)
+      implementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
+      implementation(libs.jcodec.javase)
+      implementation("org.mp4parser:isoparser:1.9.56")
+      implementation("org.mp4parser:muxer:1.9.56")
     }
 
     androidMain.dependencies {

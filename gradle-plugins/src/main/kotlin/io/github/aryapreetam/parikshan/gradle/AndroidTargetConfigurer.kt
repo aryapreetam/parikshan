@@ -76,7 +76,7 @@ internal object AndroidTargetConfigurer {
       }
     }
 
-    project.tasks.register<Test>("e2eAndroidTest") {
+    project.registerE2eTestWithReport("e2eAndroidTest", "Android") {
       group = "verification"
       dependsOn(startAndroidAppTask)
       finalizedBy("stopParikshanAndroidApp")

@@ -45,6 +45,11 @@ enum class SampleScreen {
 @Composable
 fun App() {
   val activeScreen = remember { mutableStateOf(SampleScreen.TaskList) }
+
+  PlatformBackHandler(enabled = activeScreen.value != SampleScreen.TaskList) {
+    activeScreen.value = SampleScreen.TaskList
+  }
+
   val formValue = remember { mutableStateOf("") }
   val showFormSuccess = remember { mutableStateOf(false) }
   val selectorResultMessage = remember { mutableStateOf<String?>(null) }

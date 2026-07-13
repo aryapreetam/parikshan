@@ -23,7 +23,18 @@ object DesktopAppLauncher {
         ?.takeIf { it.isNotEmpty() }
 
     if (System.getProperty("parikshan.background") == "true") {
-        System.err.println("Parikshan: Background mode active. Enforcing focus-prevention.")
+      System.err.println("Parikshan: Background mode active. Enforcing focus-prevention listener.")
+      java.awt.Toolkit.getDefaultToolkit().addAWTEventListener({ event ->
+        if (event is java.awt.event.WindowEvent && event.id == java.awt.event.WindowEvent.WINDOW_OPENED) {
+          val window = event.window
+          if (window is ComposeWindow) {
+            System.err.println("Parikshan: Intercepted window open, applying background settings to '${window.title}'")
+            window.setFocusableWindowState(true)
+            window.setAutoRequestFocus(false)
+            window.setAlwaysOnTop(true)
+          }
+        }
+      }, java.awt.AWTEvent.WINDOW_EVENT_MASK)
     }
 
     val bootstrap =
@@ -72,11 +83,16 @@ private class DesktopBootstrapController(
 
   private fun waitForComposeWindowAndStartServer() {
     val isBackground = System.getProperty("parikshan.background") == "true"
+    val isFocusDisabled = System.getProperty("parikshan.desktop.focus") == "false"
     
     while (!Thread.currentThread().isInterrupted && handle == null) {
       if (isBackground) {
           applyBackgroundSettings()
       }
+      if (isFocusDisabled) {
+          applyFocusPrevention()
+      }
+      applyWindowPosition()
 
       when (val selection = selectComposeWindow(requiredWindowTitle)) {
         is WindowSelection.Ready -> {
@@ -111,11 +127,43 @@ private class DesktopBootstrapController(
   private fun applyBackgroundSettings() {
     onEdt {
       Window.getWindows().filterIsInstance<ComposeWindow>().forEach { window ->
-        if (window.focusableWindowState) {
+        if (!window.isAlwaysOnTop || window.isAutoRequestFocus) {
           System.err.println("Parikshan: Applying background settings to window '${window.title}'")
-          window.focusableWindowState = false
+          window.setFocusableWindowState(true)
           window.setAutoRequestFocus(false)
-          window.isAlwaysOnTop = true
+          window.setAlwaysOnTop(true)
+        }
+      }
+    }
+  }
+
+  private fun applyFocusPrevention() {
+    onEdt {
+      Window.getWindows().forEach { window ->
+        if (window is ComposeWindow) {
+          if (window.isAutoRequestFocus) {
+            System.err.println("Parikshan: Applying focus prevention to window '${window.title}'")
+            window.setFocusableWindowState(true)
+            window.setAutoRequestFocus(false)
+          }
+        }
+      }
+    }
+  }
+
+  private fun applyWindowPosition() {
+    val x = System.getProperty("parikshan.desktop.windowX")?.toIntOrNull()
+    val y = System.getProperty("parikshan.desktop.windowY")?.toIntOrNull()
+    val w = System.getProperty("parikshan.desktop.windowWidth")?.toIntOrNull()
+    val h = System.getProperty("parikshan.desktop.windowHeight")?.toIntOrNull()
+
+    if (x != null && y != null && w != null && h != null) {
+      onEdt {
+        Window.getWindows().filterIsInstance<ComposeWindow>().forEach { window ->
+          if (window.x != x || window.y != y || window.width != w || window.height != h) {
+            System.err.println("Parikshan: Positioning new window to match old bounds: ($x, $y, $w, $h)")
+            window.setBounds(x, y, w, h)
+          }
         }
       }
     }

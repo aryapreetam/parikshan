@@ -304,6 +304,7 @@ internal class WasmDriver private constructor(
                   Files.copy(rawVideoPath!!, finalVideoPath, StandardCopyOption.REPLACE_EXISTING)
                   val size = Files.size(finalVideoPath)
                   System.err.println("WasmVideo: Successfully saved recording to $targetPath (bytes=$size)")
+                  registerWasmVideoPath(targetPath)
                   runCatching { Files.deleteIfExists(rawVideoPath!!) }
                 } catch (e: Throwable) {
                   System.err.println("WasmVideo: Error copying video to $targetPath: ${e.message}")
@@ -577,6 +578,7 @@ internal class WasmDriver private constructor(
                 val size = runCatching { Files.size(finalVideoPath) }.getOrNull()
                 val sizeText = size?.toString() ?: "unknown"
                 System.err.println("WasmVideo: Successfully saved recording to $targetPath (bytes=$sizeText)")
+                registerWasmVideoPath(targetPath)
                 runCatching { Files.deleteIfExists(rawVideoPath) }
               } catch (e: Throwable) {
                 System.err.println("WasmVideo: Error copying video to $targetPath: ${'$'}{e.message}")
@@ -683,6 +685,20 @@ internal class WasmDriver private constructor(
           null,
           Page.WaitForFunctionOptions().setTimeout(config.bridgeReadyTimeoutMs.toDouble())
         )
+      }
+    }
+
+    private fun registerWasmVideoPath(targetPath: String) {
+      println("[PARIKSHAN_VIDEO_PATH] $targetPath")
+      try {
+        val finalVideoPath = Paths.get(targetPath)
+        val indexFile = File(finalVideoPath.parent.toFile(), "video-index.txt")
+        indexFile.parentFile?.mkdirs()
+        synchronized(WasmDriver::class.java) {
+          indexFile.appendText("$targetPath\n")
+        }
+      } catch (e: Exception) {
+        System.err.println("WARN: Failed to write to video-index.txt in WasmDriver: ${e.message}")
       }
     }
   }

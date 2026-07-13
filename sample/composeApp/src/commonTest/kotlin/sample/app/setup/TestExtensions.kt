@@ -291,7 +291,7 @@ private suspend fun E2ETestScope.selectDateFromCalendarNative(day: Int, month: I
         val yearTargetText = "Navigate to year $year"
         val target = Selector.Text(yearTargetText)
         
-        scrollUntilVisible(Selector.Auto("Navigate to year"), target, if (year > curYear) ScrollDirection.Down else ScrollDirection.Up)
+        scrollUntilVisible(Selector.Auto("Navigate to year").atIndex(0), target, if (year > curYear) ScrollDirection.Down else ScrollDirection.Up)
         click(target.atIndex(-1))
         delay(1500)
         
@@ -406,7 +406,7 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
         val target = Selector.Text(yearTargetText)
         
         // We use the first node starting with "Navigate to year" as the scroll container anchor if list tag is missing
-        scrollUntilVisible(Selector.Auto("Navigate to year"), target, if (year > curYear) ScrollDirection.Down else ScrollDirection.Up)
+        scrollUntilVisible(Selector.Auto("Navigate to year").atIndex(0), target, if (year > curYear) ScrollDirection.Down else ScrollDirection.Up)
         click(target.atIndex(-1))
         delay(1500)
         

@@ -14,7 +14,8 @@ internal data class E2ETestCase(
   val status: String, // "passed", "failed", "ignored"
   val failureMessage: String?,
   val failureType: String?,
-  val failureDetail: String?
+  val failureDetail: String?,
+  val videoPath: String? = null
 )
 
 internal data class E2EClassSummary(
@@ -49,21 +50,34 @@ internal fun generateUnifiedReport(
   val testCases = mutableListOf<E2ETestCase>()
   val factory = javax.xml.parsers.DocumentBuilderFactory.newInstance()
   
+  val buildDir = resDirFile.let {
+    var dir: File? = it
+    while (dir != null && dir.name != "build") {
+      dir = dir.parentFile
+    }
+    dir ?: it.parentFile.parentFile
+  }
+
   if (resDirFile.exists()) {
     val xmlFiles = resDirFile.walkTopDown()
       .filter { it.isFile && it.name.startsWith("TEST-") && it.extension.lowercase() == "xml" }
       .toList()
       
     xmlFiles.forEach { file ->
-      val relativePath = file.absoluteFile.parentFile.relativeTo(resDirFile.absoluteFile).path
-      val rawTarget = relativePath.split(File.separator).firstOrNull()?.lowercase() ?: file.parentFile.name.lowercase()
-      val target = when (rawTarget) {
-        "desktop" -> "desktop"
-        "wasm" -> "wasm"
-        "ios" -> "ios"
-        "android" -> "android"
-        else -> rawTarget
-      }
+       val pathSegments = file.absolutePath.split(File.separator)
+       val e2eTestIdx = pathSegments.indexOfLast { it.equals("e2eTest", ignoreCase = true) }
+       val rawTarget = if (e2eTestIdx >= 0 && e2eTestIdx < pathSegments.size - 1) {
+         pathSegments[e2eTestIdx + 1].lowercase()
+       } else {
+         file.parentFile.name.lowercase()
+       }
+       val target = when (rawTarget) {
+         "desktop" -> "desktop"
+         "wasm" -> "wasm"
+         "ios" -> "ios"
+         "android" -> "android"
+         else -> rawTarget
+       }
       
       try {
         val builder = factory.newDocumentBuilder()
@@ -71,9 +85,58 @@ internal fun generateUnifiedReport(
         doc.documentElement.normalize()
         
         val caseNodes = doc.getElementsByTagName("testcase")
+        
+        val rawClassName = if (file.name.contains("junit-")) {
+          file.parentFile.name
+        } else {
+          file.name.substringAfter("TEST-").substringBefore(".xml")
+        }
+        val logFile = File(buildDir, "parikshan/logs/$target-$rawClassName.log")
+        val suiteVideoPaths = mutableListOf<String>()
+
+        // 1. Read from target-specific video index file
+        val targetIndexFile = File(buildDir, "parikshan/videos/$target/video-index.txt")
+        if (targetIndexFile.exists()) {
+          targetIndexFile.useLines { lines ->
+            lines.forEach { line ->
+              val trimmed = line.trim()
+              if (trimmed.isNotEmpty()) {
+                suiteVideoPaths.add(trimmed)
+              }
+            }
+          }
+        }
+
+        // 2. Read from XML system-out tags
+        val systemOuts = doc.getElementsByTagName("system-out")
+        for (j in 0 until systemOuts.length) {
+          val content = systemOuts.item(j).textContent
+          content.lineSequence().forEach { line ->
+            if (line.contains("[PARIKSHAN_VIDEO_PATH]")) {
+              suiteVideoPaths.add(line.substringAfter("[PARIKSHAN_VIDEO_PATH]").trim())
+            }
+          }
+        }
+
+        // 3. Fallback: Read from the old target execution log file
+        if (logFile.exists()) {
+          logFile.useLines { lines ->
+            lines.forEach { line ->
+              if (line.contains("[PARIKSHAN_VIDEO_PATH]")) {
+                suiteVideoPaths.add(line.substringAfter("[PARIKSHAN_VIDEO_PATH]").trim())
+              }
+            }
+          }
+        }
+
         for (i in 0 until caseNodes.length) {
           val caseNode = caseNodes.item(i) as org.w3c.dom.Element
-          val methodName = caseNode.getAttribute("name")
+          val rawMethodName = caseNode.getAttribute("name")                                                                                                                       
+          val methodName = if (rawMethodName.endsWith("()")) {                                                                                                                    
+            rawMethodName.substring(0, rawMethodName.length - 2)                                                                                                                
+          } else {                                                                                                                                                                
+            rawMethodName                                                                                                                                                       
+          }
           val caseClassName = caseNode.getAttribute("classname")
           val caseDuration = caseNode.getAttribute("time").toDoubleOrNull() ?: 0.0
           
@@ -104,7 +167,13 @@ internal fun generateUnifiedReport(
           } else if (skippedNodes.length > 0) {
             status = "ignored"
           }
-          
+
+          val existingVideoPaths = suiteVideoPaths.filter { File(it).exists() }
+          val videoPath = existingVideoPaths.firstOrNull { path ->
+            path.contains(methodName)
+          } ?: existingVideoPaths.firstOrNull { path ->
+            path.contains(caseClassName.substringAfterLast('.'))
+          } ?: existingVideoPaths.firstOrNull()
           testCases.add(E2ETestCase(
             name = nameWithTarget,
             methodName = methodName,
@@ -114,7 +183,8 @@ internal fun generateUnifiedReport(
             status = status,
             failureMessage = failureMessage,
             failureType = failureType,
-            failureDetail = failureDetail
+            failureDetail = failureDetail,
+            videoPath = videoPath
           ))
         }
       } catch (e: Exception) {
@@ -163,20 +233,20 @@ internal fun generateUnifiedReport(
   
   // Write index.html
   val indexHtml = File(repDirFile, "index.html")
-  indexHtml.writeText(generateIndexHtml(totalTests, totalFailures, totalIgnored, totalDuration, successRate, successRateClass, packagesList, classesList))
+  indexHtml.writeText(generateIndexHtml(totalTests, totalFailures, totalIgnored, totalDuration, successRate, successRateClass, packagesList, classesList, repDirFile))
   
   // Write package files
   val packagesDir = File(repDirFile, "packages")
   packagesDir.mkdirs()
   packagesList.forEach { pkg ->
-    File(packagesDir, "${pkg.name}.html").writeText(generatePackageHtml(pkg))
+    File(packagesDir, "${pkg.name}.html").writeText(generatePackageHtml(pkg, repDirFile))
   }
   
   // Write class files
   val classesDir = File(repDirFile, "classes")
   classesDir.mkdirs()
   classesList.forEach { clazz ->
-    File(classesDir, "${clazz.name}.html").writeText(generateClassHtml(clazz))
+    File(classesDir, "${clazz.name}.html").writeText(generateClassHtml(clazz, classesDir))
   }
   
   logger.lifecycle("Parikshan: Unified E2E HTML Report generated at file://${indexHtml.absolutePath}")
@@ -190,13 +260,29 @@ internal fun generateIndexHtml(
   successRate: Int,
   successRateClass: String,
   packages: List<E2EPackageSummary>,
-  classes: List<E2EClassSummary>
+  classes: List<E2EClassSummary>,
+  repDirFile: File
 ): String {
   val dateString = DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm:ss")
     .format(ZonedDateTime.now())
   
+  val allTestCases = classes.flatMap { it.testCases }
+  val allVideoPaths = allTestCases.mapNotNull { it.videoPath }.distinct()
+  val videoStrategy = detectVideoStrategy(allVideoPaths)
+  
   val packagesRows = packages.joinToString("\n") { pkg ->
     val statusClass = if (pkg.failures > 0) "failures" else "success"
+    val videoCell = if (videoStrategy == ReportVideoStrategy.RUN) {
+      val paths = pkg.classes.flatMap { it.testCases }.mapNotNull { it.videoPath }.distinct()
+      if (paths.isNotEmpty()) {
+        val links = paths.mapNotNull { path ->
+          val targetName = File(path).parentFile.name
+          val relVideo = getRelativeVideoPath(repDirFile, path)
+          if (relVideo != null) "<a href=\"$relVideo\" target=\"_blank\">$targetName</a>" else null
+        }.filterNotNull().joinToString(" | ")
+        "<td>${links.ifEmpty { "-" }}</td>"
+      } else "<td>-</td>"
+    } else ""
     """
 <tr>
 <td class="$statusClass">
@@ -207,12 +293,24 @@ internal fun generateIndexHtml(
 <td>${pkg.ignored}</td>
 <td>${String.format(Locale.US, "%.3f", pkg.time)}s</td>
 <td class="$statusClass">${if (pkg.tests - pkg.ignored > 0) ((pkg.tests - pkg.failures - pkg.ignored) * 100) / (pkg.tests - pkg.ignored) else 100}%</td>
+$videoCell
 </tr>
     """.trimIndent()
   }
 
   val classesRows = classes.joinToString("\n") { clazz ->
     val statusClass = if (clazz.failures > 0) "failures" else "success"
+    val videoCell = if (videoStrategy == ReportVideoStrategy.CLASS) {
+      val paths = clazz.testCases.mapNotNull { it.videoPath }.distinct()
+      if (paths.isNotEmpty()) {
+        val links = paths.mapNotNull { path ->
+          val targetName = File(path).parentFile.name
+          val relVideo = getRelativeVideoPath(repDirFile, path)
+          if (relVideo != null) "<a href=\"$relVideo\" target=\"_blank\">$targetName</a>" else null
+        }.filterNotNull().joinToString(" | ")
+        "<td>${links.ifEmpty { "-" }}</td>"
+      } else "<td>-</td>"
+    } else ""
     """
 <tr>
 <td class="$statusClass">
@@ -223,6 +321,7 @@ internal fun generateIndexHtml(
 <td>${clazz.ignored}</td>
 <td>${String.format(Locale.US, "%.3f", clazz.time)}s</td>
 <td class="$statusClass">${if (clazz.tests - clazz.ignored > 0) ((clazz.tests - clazz.failures - clazz.ignored) * 100) / (clazz.tests - clazz.ignored) else 100}%</td>
+$videoCell
 </tr>
     """.trimIndent()
   }
@@ -305,6 +404,7 @@ internal fun generateIndexHtml(
 <th>Ignored</th>
 <th>Duration</th>
 <th>Success rate</th>
+${if (videoStrategy == ReportVideoStrategy.RUN) "<th>Video</th>" else ""}
 </tr>
 </thead>
 <tbody>
@@ -323,6 +423,7 @@ $packagesRows
 <th>Ignored</th>
 <th>Duration</th>
 <th>Success rate</th>
+${if (videoStrategy == ReportVideoStrategy.CLASS) "<th>Video</th>" else ""}
 </tr>
 </thead>
 <tbody>
@@ -346,9 +447,13 @@ $classesRows
   """.trimIndent()
 }
 
-internal fun generatePackageHtml(pkg: E2EPackageSummary): String {
+internal fun generatePackageHtml(pkg: E2EPackageSummary, repDirFile: File): String {
   val dateString = DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm:ss")
     .format(ZonedDateTime.now())
+  
+  val allTestCases = pkg.classes.flatMap { it.testCases }
+  val allVideoPaths = allTestCases.mapNotNull { it.videoPath }.distinct()
+  val videoStrategy = detectVideoStrategy(allVideoPaths)
   
   val successRate = if (pkg.tests - pkg.ignored > 0) {
     ((pkg.tests - pkg.failures - pkg.ignored) * 100) / (pkg.tests - pkg.ignored)
@@ -359,6 +464,17 @@ internal fun generatePackageHtml(pkg: E2EPackageSummary): String {
 
   val classesRows = pkg.classes.joinToString("\n") { clazz ->
     val statusClass = if (clazz.failures > 0) "failures" else "success"
+    val videoCell = if (videoStrategy == ReportVideoStrategy.CLASS) {
+      val paths = clazz.testCases.mapNotNull { it.videoPath }.distinct()
+      if (paths.isNotEmpty()) {
+        val links = paths.mapNotNull { path ->
+          val targetName = File(path).parentFile.name
+          val relVideo = getRelativeVideoPath(File(repDirFile, "packages"), path)
+          if (relVideo != null) "<a href=\"$relVideo\" target=\"_blank\">$targetName</a>" else null
+        }.filterNotNull().joinToString(" | ")
+        "<td>${links.ifEmpty { "-" }}</td>"
+      } else "<td>-</td>"
+    } else ""
     """
 <tr>
 <td class="$statusClass">
@@ -369,6 +485,7 @@ internal fun generatePackageHtml(pkg: E2EPackageSummary): String {
 <td>${clazz.ignored}</td>
 <td>${String.format(Locale.US, "%.3f", clazz.time)}s</td>
 <td class="$statusClass">${if (clazz.tests - clazz.ignored > 0) ((clazz.tests - clazz.failures - clazz.ignored) * 100) / (clazz.tests - clazz.ignored) else 100}%</td>
+$videoCell
 </tr>
     """.trimIndent()
   }
@@ -450,6 +567,7 @@ internal fun generatePackageHtml(pkg: E2EPackageSummary): String {
 <th>Ignored</th>
 <th>Duration</th>
 <th>Success rate</th>
+${if (videoStrategy == ReportVideoStrategy.CLASS) "<th>Video</th>" else ""}
 </tr>
 </thead>
 <tbody>
@@ -473,9 +591,12 @@ $classesRows
   """.trimIndent()
 }
 
-internal fun generateClassHtml(clazz: E2EClassSummary): String {
+internal fun generateClassHtml(clazz: E2EClassSummary, classesDir: File): String {
   val dateString = DateTimeFormatter.ofPattern("d MMM yyyy, HH:mm:ss")
     .format(ZonedDateTime.now())
+  
+  val allVideoPaths = clazz.testCases.mapNotNull { it.videoPath }.distinct()
+  val videoStrategy = detectVideoStrategy(allVideoPaths)
   
   val successRate = if (clazz.tests - clazz.ignored > 0) {
     ((clazz.tests - clazz.failures - clazz.ignored) * 100) / (clazz.tests - clazz.ignored)
@@ -510,6 +631,14 @@ internal fun generateClassHtml(clazz: E2EClassSummary): String {
   val failedTestsTab = if (hasFailed) {
     val failedBlocks = failedCases.joinToString("\n") { case ->
       val detailEscaped = case.failureDetail?.replace("<", "&lt;")?.replace(">", "&gt;") ?: ""
+      val relVideo = getRelativeVideoPath(classesDir, case.videoPath)
+      val videoEl = if (relVideo != null) {
+        """
+<div style="margin-top: 10px;">
+<video src="$relVideo" controls style="max-width: 600px; border: 1px solid #ccc; border-radius: 4px;"></video>
+</div>
+        """.trimIndent()
+      } else ""
       """
 <div class="test">
 <a name="${case.name}"></a>
@@ -519,6 +648,7 @@ internal fun generateClassHtml(clazz: E2EClassSummary): String {
 $detailEscaped
 </pre>
 </span>
+$videoEl
 </div>
       """.trimIndent()
     }
@@ -543,6 +673,10 @@ $failedBlocks
       "ignored" -> "ignored"
       else -> "passed"
     }
+    val videoCell = if (videoStrategy == ReportVideoStrategy.TEST) {
+      val relVideo = getRelativeVideoPath(classesDir, case.videoPath)
+      if (relVideo != null) "<td><a href=\"$relVideo\" target=\"_blank\">Watch Video</a></td>" else "<td>-</td>"
+    } else ""
     """
 <tr>
 <td class="$resultClass">
@@ -551,6 +685,7 @@ $failedBlocks
 <td>${case.methodName}</td>
 <td>${String.format(Locale.US, "%.3f", case.duration)}s</td>
 <td class="$resultClass">$resultText</td>
+$videoCell
 </tr>
     """.trimIndent()
   }
@@ -565,6 +700,7 @@ $failedBlocks
 <th>Method name</th>
 <th>Duration</th>
 <th>Result</th>
+${if (videoStrategy == ReportVideoStrategy.TEST) "<th>Video</th>" else ""}
 </tr>
 </thead>
 <tbody>
@@ -655,6 +791,35 @@ $testsTab
 </html>
   """.trimIndent()
 }
+
+internal enum class ReportVideoStrategy { TEST, CLASS, RUN, NONE }
+
+internal fun detectVideoStrategy(allVideoPaths: List<String>): ReportVideoStrategy {
+  if (allVideoPaths.isEmpty()) return ReportVideoStrategy.NONE
+  if (allVideoPaths.any { it.contains("e2e_session") }) return ReportVideoStrategy.RUN
+  
+  val hasTestLevel = allVideoPaths.any { path ->
+    val name = File(path).nameWithoutExtension
+    val parts = name.split('_')
+    parts.size > 1 && (parts.last().firstOrNull()?.isLowerCase() == true || parts.last().startsWith("test"))
+  }
+  return if (hasTestLevel) ReportVideoStrategy.TEST else ReportVideoStrategy.CLASS
+}
+
+private fun getRelativeVideoPath(htmlFileParent: File, videoPathStr: String?): String? {
+  if (videoPathStr == null) return null
+  val videoFile = File(videoPathStr).absoluteFile
+  if (!videoFile.exists()) return null
+  
+  return try {
+    val htmlPath = htmlFileParent.toPath().toAbsolutePath()
+    val videoPath = videoFile.toPath().toAbsolutePath()
+    htmlPath.relativize(videoPath).toString().replace('\\', '/')
+  } catch (e: Exception) {
+    "file://${videoFile.absolutePath.replace('\\', '/')}"
+  }
+}
+
 
 internal const val BASE_STYLE_CSS = """
 body {

@@ -7,7 +7,7 @@ data class ParikshanVideoConfig(
   val showCursor: Boolean,
   val stepDelayMs: Long,
   val postRollMs: Long,
-  val strategy: VideoStrategy = VideoStrategy.CLASS,
+  val granularity: VideoGranularity = VideoGranularity.CLASS,
   /** Explicit video width override. When null, Playwright infers from the viewport size. */
   val videoWidth: Int? = null,
   /** Explicit video height override. When null, Playwright infers from the viewport size. */
@@ -20,15 +20,21 @@ data class ParikshanVideoConfig(
     private const val DEFAULT_FPS = 10
     private const val DEFAULT_STEP_DELAY_MS = 0L
     private const val DEFAULT_POST_ROLL_MS = 1000L
-    private const val DEFAULT_STRATEGY = "class"
+    private const val DEFAULT_GRANULARITY = "class"
 
     fun fromSystemProperties(): ParikshanVideoConfig {
       val enabled = System.getProperty("parikshan.video.enabled")?.toBoolean() ?: false
       val outputDir = System.getProperty("parikshan.video.outputDir") ?: DEFAULT_OUTPUT_DIR
       val fps = System.getProperty("parikshan.video.fps")?.toIntOrNull()?.coerceIn(1, 30) ?: DEFAULT_FPS
       val showCursor = System.getProperty("parikshan.video.showCursor")?.toBoolean() ?: true
-      val strategyStr = System.getProperty("parikshan.video.strategy") ?: DEFAULT_STRATEGY
-      val strategy = if (strategyStr.lowercase() == "session") VideoStrategy.SESSION else VideoStrategy.CLASS
+      val granularityStr = System.getProperty("parikshan.video.granularity")
+        ?: System.getProperty("parikshan.video.strategy")
+        ?: DEFAULT_GRANULARITY
+      val granularity = when (granularityStr.lowercase()) {
+        "session", "run" -> VideoGranularity.RUN
+        "test" -> VideoGranularity.TEST
+        else -> VideoGranularity.CLASS
+      }
       val stepDelayMs =
         System.getProperty("parikshan.video.stepDelayMs")?.toLongOrNull()?.coerceIn(0L, 5_000L)
           ?: DEFAULT_STEP_DELAY_MS
@@ -46,7 +52,7 @@ data class ParikshanVideoConfig(
         showCursor = showCursor,
         stepDelayMs = stepDelayMs,
         postRollMs = postRollMs,
-        strategy = strategy,
+        granularity = granularity,
         videoWidth = videoWidth,
         videoHeight = videoHeight,
         deviceScaleFactor = deviceScaleFactor
@@ -55,6 +61,6 @@ data class ParikshanVideoConfig(
   }
 }
 
-enum class VideoStrategy {
-    CLASS, SESSION
+enum class VideoGranularity {
+    RUN, CLASS, TEST
 }

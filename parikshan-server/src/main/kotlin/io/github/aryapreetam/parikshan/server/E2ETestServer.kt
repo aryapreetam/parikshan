@@ -19,6 +19,13 @@ import io.ktor.server.request.receiveText
 import io.ktor.server.response.respondText
 import io.ktor.http.HttpStatusCode
 import java.util.concurrent.atomic.AtomicReference
+import java.awt.image.BufferedImage
+import javax.swing.SwingUtilities
+import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.util.Base64
+import javax.imageio.ImageIO
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -27,6 +34,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 object E2ETestServer {
   private val activeServer = AtomicReference<RunningE2ETestServer?>(null)
@@ -58,6 +67,14 @@ private class RunningE2ETestServer(
   private val injector = DesktopEventInjector()
   private val videoRecorder = DesktopVideoRecorder(semanticsAccessor = semantics)
 
+  private val shutdownHook = Thread({
+    videoRecorder.stop()
+  }, "parikshan-server-video-shutdown")
+
+  init {
+    Runtime.getRuntime().addShutdownHook(shutdownHook)
+  }
+
   private val server =
     embeddedServer(Netty, host = config.host, port = config.port) {
       installServerRoutes()
@@ -68,6 +85,9 @@ private class RunningE2ETestServer(
   }
 
   override fun stop() {
+    runCatching {
+      Runtime.getRuntime().removeShutdownHook(shutdownHook)
+    }
     videoRecorder.stop()
     runCatching {
       server.stop(gracePeriodMillis = 500, timeoutMillis = 2_000)

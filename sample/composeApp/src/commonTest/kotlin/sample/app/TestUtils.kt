@@ -14,12 +14,10 @@ suspend fun E2ETestScope.openAppNavigation() {
         return
     }
 
-    // 2. Try to open the drawer
-    if (hasVisibleNode("hamburger_button")) {
-        click("hamburger_button")
-        // Wait for drawer to appear
-        waitFor("nav_task_list")
-    }
+    // 2. Wait for hamburger button to appear, click it, and wait for navigation menu
+    waitFor("hamburger_button")
+    click("hamburger_button")
+    waitFor("nav_task_list")
 }
 
 /**

@@ -34,6 +34,8 @@ interface TestDriver {
 
   suspend fun close()
 
+  fun updateVirtualCursor(x: Double, y: Double) {}
+
   fun resolveArtifactPath(relativePath: String): String =
     "build/parikshan/${relativePath.trimStart('/', '\\')}"
 }
@@ -76,6 +78,7 @@ class E2ETestScope internal constructor(
     waitFor(selector = selector)
     val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
     checkAmbiguity(resolved)
+    driver.updateVirtualCursor(resolved.node.bounds.centerX, resolved.node.bounds.centerY)
     expectOk(
       action = "click(${selector.raw})",
       response = driver.send(Command.Click(id = nextId(), tag = resolved.tag, selector = selector))
@@ -107,6 +110,7 @@ class E2ETestScope internal constructor(
     waitFor(selector = selector)
     val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
     checkAmbiguity(resolved)
+    driver.updateVirtualCursor(resolved.node.bounds.centerX, resolved.node.bounds.centerY)
     expectOk(
       action = "input(${selector.raw})",
       response = driver.send(Command.Input(id = nextId(), tag = resolved.tag, text = text, selector = selector))
@@ -136,6 +140,7 @@ class E2ETestScope internal constructor(
     waitFor(selector = selector)
     val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
     checkAmbiguity(resolved)
+    driver.updateVirtualCursor(resolved.node.bounds.centerX, resolved.node.bounds.centerY)
     expectOk(
       action = "scroll(${selector.raw})",
       response = driver.send(Command.Scroll(id = nextId(), tag = resolved.tag, direction = direction, selector = selector))
@@ -480,10 +485,12 @@ class E2ETestScope internal constructor(
     toY: Double,
     durationMs: Long = 300L
   ) {
+    driver.updateVirtualCursor(fromX, fromY)
     expectOk(
       action = "drag($fromX, $fromY -> $toX, $toY)",
       response = driver.send(Command.Drag(id = nextId(), fromX = fromX, fromY = fromY, toX = toX, toY = toY, durationMs = durationMs))
     )
+    driver.updateVirtualCursor(toX, toY)
     settleAfterCommand()
   }
 
@@ -537,6 +544,11 @@ class E2ETestScope internal constructor(
 
   suspend fun relaunchApp() {
     driver.relaunchApp()
+    settleAfterCommand()
+  }
+
+  suspend fun resetApp() {
+    driver.reset()
     settleAfterCommand()
   }
 

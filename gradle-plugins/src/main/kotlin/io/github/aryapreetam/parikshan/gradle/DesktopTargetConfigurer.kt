@@ -79,7 +79,7 @@ internal object DesktopTargetConfigurer {
       dependsOn(appJarTaskNameVal)
     }
 
-    project.tasks.register<Test>("e2eDesktopTest") {
+    project.registerE2eTestWithReport("e2eDesktopTest", "Desktop") {
       group = "verification"
       dependsOn(startDesktopTask)
       finalizedBy("stopParikshanDesktopApp")
@@ -142,11 +142,9 @@ internal object DesktopProcess {
       add("-Dparikshan.port=$port")
       add("-Dparikshan.token=$token")
       add("-Dparikshan.desktop.appMainClass=$mainClass")
+      add("-Dapple.awt.takeFocusOnShow=false")
       if (background) {
         add("-Dparikshan.background=true")
-        if (System.getProperty("os.name").contains("mac", ignoreCase = true)) {
-          add("-Dapple.awt.UIElement=true")
-        }
       }
       title?.let { add("-Dparikshan.desktop.windowTitle=$it") }
       add("-cp")

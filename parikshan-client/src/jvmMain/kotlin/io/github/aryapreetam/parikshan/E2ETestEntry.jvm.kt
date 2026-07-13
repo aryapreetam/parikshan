@@ -30,6 +30,7 @@ actual fun e2eTest(
       }
 
     val callerClassName = inferCallerClassName()
+    val callerMethodName = inferCallerMethodName()
     val videoConfig = ParikshanVideoConfig.fromSystemProperties()
     val clientConfig = io.github.aryapreetam.parikshan.client.ParikshanClientConfig(
       host = System.getProperty("parikshan.host") ?: "127.0.0.1",
@@ -40,7 +41,8 @@ actual fun e2eTest(
       driver = driver,
       clientConfig = clientConfig,
       config = videoConfig,
-      className = callerClassName
+      className = callerClassName,
+      methodName = callerMethodName
     )
 
     val target = System.getProperty("parikshan.target")?.lowercase()
@@ -48,6 +50,8 @@ actual fun e2eTest(
       max(config.commandDelayMs, 150L)
     } else if (target == "ios") {
       max(config.commandDelayMs, 300L)
+    } else if (target == "desktop" && videoConfig.enabled) {
+      max(config.commandDelayMs, 10L)
     } else {
       config.commandDelayMs
     }
@@ -58,11 +62,20 @@ actual fun e2eTest(
       config.copy(commandDelayMs = defaultDelay)
     }
 
-    e2eTest(
-      driver = driver,
-      config = effectiveConfig,
-      block = block
-    )
+    try {
+      e2eTest(
+        driver = driver,
+        config = effectiveConfig,
+        block = block
+      )
+    } finally {
+      ParikshanVideoSessionManager.afterScenario(
+        driver = driver,
+        config = videoConfig,
+        className = callerClassName,
+        methodName = callerMethodName
+      )
+    }
   }
 }
 
@@ -85,4 +98,25 @@ private fun inferCallerClassName(): String {
   }
 
   return "unknown_test"
+}
+
+private fun inferCallerMethodName(): String {
+  val stack = Throwable().stackTrace
+
+  for (element in stack) {
+    val className = element.className
+    if (!className.startsWith("io.github.aryapreetam.parikshan.") &&
+      !className.startsWith("kotlin.") &&
+      !className.startsWith("kotlinx.coroutines.") &&
+      !className.startsWith("org.junit.") &&
+      !className.startsWith("org.gradle.") &&
+      !className.startsWith("worker.") &&
+      !className.startsWith("sun.reflect.") &&
+      !className.startsWith("java.")
+    ) {
+      return element.methodName
+    }
+  }
+
+  return "unknown_method"
 }

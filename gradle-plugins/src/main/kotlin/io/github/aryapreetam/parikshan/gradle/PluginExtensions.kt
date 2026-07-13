@@ -7,6 +7,7 @@ import org.gradle.api.Project
 import org.gradle.api.file.FileCollection
 import org.gradle.api.logging.Logger
 import org.gradle.api.tasks.testing.Test
+import org.gradle.api.tasks.TaskProvider
 import org.gradle.process.CommandLineArgumentProvider
 import java.io.File
 
@@ -22,8 +23,16 @@ internal fun Test.configureE2eHostTestExecution(
   }
 
   outputs.upToDateWhen { false }
+  val videoOutputDirProvider = project.providers.gradleProperty("parikshan.video.outputDir")
+      .orElse(project.providers.systemProperty("parikshan.video.outputDir"))
+      .map { File(it) }
+      .orElse(project.layout.buildDirectory.dir("parikshan/videos/${target.lowercase()}").map { it.asFile })
+
   testClassesDirs = hostTestClassesDirs
   classpath = hostTestClasspath
+  reports.junitXml.outputLocation.set(
+    project.layout.buildDirectory.dir("test-results/e2eTest/${target.lowercase()}")
+  )
   dependsOn(hostTestClassesDirs.buildDependencies)
 
   filter {
@@ -41,13 +50,38 @@ internal fun Test.configureE2eHostTestExecution(
       )
     }
     logger.lifecycle("Parikshan $target: running E2E test classes ${e2eTestClasses.joinToString()}")
+
+    val videoStrategyProp = project.providers.gradleProperty("parikshan.video.granularity")
+      .orElse(project.providers.systemProperty("parikshan.video.granularity"))
+      .orElse(project.providers.gradleProperty("parikshan.video.strategy"))
+      .orElse(project.providers.systemProperty("parikshan.video.strategy"))
+      .orElse("class")
+    val strategy = videoStrategyProp.get().lowercase()
+    if (strategy == "class" || strategy == "run" || strategy == "session") {
+      val patterns = filter.includePatterns
+      val isMethodFilter = patterns.any { pattern ->
+        val lastDot = pattern.lastIndexOf('.')
+        if (lastDot >= 0) {
+          val method = pattern.substring(lastDot + 1)
+          method.isNotEmpty() && method.firstOrNull()?.isLowerCase() == true
+        } else false
+      }
+      if (isMethodFilter) {
+        logger.warn("Parikshan: Method-level test filter is active, but video granularity is set to '${strategy.uppercase()}'. A class/run scoped video will be recorded containing only this method.")
+      }
+    }
+
+    val outDir = videoOutputDirProvider.get()
+    val indexFile = File(outDir, "video-index.txt")
+    if (indexFile.exists()) {
+      indexFile.delete()
+    }
+
+    val resultsDir = reports.junitXml.outputLocation.get().asFile
+    if (resultsDir.exists()) {
+      resultsDir.listFiles()?.forEach { it.deleteRecursively() }
+    }
   }
-
-  val videoOutputDirProvider = project.providers.gradleProperty("parikshan.video.outputDir")
-      .orElse(project.providers.systemProperty("parikshan.video.outputDir"))
-      .map { File(it) }
-      .orElse(project.layout.buildDirectory.dir("parikshan/videos/${target.lowercase()}").map { it.asFile })
-
   outputs.dir(videoOutputDirProvider)
   
   // Forward all parikshan.* properties to the test JVM.
@@ -316,6 +350,12 @@ internal fun Project.configureParikshanDependencies(isE2EActive: Boolean) {
   addParikshanDependency("commonTestImplementation", ":parikshan", "io.github.aryapreetam:parikshan:$pluginVersion")
   addParikshanDependency("commonTestImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client:$pluginVersion")
 
+  configurations.configureEach {
+    if (name.startsWith("jvmTest")) {
+      exclude(mapOf("group" to "org.jetbrains.kotlin", "module" to "kotlin-test-junit"))
+    }
+  }
+
   // The client engine is only injected into the production binary during active E2E tasks.
   if (isE2EActive) {
       addParikshanDependency("commonMainImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client:$pluginVersion")
@@ -359,5 +399,36 @@ internal fun Project.addParikshanDependency(config: String, path: String, maven:
   val dep = rootProject.findProject(path)?.let { dependencies.project(mapOf("path" to it.path)) } ?: maven
   val configuration = configurations.findByName(config) ?: return
   dependencies.add(config, dep)
+}
+
+internal fun Project.registerE2eTestWithReport(
+  name: String,
+  target: String,
+  configure: Test.() -> Unit
+): TaskProvider<Test> {
+  val reportTaskName = "e2e${target}TestReport"
+  val reportTask = tasks.register(reportTaskName) {
+    group = "verification"
+    description = "Generates a Parikshan E2E HTML report for the $target target."
+    val resultsDir = layout.buildDirectory.dir("test-results/e2eTest/${target.lowercase()}")
+    val reportsDir = layout.buildDirectory.dir("reports/tests/e2eTest/${target.lowercase()}")
+    inputs.dir(resultsDir)
+    outputs.dir(reportsDir)
+    doLast {
+      generateUnifiedReport(
+        resDirFile = resultsDir.get().asFile,
+        repDirFile = reportsDir.get().asFile,
+        logger = logger
+      )
+    }
+  }
+
+  val testTask = tasks.register(name, Test::class.java) {
+    useJUnitPlatform()
+    systemProperty("junit.jupiter.extensions.autodetection.enabled", "true")
+    finalizedBy(reportTask)
+    configure()
+  }
+  return testTask
 }
 

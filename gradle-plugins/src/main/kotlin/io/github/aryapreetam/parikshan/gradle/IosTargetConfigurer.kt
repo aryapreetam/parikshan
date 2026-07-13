@@ -49,8 +49,7 @@ internal object IosTargetConfigurer {
       project.logger.lifecycle("Parikshan iOS: Extracted bundle ID: $extracted")
       return extracted ?: "sample.app.ios"
     }
-
-    val iosBundleIdVal = getIosBundleId()
+    val iosBundleIdProvider = project.provider { getIosBundleId() }
     val iosDerivedDataVal = project.layout.buildDirectory.dir("parikshan/ios-build").get().asFile
     val buildDirVal = project.layout.buildDirectory.get().asFile
     val sessionTokenVal = sessionToken
@@ -68,12 +67,11 @@ internal object IosTargetConfigurer {
       group = "verification"
       doLast {
         iosSimulatorUdid?.let { udid ->
-          ProcessBuilder("xcrun", "simctl", "terminate", udid, iosBundleIdVal).start().waitFor()
+          ProcessBuilder("xcrun", "simctl", "terminate", udid, iosBundleIdProvider.get()).start().waitFor()
           logger.lifecycle("Parikshan iOS: App terminated")
         }
       }
     }
-
     val rootDirAbs = iosRootDirVal.absolutePath
 
     val startIosAppTask = project.tasks.register("startIosApp") {
@@ -83,14 +81,45 @@ internal object IosTargetConfigurer {
       outputs.upToDateWhen { false }
 
       doLast {
+        val isCi = System.getenv("CI") == "true"
+        if (isCi) {
+          logger.lifecycle("Parikshan iOS: Running pre-run simulator cleanup (CI environment)...")
+          runCatching {
+            ProcessBuilder("killall", "Simulator").start().waitFor()
+          }
+          runCatching {
+            ProcessBuilder("xcrun", "simctl", "shutdown", "all").start().waitFor()
+          }
+        }
+
         val simulator = resolveIosSimulatorDevice(iosDeviceVal, iosProjectDirVal)
         iosSimulatorUdid = simulator.udid
         logger.lifecycle("Parikshan iOS: Using simulator '${simulator.name}' (${simulator.udid})")
 
-        if (!simulator.isBooted) {
+        val isReallyBooted = try {
+          val p = ProcessBuilder("xcrun", "simctl", "list", "devices").start()
+          val out = p.inputStream.bufferedReader().readText()
+          p.waitFor()
+          out.lineSequence().any { it.contains(simulator.udid) && it.contains("(Booted)") }
+        } catch (e: Exception) {
+          simulator.isBooted
+        }
+
+        if (!isReallyBooted) {
           logger.lifecycle("Parikshan iOS: Booting simulator...")
           ProcessBuilder("xcrun", "simctl", "boot", simulator.udid).start().waitFor()
+          if (!isCi) {
+            runCatching {
+              ProcessBuilder("open", "-a", "Simulator").start().waitFor()
+            }
+          }
           ProcessBuilder("xcrun", "simctl", "bootstatus", simulator.udid, "-b").start().waitFor()
+        } else {
+          if (!isCi) {
+            runCatching {
+              ProcessBuilder("open", "-a", "Simulator").start().waitFor()
+            }
+          }
         }
 
         val originalIosAppDir = File(iosXcodeProjectVal).parentFile
@@ -123,7 +152,7 @@ internal object IosTargetConfigurer {
         val logFile = File(buildDirVal, "parikshan/xcodebuild.log")
         logFile.parentFile.mkdirs()
 
-        val buildResult = ProcessBuilder(
+        val buildProcess = ProcessBuilder(
           "xcodebuild", "build", "-project", File(generatedIosAppDir, File(iosXcodeProjectVal).name).absolutePath,
           "-scheme", iosXcodeSchemeVal, "-configuration", "Debug",
           "-destination", "platform=iOS Simulator,id=${simulator.udid}",
@@ -133,7 +162,14 @@ internal object IosTargetConfigurer {
           environment()["PARIKSHAN_TOKEN"] = sessionTokenVal
           redirectErrorStream(true)
           redirectOutput(logFile)
-        }.start().waitFor()
+        }.start()
+
+        val finished = buildProcess.waitFor(600, java.util.concurrent.TimeUnit.SECONDS)
+        if (!finished) {
+          buildProcess.destroyForcibly()
+          throw GradleException("Parikshan iOS: xcodebuild compilation timed out after 600 seconds.")
+        }
+        val buildResult = buildProcess.exitValue()
 
         if (buildResult != 0) {
           logger.error("Parikshan iOS: xcodebuild failed. Dumping last 50 lines of log...")
@@ -145,9 +181,9 @@ internal object IosTargetConfigurer {
         val appBundle = appBuildProducts.listFiles()?.firstOrNull { it.name.endsWith(".app") } ?: throw GradleException("No .app bundle")
 
         logger.lifecycle("Parikshan iOS: Launching app...")
-        ProcessBuilder("xcrun", "simctl", "terminate", simulator.udid, iosBundleIdVal).start().waitFor()
+        ProcessBuilder("xcrun", "simctl", "terminate", simulator.udid, iosBundleIdProvider.get()).start().waitFor()
         ProcessBuilder("xcrun", "simctl", "install", simulator.udid, appBundle.absolutePath).start().waitFor()
-        ProcessBuilder("xcrun", "simctl", "launch", simulator.udid, iosBundleIdVal).apply {
+        ProcessBuilder("xcrun", "simctl", "launch", simulator.udid, iosBundleIdProvider.get()).apply {
           environment()["SIMCTL_CHILD_PARIKSHAN_TOKEN"] = sessionTokenVal
           environment()["PARIKSHAN_TOKEN"] = sessionTokenVal
         }.start().waitFor()
@@ -173,7 +209,7 @@ internal object IosTargetConfigurer {
       }
     }
 
-    project.tasks.register<Test>("e2eIosTest") {
+    project.registerE2eTestWithReport("e2eIosTest", "iOS") {
       group = "verification"
       dependsOn(startIosAppTask)
       finalizedBy(stopIosAppTask)
@@ -191,7 +227,7 @@ internal object IosTargetConfigurer {
       doFirst {
         val simulator = resolveIosSimulatorDevice(iosDeviceVal, iosProjectDirVal)
         systemProperty("parikshan.ios.udid", simulator.udid)
-        systemProperty("parikshan.ios.bundleId", iosBundleIdVal)
+        systemProperty("parikshan.ios.bundleId", iosBundleIdProvider.get())
       }
     }
   }

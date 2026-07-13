@@ -42,6 +42,10 @@ fun NavigationPlayground() {
     }
   }
 
+  sample.app.PlatformBackHandler(enabled = navigationStack.size > 1) {
+    handleBackNavigation()
+  }
+
   Column(
     modifier = Modifier
       .fillMaxSize()

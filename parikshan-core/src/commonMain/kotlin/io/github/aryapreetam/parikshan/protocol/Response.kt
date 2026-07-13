@@ -35,6 +35,7 @@ sealed interface Response {
     val visible: Boolean,
     val text: String? = null
   ) : Response
+
 }
 
 @Serializable

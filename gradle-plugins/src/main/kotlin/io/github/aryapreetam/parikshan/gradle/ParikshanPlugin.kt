@@ -237,10 +237,20 @@ class ParikshanPlugin : Plugin<Project> {
         
         finalizedBy(e2eTestReport)
         
-        dependsOn(hostTestTask.get().testClassesDirs.buildDependencies)
-        dependsOn(installPlaywrightTask)
-        dependsOn(prepareWasmAssetsTask)
-        dependsOn(extension.appJarTaskName.get())
+        val e2eTask = this
+        dependsOn(project.provider {
+          val activeTargets = e2eTask.targets.split(",").map { it.trim().lowercase() }
+          buildList {
+            add(hostTestTask.get().testClassesDirs.buildDependencies)
+            if (activeTargets.contains("wasm") || activeTargets.contains("web")) {
+              add(installPlaywrightTask)
+              add(prepareWasmAssetsTask)
+            }
+            if (activeTargets.contains("desktop")) {
+              add(extension.appJarTaskName.get())
+            }
+          }
+        })
         
         hostTestClassesDirs.setFrom(hostTestTask.get().testClassesDirs)
         hostTestClasspath.setFrom(hostTestTask.get().classpath)
@@ -264,7 +274,7 @@ class ParikshanPlugin : Plugin<Project> {
         projectRootDir.set(project.rootDir.absolutePath)
         targetAndroidAppId?.let { this@register.androidApplicationId.set(it) }
         this@register.iosPort.set(iosPort)
-        this@register.iosBundleId.set(getIosBundleId())
+        this@register.iosBundleId.set(project.provider { getIosBundleId() })
 
         gradleAndroidSerial.set(project.providers.gradleProperty("parikshan.android.serial").orElse(project.providers.systemProperty("parikshan.android.serial")))
         gradleIosDevice.set(project.providers.gradleProperty("parikshan.ios.device").orElse(project.providers.systemProperty("parikshan.ios.device")))

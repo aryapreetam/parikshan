@@ -14,10 +14,33 @@ import java.util.concurrent.TimeUnit
  */
 internal class DesktopDriver(
   private val host: String = "127.0.0.1",
-  private val port: Int = 9877,
+  @Volatile private var port: Int = 9877,
   private val sessionToken: String = System.getProperty("parikshan.token") ?: ""
 ) : TestDriver {
   override val targetPlatform: String = "desktop"
+  val activePort: Int get() = port
+
+  init {
+    runCatching {
+      val manifestPath = System.getProperty(DESKTOP_LAUNCH_MANIFEST_PROPERTY)
+      if (!manifestPath.isNullOrBlank()) {
+        val file = File(manifestPath)
+        if (file.exists()) {
+          val props = Properties().apply {
+            file.inputStream().use(::load)
+          }
+          val activePort = props.getProperty("port")?.toIntOrNull()
+          if (activePort != null) {
+            port = activePort
+          }
+        }
+      }
+    }
+  }
+
+  override fun updateVirtualCursor(x: Double, y: Double) {
+    io.github.aryapreetam.parikshan.client.ParikshanVideoSessionManager.updateVirtualCursor(x, y)
+  }
 
   override suspend fun send(command: Command): Response {
     // SECURITY: Sign the command with the global session token
@@ -25,17 +48,18 @@ internal class DesktopDriver(
     
     val json = ProtocolJson.encodeCommand(command)
     
+    val maxAttempts = 30
     var lastError: Exception? = null
-    repeat(30) { attempt ->
+    repeat(maxAttempts) { attempt ->
       try {
         val responseJson = httpPost(json)
         return ProtocolJson.decodeResponse(responseJson)
       } catch (e: Exception) {
         lastError = e
-        if (attempt < 29) kotlinx.coroutines.delay(1000)
+        if (attempt < maxAttempts - 1) kotlinx.coroutines.delay(1000)
       }
     }
-    throw lastError ?: RuntimeException("Failed to send command after 30 attempts")
+    throw lastError ?: RuntimeException("Failed to send command after $maxAttempts attempts")
   }
 
   override suspend fun close() {
@@ -50,22 +74,101 @@ internal class DesktopDriver(
   }
 
   override suspend fun relaunchApp() {
-    val manifestFile = desktopLaunchManifestFile()
-    val properties = manifestFile.loadProperties()
+    // 1. Coordinate pause
+    io.github.aryapreetam.parikshan.client.ParikshanVideoSessionManager.pauseRecording()
 
-    // Staff+ Video Safety: Finalize any active recording before killing the process
-    runCatching {
-        httpPost(ProtocolJson.encodeCommand(Command.StopRecording(id = "relaunch-stop", sessionName = "relaunch", token = sessionToken)))
+    try {
+      val manifestFile = desktopLaunchManifestFile()
+      val properties = manifestFile.loadProperties()
+
+      val oldPid = properties.getProperty("pid")?.toLongOrNull()
+
+      // 2. Resolve a dynamic available port for the new server
+      val newPort = findAvailablePort()
+
+      // 3. Kill the old process first to ensure only one window is visible at a time.
+      //    Dynamic port allocation prevents port collisions regardless of kill order.
+      if (oldPid != null) {
+        destroyProcessByPid(oldPid)
+      }
+
+      // 4. Create a temporary properties copy with the new port
+      val tempProperties = java.util.Properties().apply {
+        putAll(properties)
+        setProperty("port", newPort.toString())
+      }
+
+      // 5. Launch the new desktop process (with focus disabled)
+      val process = launchDesktopProcess(tempProperties)
+
+      // 6. Poll the new port until it successfully responds to ping (wait up to 10 seconds)
+      var isConnected = false
+      val deadline = System.currentTimeMillis() + 10_000L
+      while (System.currentTimeMillis() <= deadline) {
+        if (pingServer(host, newPort)) {
+          isConnected = true
+          break
+        }
+        kotlinx.coroutines.delay(200)
+      }
+
+      if (!isConnected) {
+        process.destroyForcibly()
+        throw IllegalStateException("Could not reconnect to new Parikshan desktop server on port $newPort after relaunch")
+      }
+
+      // 7. Update driver's active port to the new port
+      port = newPort
+
+      // 8. Commit properties (updating pid and port) to the manifest file
+      properties["pid"] = process.pid().toString()
+      properties["port"] = newPort.toString()
+      manifestFile.storeProperties(properties)
+    } finally {
+      // 3. Resume recording with the active driver state
+      io.github.aryapreetam.parikshan.client.ParikshanVideoSessionManager.resumeRecording(this)
     }
+  }
 
-    destroyProcessFromManifest(properties)
-    val process = launchDesktopProcess(properties)
-    properties["pid"] = process.pid().toString()
-    manifestFile.storeProperties(properties)
+  private fun findAvailablePort(): Int {
+    return java.net.ServerSocket(0).use { it.localPort }
+  }
 
-    val ping = send(Command.Ping(id = "desktop-relaunch-ping"))
-    if (ping !is Response.Ok) {
-      throw IllegalStateException("Could not reconnect to Parikshan desktop server after relaunch: $ping")
+  private fun pingServer(host: String, port: Int): Boolean {
+    return try {
+      val url = URI("http://$host:$port/").toURL()
+      val conn = url.openConnection() as HttpURLConnection
+      conn.requestMethod = "POST"
+      conn.setRequestProperty("Content-Type", "application/json")
+      conn.setRequestProperty("Connection", "close")
+      conn.doOutput = true
+      conn.connectTimeout = 1000
+      conn.readTimeout = 1000
+      val command = Command.Ping(id = "ping-temp").apply {
+        token = sessionToken
+      }
+      val json = ProtocolJson.encodeCommand(command)
+      conn.outputStream.use { it.write(json.toByteArray()) }
+      val code = conn.responseCode
+      conn.inputStream.readBytes()
+      code == 200
+    } catch (e: Exception) {
+      false
+    }
+  }
+
+  private fun destroyProcessByPid(pid: Long) {
+    val handle = ProcessHandle.of(pid).orElse(null) ?: return
+    if (!handle.isAlive) {
+      return
+    }
+    handle.destroy()
+    runCatching {
+      handle.onExit().get(5, java.util.concurrent.TimeUnit.SECONDS)
+    }.onFailure {
+      if (handle.isAlive) {
+        handle.destroyForcibly()
+      }
     }
   }
 
@@ -132,7 +235,9 @@ internal class DesktopDriver(
     }
   }
 
-  private fun launchDesktopProcess(properties: Properties): Process {
+  private fun launchDesktopProcess(
+    properties: Properties
+  ): Process {
     val javaExecutable = properties.required("javaExecutable")
     val jarPath = properties.required("jar")
     val appMainClass = properties.required("appMainClass")
@@ -151,7 +256,9 @@ internal class DesktopDriver(
         add("-Dparikshan.host=$launchHost")
         add("-Dparikshan.port=$launchPort")
         add("-Dparikshan.token=$launchToken")
+        add("-Dparikshan.desktop.focus=false")
         add("-Dparikshan.desktop.appMainClass=$appMainClass")
+        add("-Dapple.awt.takeFocusOnShow=false")
         if (background == "true") {
             add("-Dparikshan.background=true")
         }

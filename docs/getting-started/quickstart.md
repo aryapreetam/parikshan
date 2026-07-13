@@ -85,3 +85,59 @@ build/reports/e2e/index.html
 ```
 
 Open this file in a browser to inspect the consolidated pass/fail statuses, stack traces, and failure screenshots across all targets.
+
+---
+
+## 4. Test Lifecycle and State Resets
+
+Parikshan supports test execution ordering and lifecycle hooks in the common test source set.
+
+### Lifecycle Hooks and Ordering
+Use custom annotations to structure execution order and run class-level setups:
+* **`@BeforeAll` / `@AfterAll`**: Class-level initialization and teardown logic.
+* **`@Order(N)`**: Define explicit execution sequence (lower numbers execute first).
+
+```kotlin
+import io.github.aryapreetam.parikshan.BeforeAll
+import io.github.aryapreetam.parikshan.AfterAll
+import io.github.aryapreetam.parikshan.Order
+import io.github.aryapreetam.parikshan.e2eTest
+import kotlin.test.Test
+
+class FormTest {
+    companion object {
+        @BeforeAll
+        fun setupClass() {
+            // Class-level setup
+        }
+
+        @AfterAll
+        fun teardownClass() {
+            // Class-level cleanup
+        }
+    }
+
+    @Test
+    @Order(1)
+    fun testFirstMethod() = e2eTest {
+        // ...
+    }
+}
+```
+
+### Application State Resets
+To optimize execution speed, configure **lightweight state resets** (e.g. navigating back to the home screen route in a `@BeforeTest` hook) to keep transition delays under 100ms:
+
+```kotlin
+import kotlin.test.BeforeTest
+
+class NavigationTest {
+    @BeforeTest
+    fun resetState() = e2eTest {
+        // Navigate back to the home screen to clean up UI state
+        navigateToSection("home_route")
+    }
+}
+```
+
+Use process-level **`relaunchApp()`** sparingly, restricting it to scenarios requiring complete memory/process isolation. Relaunching the application process introduces a 5 to 10-second boot latency per test execution.

@@ -51,7 +51,7 @@ internal object WasmTargetConfigurer {
       }
     }
 
-    project.tasks.register<Test>("e2eWasmTest") {
+    project.registerE2eTestWithReport("e2eWasmTest", "Wasm") {
       group = "verification"
       dependsOn(installPlaywrightTask, startWasmTask)
       finalizedBy("stopParikshanWasmApp")

@@ -61,8 +61,7 @@ abstract class E2ETestTask : DefaultTask() {
   @get:Optional
   abstract val iosPort: Property<Int>
 
-  @get:Input
-  @get:Optional
+  @get:Internal
   abstract val iosBundleId: Property<String>
 
   @get:Input
@@ -691,6 +690,9 @@ abstract class E2ETestTask : DefaultTask() {
       pbArgs.add("-D$k=$v")
     }
 
+    pbArgs.add("-Djunit.jupiter.extensions.autodetection.enabled=true")
+    pbArgs.add("-Djunit.jupiter.testmethod.order.default=io.github.aryapreetam.parikshan.client.ParikshanMethodOrderer")
+
     val propsToForward = listOf(
       "parikshan.video.enabled",
       "parikshan.video.fps",
@@ -698,6 +700,7 @@ abstract class E2ETestTask : DefaultTask() {
       "parikshan.video.stepDelayMs",
       "parikshan.video.postRollMs",
       "parikshan.video.strategy",
+      "parikshan.video.granularity",
       "parikshan.video.width",
       "parikshan.video.height",
       "parikshan.wasm.headless",
@@ -729,7 +732,7 @@ abstract class E2ETestTask : DefaultTask() {
       pbArgs.add(testClass)
     }
 
-    val logFile = File(buildDir.get().asFile, "parikshan/logs/${target}-${testClass.substringAfterLast('.')}.log")
+    val logFile = File(buildDir.get().asFile, "parikshan/logs/${target}-${testClass}.log")
     logFile.parentFile.mkdirs()
 
     val pb = ProcessBuilder(pbArgs)
@@ -753,7 +756,7 @@ abstract class E2ETestTask : DefaultTask() {
   }
 
   private fun printTestFailures(target: String, testClass: String) {
-    val logFile = File(buildDir.get().asFile, "parikshan/logs/${target}-${testClass.substringAfterLast('.')}.log")
+    val logFile = File(buildDir.get().asFile, "parikshan/logs/${target}-${testClass}.log")
     val logger = logger
     if (logFile.exists()) {
       val lines = logFile.readLines()
@@ -773,7 +776,7 @@ abstract class E2ETestTask : DefaultTask() {
   private data class TargetMetrics(val found: Int, val started: Int, val successful: Int, val failed: Int)
 
   private fun parseTestMetrics(target: String, testClass: String): TargetMetrics? {
-    val logFile = File(buildDir.get().asFile, "parikshan/logs/${target}-${testClass.substringAfterLast('.')}.log")
+    val logFile = File(buildDir.get().asFile, "parikshan/logs/${target}-${testClass}.log")
     if (!logFile.exists()) return null
     var found = 0
     var started = 0

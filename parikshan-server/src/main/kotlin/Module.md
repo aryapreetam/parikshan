@@ -4,6 +4,6 @@ The server module provides the bridge that lives inside your application during 
 
 ## Key Components
 
-- **In-App Bridge**: A lightweight HTTP/WebSocket server that runs inside the debug build of your application.
-- **Semantics Accessor**: Interacts with the Compose Multiplatform semantics tree to find nodes and execute physical actions.
-- **Ghost Infrastructure**: The server is designed to be completely absent from production builds, ensuring zero impact on your users.
+- **In-App Bridge**: An HTTP/WebSocket server that runs inside the debug build of your application.
+- **Semantics Accessor**: Interacts with the Compose Multiplatform semantics tree to find nodes and execute actions.
+- **Production Isolation**: The server components are excluded from release builds to ensure no impact on production users.

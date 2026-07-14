@@ -10,7 +10,12 @@ import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
 import kotlin.random.Random
 
+/**
+ * @suppress
+ */
+@InternalParikshanApi
 interface TestDriver {
+  val targetPlatform: String
   suspend fun send(command: Command): Response
 
   suspend fun relaunchApp() {
@@ -23,7 +28,13 @@ interface TestDriver {
     }
   }
 
+  suspend fun reset() {
+    send(Command.Reset(id = nextId()))
+  }
+
   suspend fun close()
+
+  fun updateVirtualCursor(x: Double, y: Double) {}
 
   fun resolveArtifactPath(relativePath: String): String =
     "build/parikshan/${relativePath.trimStart('/', '\\')}"
@@ -46,6 +57,8 @@ class E2ETestScope internal constructor(
   private val driver: TestDriver,
   private val config: E2ETestConfig
 ) {
+  val targetPlatform: String get() = driver.targetPlatform
+
   /**
    * Executes a physical tap or click on the UI element matching the provided [tag].
    *
@@ -65,6 +78,7 @@ class E2ETestScope internal constructor(
     waitFor(selector = selector)
     val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
     checkAmbiguity(resolved)
+    driver.updateVirtualCursor(resolved.node.bounds.centerX, resolved.node.bounds.centerY)
     expectOk(
       action = "click(${selector.raw})",
       response = driver.send(Command.Click(id = nextId(), tag = resolved.tag, selector = selector))
@@ -81,7 +95,7 @@ class E2ETestScope internal constructor(
     tag: String,
     text: String
   ) {
-    input(selector = Selector.Tag(tag), text = text)
+    input(selector = tag.asAutoSelector(), text = text)
   }
 
   /**
@@ -96,6 +110,7 @@ class E2ETestScope internal constructor(
     waitFor(selector = selector)
     val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
     checkAmbiguity(resolved)
+    driver.updateVirtualCursor(resolved.node.bounds.centerX, resolved.node.bounds.centerY)
     expectOk(
       action = "input(${selector.raw})",
       response = driver.send(Command.Input(id = nextId(), tag = resolved.tag, text = text, selector = selector))
@@ -112,7 +127,7 @@ class E2ETestScope internal constructor(
     tag: String,
     direction: ScrollDirection
   ) {
-    scroll(selector = Selector.Tag(tag), direction = direction)
+    scroll(selector = tag.asAutoSelector(), direction = direction)
   }
 
   /**
@@ -125,6 +140,7 @@ class E2ETestScope internal constructor(
     waitFor(selector = selector)
     val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
     checkAmbiguity(resolved)
+    driver.updateVirtualCursor(resolved.node.bounds.centerX, resolved.node.bounds.centerY)
     expectOk(
       action = "scroll(${selector.raw})",
       response = driver.send(Command.Scroll(id = nextId(), tag = resolved.tag, direction = direction, selector = selector))
@@ -211,10 +227,74 @@ class E2ETestScope internal constructor(
     selector: Selector,
     expected: String
   ) {
-    // assertText now has "waiting built-in" for the content to match,
-    // which is the world-class standard for E2E testing.
-    waitForVisibleText(selector = selector, expected = expected)
+    // assertText includes built-in waiting for the content to match.
+    waitForVisibleText(selector = selector, expected = expected, policy = MatchPolicy.EXACT)
     settleAfterCommand()
+  }
+
+  /**
+   * Asserts that the element matching the [tag] contains the provided [substring].
+   */
+  suspend fun assertContains(
+    tag: String,
+    substring: String
+  ) {
+    assertContains(selector = tag.asAutoSelector(), substring = substring)
+  }
+
+  /**
+   * Asserts that the element matching the [selector] contains the provided [substring].
+   */
+  suspend fun assertContains(
+    selector: Selector,
+    substring: String
+  ) {
+    waitForVisibleText(selector = selector, expected = substring, policy = MatchPolicy.CONTAINS)
+    settleAfterCommand()
+  }
+
+  /**
+   * Asserts that the input element matching the [tag] has the [expected] value.
+   *
+   * This is a semantic alias for [assertText] that improves intent when verifying form fields.
+   */
+  suspend fun assertValue(
+    tag: String,
+    expected: String
+  ) {
+    assertText(tag = tag, expected = expected)
+  }
+
+  /**
+   * Asserts that the input element matching the [selector] has the [expected] value.
+   */
+  suspend fun assertValue(
+    selector: Selector,
+    expected: String
+  ) {
+    assertText(selector = selector, expected = expected)
+  }
+
+  /**
+   * Asserts that the provided [block] fails with an [AssertionError] containing the [messageContains] substring.
+   *
+   * Useful for verifying negative scenarios and framework behavior.
+   */
+  suspend fun assertFailure(
+    messageContains: String,
+    block: suspend E2ETestScope.() -> Unit
+  ) {
+    try {
+      block()
+    } catch (e: AssertionError) {
+      if (e.message?.contains(messageContains) == true) {
+        return
+      }
+      throw AssertionError("Expected failure message to contain '$messageContains' but got '${e.message}'")
+    } catch (e: Throwable) {
+      throw AssertionError("Expected AssertionError but got ${e::class.simpleName}: ${e.message}")
+    }
+    throw AssertionError("Expected block to fail with message containing '$messageContains', but it succeeded.")
   }
 
   /**
@@ -249,6 +329,12 @@ class E2ETestScope internal constructor(
         lastError = error.message
       }
       if (startMark.elapsedNow() >= timeoutMs.milliseconds) {
+        println("Parikshan E2ETestDsl: Timeout waiting for selector ${selector.raw}. Last error: $lastError. Printing semantics tree nodes:")
+        runCatching {
+          fetchTree().forEach { node ->
+            println("  Node: tag='${node.tag}', text='${node.text}', visible=${node.visible}, bounds=${node.bounds}")
+          }
+        }
         break
       }
       delay(WAIT_POLL_INTERVAL_MS)
@@ -267,14 +353,16 @@ class E2ETestScope internal constructor(
   private suspend fun waitForVisibleText(
     tag: String,
     expected: String,
+    policy: MatchPolicy,
     timeoutMs: Long = config.defaultWaitTimeoutMs
   ) {
-    waitForVisibleText(selector = tag.asAutoSelector(), expected = expected, timeoutMs = timeoutMs)
+    waitForVisibleText(selector = tag.asAutoSelector(), expected = expected, policy = policy, timeoutMs = timeoutMs)
   }
 
   private suspend fun waitForVisibleText(
     selector: Selector,
     expected: String,
+    policy: MatchPolicy,
     timeoutMs: Long = config.defaultWaitTimeoutMs
   ) {
     val startMark = TimeSource.Monotonic.markNow()
@@ -289,7 +377,7 @@ class E2ETestScope internal constructor(
 
     do {
       try {
-        if (nativeTag != null) {
+        if (nativeTag != null && policy == MatchPolicy.EXACT) {
           val response = driver.send(Command.AssertText(id = nextId(), tag = nativeTag, expected = expected))
           if (response is Response.Ok) {
             settleAfterCommand()
@@ -301,11 +389,17 @@ class E2ETestScope internal constructor(
         }
 
         val resolved = selector.resolveNode(fetchTree(), requireVisible = true)
-        if (resolved.node.text == expected) {
+        val actualText = resolved.node.text
+        val matched = when (policy) {
+          MatchPolicy.EXACT -> actualText?.trim() == expected.trim()
+          MatchPolicy.CONTAINS -> actualText?.contains(expected) == true
+        }
+
+        if (matched) {
           settleAfterCommand()
           return
         }
-        lastError = "Text mismatch: expected '$expected' actual '${resolved.node.text}'"
+        lastError = "Text mismatch (policy=$policy): expected '$expected', actual '$actualText'"
       } catch (error: IllegalArgumentException) {
         lastError = error.message
       }
@@ -321,41 +415,111 @@ class E2ETestScope internal constructor(
       }
     }
     throw AssertionError(
-      "Timed out waiting for '${selector.raw}' to expose text '$expected'. Last error='$lastError'."
+      "Timed out waiting for '${selector.raw}' to expose text '$expected' (policy=$policy). Last error='$lastError'."
     )
   }
 
+  /**
+   * Resolves and returns a [NodeSnapshot] for the element matching the provided [selector].
+   *
+   * This retrieves a point-in-time snapshot of the node's properties (such as bounds, tag, text, and visibility).
+   *
+   * @param selector the query matching the target element.
+   * @param requireVisible if true, the resolution will only succeed if the matching node is currently visible.
+   * @return the resolved [NodeSnapshot].
+   * @throws IllegalArgumentException if the selector cannot be resolved to a unique node.
+   */
   suspend fun resolveNode(
     selector: Selector,
     requireVisible: Boolean = true
   ): NodeSnapshot =
     resolveSelectorOrThrow(selector = selector, requireVisible = requireVisible).node
 
+  /**
+   * Resolves and returns a [NodeSnapshot] for the element matching the provided [selector] string.
+   *
+   * This is a convenience shortcut for [resolveNode] using [String.asAutoSelector].
+   *
+   * @param selector the query matching the target element.
+   * @param requireVisible if true, the resolution will only succeed if the matching node is currently visible.
+   * @return the resolved [NodeSnapshot].
+   */
   suspend fun resolveNode(
     selector: String,
     requireVisible: Boolean = true
   ): NodeSnapshot = resolveNode(selector = selector.asAutoSelector(), requireVisible = requireVisible)
 
+  /**
+   * Resolves and returns a visible [NodeSnapshot] matching the provided [selector] string.
+   *
+   * This is a convenience shortcut for [resolveNode] with `requireVisible = true`.
+   *
+   * @param selector the query matching the target element.
+   * @return the resolved visible [NodeSnapshot].
+   */
   suspend fun resolveVisibleNode(selector: String): NodeSnapshot =
     resolveNode(selector = selector, requireVisible = true)
 
+  /**
+   * Resolves and returns a visible [NodeSnapshot] matching the provided [selector].
+   *
+   * This is a convenience shortcut for [resolveNode] with `requireVisible = true`.
+   *
+   * @param selector the query matching the target element.
+   * @return the resolved visible [NodeSnapshot].
+   */
   suspend fun resolveVisibleNode(selector: Selector): NodeSnapshot =
     resolveNode(selector = selector, requireVisible = true)
 
+  /**
+   * Checks whether a visible node matching the provided [selector] string exists in the current UI tree.
+   *
+   * Unlike [resolveNode], this method does not throw an exception if the node is missing or invisible,
+   * making it safe for conditional branching in tests.
+   *
+   * @param selector the query matching the target element.
+   * @return true if a visible node matches the selector, false otherwise.
+   */
   suspend fun hasVisibleNode(selector: String): Boolean =
     hasVisibleNode(selector = selector.asAutoSelector())
 
+  /**
+   * Checks whether a visible node matching the provided [selector] exists in the current UI tree.
+   *
+   * Unlike [resolveNode], this method does not throw an exception if the node is missing or invisible,
+   * making it safe for conditional branching in tests.
+   *
+   * @param selector the query matching the target element.
+   * @return true if a visible node matches the selector, false otherwise.
+   */
   suspend fun hasVisibleNode(selector: Selector): Boolean =
     runCatching {
       resolveVisibleNode(selector)
     }.isSuccess
 
+  /**
+   * Fetches the entire current UI hierarchy as a list of [NodeSnapshot]s.
+   *
+   * Calling this method forces the test runner to synchronize and wait for outstanding UI operations to settle.
+   *
+   * @return a list representing all nodes currently present in the Compose Multiplatform semantic tree.
+   */
   suspend fun getTree(): List<NodeSnapshot> {
     val nodes = fetchTree()
     settleAfterCommand()
     return nodes
   }
 
+  /**
+   * Captures a screenshot of the current application screen and saves it to the specified [path].
+   *
+   * Depending on the target platform:
+   * - On Desktop/JVM: Captures the active window frame bounds.
+   * - On Web/WasmJs: Playwright captures the viewport canvas.
+   * - On Android/iOS: Triggers a device screenshot via ADB or Simctl.
+   *
+   * @param path the target file path where the screenshot PNG will be stored.
+   */
   suspend fun screenshot(path: String) {
     expectOk(
       action = "screenshot($path)",
@@ -371,15 +535,85 @@ class E2ETestScope internal constructor(
     settleAfterCommand()
   }
 
+  /**
+   * Captures a screenshot of the current application screen and saves it to the specified [hostPath].
+   *
+   * This is a semantic alias for [screenshot].
+   *
+   * @param hostPath the target file path on the host machine.
+   */
   suspend fun takeScreenshot(hostPath: String) {
     screenshot(hostPath)
   }
 
+  /**
+   * Resolves a relative path to an absolute path inside the project's build and report output directory.
+   *
+   * @param relativePath the path relative to the test runner's artifact output base.
+   * @return the resolved absolute path string.
+   */
   fun artifactPath(relativePath: String): String =
     driver.resolveArtifactPath(relativePath)
 
+  /**
+   * Helper that resolves a logical name into a standard screenshot file path inside the build directory.
+   *
+   * @param name the logical name of the screenshot (e.g. "login-success").
+   * @return the resolved absolute file path for the screenshot.
+   */
   fun screenshotPath(name: String): String =
     artifactPath("screenshots/${name.trim().ifEmpty { "unnamed" }}.png")
+
+  /**
+   * Performs a physical mouse or touch drag/swipe gesture from (fromX, fromY) to (toX, toY) over the specified duration.
+   */
+  suspend fun drag(
+    fromX: Double,
+    fromY: Double,
+    toX: Double,
+    toY: Double,
+    durationMs: Long = 300L
+  ) {
+    driver.updateVirtualCursor(fromX, fromY)
+    expectOk(
+      action = "drag($fromX, $fromY -> $toX, $toY)",
+      response = driver.send(Command.Drag(id = nextId(), fromX = fromX, fromY = fromY, toX = toX, toY = toY, durationMs = durationMs))
+    )
+    driver.updateVirtualCursor(toX, toY)
+    settleAfterCommand()
+  }
+
+  /**
+   * Drags the UI element matching [tag] by moving it by (offsetX, offsetY) pixels.
+   */
+  suspend fun drag(
+    tag: String,
+    offsetX: Double,
+    offsetY: Double,
+    durationMs: Long = 300L
+  ) {
+    drag(selector = tag.asAutoSelector(), offsetX = offsetX, offsetY = offsetY, durationMs = durationMs)
+  }
+
+  /**
+   * Drags the UI element matching [selector] by moving it by (offsetX, offsetY) pixels.
+   */
+  suspend fun drag(
+    selector: Selector,
+    offsetX: Double,
+    offsetY: Double,
+    durationMs: Long = 300L
+  ) {
+    waitFor(selector = selector)
+    val resolved = resolveSelectorOrThrow(selector = selector, requireVisible = true)
+    checkAmbiguity(resolved)
+    val bounds = resolved.node.bounds
+    val fromX = bounds.centerX
+    val fromY = bounds.centerY
+    val toX = fromX + offsetX
+    val toY = fromY + offsetY
+    drag(fromX = fromX, fromY = fromY, toX = toX, toY = toY, durationMs = durationMs)
+  }
 
   suspend fun pressBack() {
     expectOk(
@@ -399,6 +633,11 @@ class E2ETestScope internal constructor(
 
   suspend fun relaunchApp() {
     driver.relaunchApp()
+    settleAfterCommand()
+  }
+
+  suspend fun resetApp() {
+    driver.reset()
     settleAfterCommand()
   }
 
@@ -454,8 +693,36 @@ class E2ETestScope internal constructor(
       throw AssertionError(resolved.selector.ambiguousTextMessage(resolved.allMatches))
     }
   }
+
+  /**
+   * Retries the provided [block] up to [maxAttempts] times with a [delayMs] between attempts.
+   *
+   * Useful for waiting for asynchronous UI state changes that aren't covered by built-in waits.
+   */
+  suspend fun <T> retry(
+    maxAttempts: Int = 3,
+    delayMs: Long = 500L,
+    block: suspend E2ETestScope.() -> T
+  ): T {
+    var lastError: Throwable? = null
+    repeat(maxAttempts) { attempt ->
+      try {
+        return this.block()
+      } catch (e: Throwable) {
+        lastError = e
+        if (attempt < maxAttempts - 1) {
+          delay(delayMs)
+        }
+      }
+    }
+    throw lastError ?: RuntimeException("Retry failed after $maxAttempts attempts")
+  }
 }
 
+/**
+ * @suppress
+ */
+@InternalParikshanApi
 suspend fun e2eTest(
   driver: TestDriver,
   config: E2ETestConfig = E2ETestConfig(),
@@ -488,8 +755,33 @@ private fun nextId(): String {
 
 private const val WAIT_POLL_INTERVAL_MS = 50L
 
+private enum class MatchPolicy {
+  EXACT,
+  CONTAINS
+}
+
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.SOURCE)
 annotation class ParikshanScenario(
   val testName: String = ""
 )
+
+/**
+ * Returns true if the current test execution target is Web (WasmJs).
+ */
+fun E2ETestScope.isWasm(): Boolean = targetPlatform == "wasm"
+
+/**
+ * Returns true if the current test execution target is JVM Desktop.
+ */
+fun E2ETestScope.isDesktop(): Boolean = targetPlatform == "desktop"
+
+/**
+ * Returns true if the current test execution target is an Android device or emulator.
+ */
+fun E2ETestScope.isAndroid(): Boolean = targetPlatform == "android"
+
+/**
+ * Returns true if the current test execution target is an iOS simulator or device.
+ */
+fun E2ETestScope.isIos(): Boolean = targetPlatform == "ios"

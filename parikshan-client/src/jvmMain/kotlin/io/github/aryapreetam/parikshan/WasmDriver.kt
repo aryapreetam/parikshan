@@ -29,9 +29,10 @@ import kotlinx.serialization.builtins.ListSerializer
  * JVM-side driver for Compose/Wasm. It opens the app in Playwright and invokes the
  * in-browser Parikshan bridge installed by Modifier.testTag instrumentation.
  */
-class WasmDriver private constructor(
+internal class WasmDriver private constructor(
   private val sessionToken: String = System.getProperty("parikshan.token") ?: ""
 ) : TestDriver {
+  override val targetPlatform: String = "wasm"
 
   private val page: Page
     get() = checkNotNull(sharedPage) { "WasmDriver shared page is not initialized" }
@@ -120,92 +121,7 @@ class WasmDriver private constructor(
 
         val context = sharedBrowser!!.newContext(contextOptions)
         
-        val initScript = """
-          window.__parikshan_utils = {
-            extractText: function(element) {
-              if (!element) return null;
-              const candidates = [
-                element.innerText, element.textContent, element.getAttribute?.('aria-label'),
-                element.getAttribute?.('title'), element.getAttribute?.('value'), element.value, element.placeholder
-              ];
-              for (const candidate of candidates) {
-                const normalized = candidate?.trim?.();
-                if (normalized) return normalized;
-              }
-              const labeledDescendant = element.querySelector?.('[aria-label]');
-              const labeledText = labeledDescendant?.getAttribute?.('aria-label')?.trim?.();
-              if (labeledText) return labeledText;
-              return null;
-            },
-            findNode: function(tag) {
-              const queue = [document.documentElement, document.body].filter(Boolean);
-              const visited = new Set();
-              let element = null;
-              let i = 0;
-              while (i < queue.length && element == null) {
-                const current = queue[i++];
-                if (!current || visited.has(current)) continue;
-                visited.add(current);
-                if (current.id === tag) { element = current; break; }
-                const descendants = current.querySelectorAll?.(`[id="${'$'}{tag}"]`) ?? [];
-                if (descendants.length > 0) { element = descendants[0]; break; }
-                if (current.shadowRoot) queue.push(current.shadowRoot);
-                const children = current.children ?? current.childNodes ?? [];
-                for (const child of children) queue.push(child);
-              }
-              return element;
-            },
-            readNode: function(tag) {
-              const element = this.findNode(tag);
-              if (!element) return null;
-              const rect = element.getBoundingClientRect();
-              const style = window.getComputedStyle(element);
-              const text = this.extractText(element);
-              const visible = style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
-              return JSON.stringify({
-                tag,
-                bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
-                visible, text
-              });
-            },
-            readTree: function() {
-              const nodes = [];
-              const queue = [document.documentElement, document.body].filter(Boolean);
-              const visited = new Set();
-              let i = 0;
-              while (i < queue.length) {
-                const current = queue[i++];
-                if (!current || visited.has(current)) continue;
-                visited.add(current);
-                if (current.id) {
-                  const rect = current.getBoundingClientRect();
-                  const style = window.getComputedStyle(current);
-                  const text = this.extractText(current);
-                  nodes.push({
-                    tag: current.id,
-                    bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
-                    visible: style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0,
-                    text
-                  });
-                }
-                if (current.shadowRoot) queue.push(current.shadowRoot);
-                const children = current.children ?? current.childNodes ?? [];
-                for (const child of children) queue.push(child);
-              }
-              return JSON.stringify(nodes);
-            },
-            invokeClick: function(tag) {
-              const current = this.findNode(tag);
-              if (current) {
-                current.click?.();
-                current.dispatchEvent?.(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }));
-                return true;
-              }
-              return false;
-            }
-          };
-        """.trimIndent()
-        context.addInitScript(initScript)
+        context.addInitScript(PARIKSHAN_UTILS_INIT_SCRIPT)
         
         sharedContext = context
         val page = context.newPage()
@@ -226,7 +142,7 @@ class WasmDriver private constructor(
   }
 
   private suspend fun readNodeBySelector(selector: io.github.aryapreetam.parikshan.protocol.Selector): NodeSnapshot? {
-    if (selector is io.github.aryapreetam.parikshan.protocol.Selector.Tag || selector is io.github.aryapreetam.parikshan.protocol.Selector.Auto) {
+    if ((selector is io.github.aryapreetam.parikshan.protocol.Selector.Tag || selector is io.github.aryapreetam.parikshan.protocol.Selector.Auto) && selector.index == null) {
       readBridgeNode(selector.raw)?.let { return it }
       readDomNode(selector.raw)?.let { return it }
     }
@@ -269,20 +185,20 @@ class WasmDriver private constructor(
       is Command.Click -> {
         val node = readNodeBySelector(selector)
           ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
-        if (!invokeBridgeClick(selector.raw)) {
-          if (!invokeDomClick(selector.raw)) {
-            page.mouse().click(node.bounds.centerX, node.bounds.centerY)
-          }
-        }
-        delay(100)
+        invokeBridgeClick(selector)
+        performPhysicalClick(node.bounds.centerX, node.bounds.centerY)
+        delay(200)
         Response.Ok(command.id)
       }
 
       is Command.Input -> {
         val node = readNodeBySelector(selector)
           ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
-        if (!invokeBridgeInput(selector.raw, command.text)) {
-          page.mouse().click(node.bounds.centerX, node.bounds.centerY)
+        if (!invokeBridgeInput(selector, command.text)) {
+          page.mouse().move(node.bounds.centerX, node.bounds.centerY)
+          page.mouse().down()
+          delay(50)
+          page.mouse().up()
           page.keyboard().press("ControlOrMeta+A")
           page.keyboard().type(command.text)
         }
@@ -293,18 +209,31 @@ class WasmDriver private constructor(
       is Command.Scroll -> {
         val node = readNodeBySelector(selector)
           ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
-        if (!invokeBridgeScroll(selector.raw, command.direction)) {
+        if (!invokeBridgeScroll(selector, command.direction)) {
+          // Focus canvas and ensure it has focus before scrolling
+          runCatching {
+             page.evaluate("""() => {
+               const canvas = document.querySelector('canvas');
+               if (canvas) {
+                 canvas.focus();
+                 if (document.activeElement !== canvas) {
+                   canvas.click(); // Force focus if focus() didn't work
+                 }
+               }
+             }""")
+          }
+          // Reverting to centerX, centerY which worked before
           page.mouse().move(node.bounds.centerX, node.bounds.centerY)
           val (deltaX, deltaY) =
             when (command.direction) {
-              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Up -> 0.0 to -420.0
-              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Down -> 0.0 to 420.0
-              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Left -> -420.0 to 0.0
-              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Right -> 420.0 to 0.0
+              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Up -> 0.0 to -400.0
+              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Down -> 0.0 to 400.0
+              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Left -> -400.0 to 0.0
+              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Right -> 400.0 to 0.0
             }
           page.mouse().wheel(deltaX, deltaY)
         }
-        delay(100)
+        delay(300) // Increased settling delay for Wasm
         Response.Ok(command.id)
       }
 
@@ -320,6 +249,14 @@ class WasmDriver private constructor(
         Response.Error(command.id, "Timed out waiting for '${selector.raw}' after ${command.timeoutMs}ms")
       }
 
+      is Command.Drag -> {
+        page.mouse().move(command.fromX, command.fromY)
+        page.mouse().down()
+        page.mouse().move(command.toX, command.toY, com.microsoft.playwright.Mouse.MoveOptions().setSteps(20))
+        page.mouse().up()
+        Response.Ok(command.id)
+      }
+
       is Command.Screenshot -> {
         val path = command.hostPath.ifBlank { command.devicePath }
         page.screenshot(Page.ScreenshotOptions().setPath(Paths.get(path)).setFullPage(true))
@@ -332,6 +269,7 @@ class WasmDriver private constructor(
         relaunchSharedPage(ParikshanWasmConfig.fromSystemProperties())
         Response.Ok(command.id)
       }
+      is Command.Reset -> Response.Ok(command.id)
       is Command.StartRecording -> {
         lastRequestedVideoPath = command.path
         Response.Ok(command.id)
@@ -366,6 +304,7 @@ class WasmDriver private constructor(
                   Files.copy(rawVideoPath!!, finalVideoPath, StandardCopyOption.REPLACE_EXISTING)
                   val size = Files.size(finalVideoPath)
                   System.err.println("WasmVideo: Successfully saved recording to $targetPath (bytes=$size)")
+                  registerWasmVideoPath(targetPath)
                   runCatching { Files.deleteIfExists(rawVideoPath!!) }
                 } catch (e: Throwable) {
                   System.err.println("WasmVideo: Error copying video to $targetPath: ${e.message}")
@@ -429,25 +368,168 @@ class WasmDriver private constructor(
     return ProtocolJson.instance.decodeFromString(ListSerializer(NodeSnapshot.serializer()), payload)
   }
 
-  private fun invokeBridgeClick(tag: String): Boolean =
-    runCatching {
-      page.evaluate("tag => (window.__parikshan_click ? window.__parikshan_click(tag) : false)", tag) as? Boolean ?: false
+  private suspend fun performPhysicalClick(x: Double, y: Double) {
+    val clickedOnCanvas = runCatching {
+      page.evaluate(
+        """([x, y]) => {
+          function findCanvas(root) {
+            if (!root) return null;
+            if (root.tagName === 'CANVAS') return root;
+            const children = root.children || [];
+            for (let i = 0; i < children.length; i++) {
+              const found = findCanvas(children[i]);
+              if (found) return found;
+            }
+            if (root.shadowRoot) return findCanvas(root.shadowRoot);
+            return null;
+          }
+          const canvas = findCanvas(document.body);
+          if (!canvas) return false;
+          const opts = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0 };
+          canvas.dispatchEvent(new PointerEvent('pointerdown', opts));
+          canvas.dispatchEvent(new PointerEvent('pointerup', opts));
+          canvas.dispatchEvent(new MouseEvent('click', opts));
+          return true;
+        }""",
+        listOf(x, y)
+      ) as? Boolean ?: false
     }.getOrDefault(false)
+    if (!clickedOnCanvas) {
+      page.mouse().move(x, y)
+      page.mouse().down()
+      delay(50)
+      page.mouse().up()
+    }
+  }
 
-  private fun invokeDomClick(tag: String): Boolean =
-    runCatching {
+  private fun invokeBridgeClick(selector: io.github.aryapreetam.parikshan.protocol.Selector): Boolean {
+    val tag = selector.raw
+    val index = selector.index
+    return runCatching {
+      if (index != null) {
+        page.evaluate(
+          "([tag, index]) => (window.__parikshan_click_indexed ? window.__parikshan_click_indexed(tag, index) : false)",
+          listOf<Any>(tag, index)
+        ) as? Boolean ?: false
+      } else {
+        page.evaluate(
+          "tag => (window.__parikshan_click ? window.__parikshan_click(tag) : false)",
+          tag
+        ) as? Boolean ?: false
+      }
+    }.getOrDefault(false)
+  }
+
+  private fun invokeDomClick(selector: io.github.aryapreetam.parikshan.protocol.Selector): Boolean {
+    val tag = selector.raw
+    if (selector.index != null) return false
+    return runCatching {
       page.evaluate("tag => window.__parikshan_utils.invokeClick(tag)", tag) as? Boolean ?: false
     }.getOrDefault(false)
+  }
 
-  private fun invokeBridgeInput(tag: String, text: String): Boolean =
-    runCatching {
-      page.evaluate("([tag, text]) => (window.__parikshan_input ? window.__parikshan_input(tag, text) : false)", arrayOf(tag, text)) as? Boolean ?: false
+  private fun invokeBridgeInput(selector: io.github.aryapreetam.parikshan.protocol.Selector, text: String): Boolean {
+    val tag = selector.raw
+    val index = selector.index
+    return runCatching {
+      if (index != null) {
+        page.evaluate("([tag, text, index]) => (window.__parikshan_input_indexed ? window.__parikshan_input_indexed(tag, text, index) : false)", listOf<Any>(tag, text, index)) as? Boolean ?: false
+      } else {
+        page.evaluate("([tag, text]) => (window.__parikshan_input ? window.__parikshan_input(tag, text) : false)", listOf<Any>(tag, text)) as? Boolean ?: false
+      }
     }.getOrDefault(false)
+  }
 
-  private fun invokeBridgeScroll(tag: String, direction: io.github.aryapreetam.parikshan.protocol.ScrollDirection): Boolean =
+  private fun invokeBridgeScroll(selector: io.github.aryapreetam.parikshan.protocol.Selector, direction: io.github.aryapreetam.parikshan.protocol.ScrollDirection): Boolean =
     false // Force fallback to native Playwright mouse wheel which works perfectly for Wasm Canvas
 
   companion object {
+    private val PARIKSHAN_UTILS_INIT_SCRIPT: String = """
+      window.__parikshan_utils = {
+        extractText: function(element) {
+          if (!element) return null;
+          const candidates = [
+            element.innerText, element.textContent, element.getAttribute?.('aria-label'),
+            element.getAttribute?.('title'), element.getAttribute?.('value'), element.value, element.placeholder
+          ];
+          for (const candidate of candidates) {
+            const normalized = candidate?.trim?.();
+            if (normalized) return normalized;
+          }
+          const labeledDescendant = element.querySelector?.('[aria-label]');
+          const labeledText = labeledDescendant?.getAttribute?.('aria-label')?.trim?.();
+          if (labeledText) return labeledText;
+          return null;
+        },
+        findNode: function(tag) {
+          const queue = [document.documentElement, document.body].filter(Boolean);
+          const visited = new Set();
+          let element = null;
+          let i = 0;
+          while (i < queue.length && element == null) {
+            const current = queue[i++];
+            if (!current || visited.has(current)) continue;
+            visited.add(current);
+            if (current.id === tag) { element = current; break; }
+            const descendants = current.querySelectorAll?.(`[id="${'$'}{tag}"]`) ?? [];
+            if (descendants.length > 0) { element = descendants[0]; break; }
+            if (current.shadowRoot) queue.push(current.shadowRoot);
+            const children = current.children ?? current.childNodes ?? [];
+            for (const child of children) queue.push(child);
+          }
+          return element;
+        },
+        readNode: function(tag) {
+          const element = this.findNode(tag);
+          if (!element) return null;
+          const rect = element.getBoundingClientRect();
+          const style = window.getComputedStyle(element);
+          const text = this.extractText(element);
+          const visible = style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+          return JSON.stringify({
+            tag,
+            bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
+            visible, text
+          });
+        },
+        readTree: function() {
+          const nodes = [];
+          const queue = [document.documentElement, document.body].filter(Boolean);
+          const visited = new Set();
+          let i = 0;
+          while (i < queue.length) {
+            const current = queue[i++];
+            if (!current || visited.has(current)) continue;
+            visited.add(current);
+            if (current.id) {
+              const rect = current.getBoundingClientRect();
+              const style = window.getComputedStyle(current);
+              const text = this.extractText(current);
+              nodes.push({
+                tag: current.id,
+                bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
+                visible: style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0,
+                text
+              });
+            }
+            if (current.shadowRoot) queue.push(current.shadowRoot);
+            const children = current.children ?? current.childNodes ?? [];
+            for (const child of children) queue.push(child);
+          }
+          return JSON.stringify(nodes);
+        },
+        invokeClick: function(tag) {
+          const current = this.findNode(tag);
+          if (current) {
+            current.click?.();
+            current.dispatchEvent?.(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }));
+            return true;
+          }
+          return false;
+        }
+      };
+    """.trimIndent()
+
     private val connectMutex = Mutex()
     private var sharedPlaywright: Playwright? = null
     private var sharedBrowser: Browser? = null
@@ -456,6 +538,17 @@ class WasmDriver private constructor(
     @Volatile
     private var lastRequestedVideoPath: String? = null
     private var playwrightTempDir: Path? = null
+
+    private fun isKeepAliveEnabled(): Boolean =
+      System.getProperty("parikshan.keepAlive") == "true" || System.getenv("PARIKSHAN_KEEP_ALIVE") == "true"
+
+    private fun isPortOpen(port: Int): Boolean {
+      return try {
+        java.net.Socket("127.0.0.1", port).use { true }
+      } catch (_: Exception) {
+        false
+      }
+    }
 
     init {
       Runtime.getRuntime().addShutdownHook(Thread({
@@ -482,8 +575,10 @@ class WasmDriver private constructor(
         val rawVideoPath = runCatching { videoObj?.path() }.getOrNull()
         System.err.println("WasmVideo: Playwright reports video path: $rawVideoPath")
 
-        runCatching { sharedBrowser?.close() }
-        runCatching { sharedPlaywright?.close() }
+        if (!isKeepAliveEnabled()) {
+          runCatching { sharedBrowser?.close() }
+          runCatching { sharedPlaywright?.close() }
+        }
 
         if (targetPath != null && rawVideoPath != null) {
           runCatching {
@@ -496,9 +591,10 @@ class WasmDriver private constructor(
                 val size = runCatching { Files.size(finalVideoPath) }.getOrNull()
                 val sizeText = size?.toString() ?: "unknown"
                 System.err.println("WasmVideo: Successfully saved recording to $targetPath (bytes=$sizeText)")
+                registerWasmVideoPath(targetPath)
                 runCatching { Files.deleteIfExists(rawVideoPath) }
               } catch (e: Throwable) {
-                System.err.println("WasmVideo: Error copying video to $targetPath: ${'$'}{e.message}")
+                System.err.println("WasmVideo: Error copying video to $targetPath: ${e.message}")
                 e.printStackTrace()
               }
             } else {
@@ -526,27 +622,69 @@ class WasmDriver private constructor(
     suspend fun connect(config: ParikshanWasmConfig = ParikshanWasmConfig.fromSystemProperties()): WasmDriver = connectMutex.withLock {
       val isBrowserAlive = sharedBrowser?.isConnected == true
       val isPageClosed = sharedPage?.isClosed ?: true
+      val isKeepAlive = isKeepAliveEnabled()
 
       if (!isBrowserAlive || sharedPlaywright == null) {
         // Initial setup or browser crashed
         runCatching { sharedPage?.close() }
         runCatching { sharedContext?.close() }
-        runCatching { sharedBrowser?.close() }
-        runCatching { sharedPlaywright?.close() }
-        
-        val playwright = Playwright.create()
-        sharedPlaywright = playwright
-        val launchOptions = BrowserType.LaunchOptions().setHeadless(config.headless)
-        launchOptions.setArgs(listOf(
-          "--window-size=${config.viewportWidth + 50},${config.viewportHeight + 100}",
-          "--disable-gpu",
-          "--use-gl=angle",
-          "--use-angle=swiftshader",
-          "--no-sandbox"
-        ))
-        
-        val browser = playwright.chromium().launch(launchOptions)
-        sharedBrowser = browser
+        if (!isKeepAlive) {
+          runCatching { sharedBrowser?.close() }
+          runCatching { sharedPlaywright?.close() }
+        }
+
+        if (isKeepAlive && isPortOpen(9222)) {
+          val playwright = Playwright.create()
+          sharedPlaywright = playwright
+          sharedBrowser = playwright.chromium().connectOverCDP("http://127.0.0.1:9222")
+        } else {
+          val playwright = Playwright.create()
+          sharedPlaywright = playwright
+          val launchOptions = BrowserType.LaunchOptions().setHeadless(config.headless)
+          launchOptions.setArgs(listOf(
+            "--window-size=${config.viewportWidth + 50},${config.viewportHeight + 100}",
+            "--disable-gpu",
+            "--use-gl=angle",
+            "--use-angle=swiftshader",
+            "--no-sandbox"
+          ))
+
+          if (isKeepAlive) {
+            val executable = playwright.chromium().executablePath()
+            val args = mutableListOf(
+              executable,
+              "--remote-debugging-port=9222",
+              "--window-size=${config.viewportWidth + 50},${config.viewportHeight + 100}",
+              "--disable-gpu",
+              "--no-sandbox"
+            )
+            if (config.headless) {
+              args.add("--headless")
+            }
+            val pb = ProcessBuilder(args)
+            val logFile = Files.createTempFile("parikshan-chrome-", ".log").toFile()
+            pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile))
+            pb.redirectError(ProcessBuilder.Redirect.appendTo(logFile))
+            pb.start()
+
+            var success = false
+            for (i in 1..20) {
+              if (isPortOpen(9222)) {
+                success = true
+                break
+              }
+              delay(100)
+            }
+            playwright.close()
+
+            val realPlaywright = Playwright.create()
+            sharedPlaywright = realPlaywright
+            sharedBrowser = realPlaywright.chromium().connectOverCDP("http://127.0.0.1:9222")
+          } else {
+            val browser = playwright.chromium().launch(launchOptions)
+            sharedBrowser = browser
+          }
+        }
       }
 
       if (sharedPage == null || isPageClosed) {
@@ -568,92 +706,7 @@ class WasmDriver private constructor(
 
         val context = sharedBrowser!!.newContext(contextOptions)
         
-        val initScript = """
-          window.__parikshan_utils = {
-            extractText: function(element) {
-              if (!element) return null;
-              const candidates = [
-                element.innerText, element.textContent, element.getAttribute?.('aria-label'),
-                element.getAttribute?.('title'), element.getAttribute?.('value'), element.value, element.placeholder
-              ];
-              for (const candidate of candidates) {
-                const normalized = candidate?.trim?.();
-                if (normalized) return normalized;
-              }
-              const labeledDescendant = element.querySelector?.('[aria-label]');
-              const labeledText = labeledDescendant?.getAttribute?.('aria-label')?.trim?.();
-              if (labeledText) return labeledText;
-              return null;
-            },
-            findNode: function(tag) {
-              const queue = [document.documentElement, document.body].filter(Boolean);
-              const visited = new Set();
-              let element = null;
-              let i = 0;
-              while (i < queue.length && element == null) {
-                const current = queue[i++];
-                if (!current || visited.has(current)) continue;
-                visited.add(current);
-                if (current.id === tag) { element = current; break; }
-                const descendants = current.querySelectorAll?.(`[id="${'$'}{tag}"]`) ?? [];
-                if (descendants.length > 0) { element = descendants[0]; break; }
-                if (current.shadowRoot) queue.push(current.shadowRoot);
-                const children = current.children ?? current.childNodes ?? [];
-                for (const child of children) queue.push(child);
-              }
-              return element;
-            },
-            readNode: function(tag) {
-              const element = this.findNode(tag);
-              if (!element) return null;
-              const rect = element.getBoundingClientRect();
-              const style = window.getComputedStyle(element);
-              const text = this.extractText(element);
-              const visible = style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
-              return JSON.stringify({
-                tag,
-                bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
-                visible, text
-              });
-            },
-            readTree: function() {
-              const nodes = [];
-              const queue = [document.documentElement, document.body].filter(Boolean);
-              const visited = new Set();
-              let i = 0;
-              while (i < queue.length) {
-                const current = queue[i++];
-                if (!current || visited.has(current)) continue;
-                visited.add(current);
-                if (current.id) {
-                  const rect = current.getBoundingClientRect();
-                  const style = window.getComputedStyle(current);
-                  const text = this.extractText(current);
-                  nodes.push({
-                    tag: current.id,
-                    bounds: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom },
-                    visible: style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0,
-                    text
-                  });
-                }
-                if (current.shadowRoot) queue.push(current.shadowRoot);
-                const children = current.children ?? current.childNodes ?? [];
-                for (const child of children) queue.push(child);
-              }
-              return JSON.stringify(nodes);
-            },
-            invokeClick: function(tag) {
-              const current = this.findNode(tag);
-              if (current) {
-                current.click?.();
-                current.dispatchEvent?.(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true }));
-                return true;
-              }
-              return false;
-            }
-          };
-        """.trimIndent()
-        context.addInitScript(initScript)
+        context.addInitScript(PARIKSHAN_UTILS_INIT_SCRIPT)
         
         sharedContext = context
 
@@ -687,6 +740,20 @@ class WasmDriver private constructor(
           null,
           Page.WaitForFunctionOptions().setTimeout(config.bridgeReadyTimeoutMs.toDouble())
         )
+      }
+    }
+
+    private fun registerWasmVideoPath(targetPath: String) {
+      println("[PARIKSHAN_VIDEO_PATH] $targetPath")
+      try {
+        val finalVideoPath = Paths.get(targetPath)
+        val indexFile = File(finalVideoPath.parent.toFile(), "video-index.txt")
+        indexFile.parentFile?.mkdirs()
+        synchronized(WasmDriver::class.java) {
+          indexFile.appendText("$targetPath\n")
+        }
+      } catch (e: Exception) {
+        System.err.println("WARN: Failed to write to video-index.txt in WasmDriver: ${e.message}")
       }
     }
   }

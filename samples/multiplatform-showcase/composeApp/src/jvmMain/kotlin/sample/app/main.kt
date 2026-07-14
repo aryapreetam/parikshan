@@ -1,0 +1,17 @@
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.application
+import androidx.compose.ui.window.rememberWindowState
+import sample.app.App
+import java.awt.Dimension
+
+fun main(args: Array<String>) = application {
+  Window(
+    title = "sample",
+    state = rememberWindowState(width = 950.dp, height = 850.dp),
+    onCloseRequest = ::exitApplication,
+  ) {
+    window.minimumSize = Dimension(350, 600)
+    App()
+  }
+}

@@ -41,6 +41,11 @@ internal class DesktopVideoRecorder(
     }
 
   fun start(config: DesktopVideoSessionConfig) {
+    synchronized(encoderLock) {
+      if (activeConfig?.outputPath == config.outputPath && encoder != null) {
+        return
+      }
+    }
     stop()
     virtualCursorScreenPoint.set(null)
 

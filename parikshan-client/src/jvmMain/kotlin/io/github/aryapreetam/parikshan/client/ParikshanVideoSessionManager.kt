@@ -1,163 +1,161 @@
 package io.github.aryapreetam.parikshan.client
 
 import io.github.aryapreetam.parikshan.TestDriver
-import io.github.aryapreetam.parikshan.protocol.Command
-import io.github.aryapreetam.parikshan.protocol.ProtocolJson
-import io.github.aryapreetam.parikshan.protocol.Response
-import java.io.File
-import java.net.HttpURLConnection
-import java.net.URI
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlin.random.Random
+import java.util.concurrent.atomic.AtomicBoolean
 
 internal object ParikshanVideoSessionManager {
   private val lock = Mutex()
   @Volatile private var activeClassName: String? = null
-  @Volatile private var activeDriver: TestDriver? = null
+  @Volatile private var activeRecorder: VideoRecorder? = null
   @Volatile private var sessionRecordingStarted = false
   private val shutdownHookInstalled = AtomicBoolean(false)
+  @Volatile private var activeOutputDir: String? = null
+
+  private fun registerVideoPath(path: String) {
+    println("[PARIKSHAN_VIDEO_PATH] $path")
+    val outDir = activeOutputDir ?: return
+    try {
+      val indexFile = java.io.File(outDir, "video-index.txt")
+      indexFile.parentFile?.mkdirs()
+      synchronized(this) {
+        indexFile.appendText("$path\n")
+      }
+    } catch (e: Exception) {
+      System.err.println("WARN: Failed to write to video-index.txt: ${e.message}")
+    }
+  }
+
+  fun updateVirtualCursor(x: Double, y: Double) {
+  }
+
+  fun pauseRecording() {
+    (activeRecorder as? DesktopVideoRecorder)?.pause()
+  }
+
+  fun resumeRecording(newDriver: TestDriver) {
+    val recorder = activeRecorder as? DesktopVideoRecorder ?: return
+    recorder.updateDriver(newDriver)
+    recorder.resume()
+  }
 
   suspend fun beforeScenario(
     driver: TestDriver,
     clientConfig: ParikshanClientConfig,
     config: ParikshanVideoConfig,
-    className: String
+    className: String,
+    methodName: String
   ) {
     if (!config.enabled) {
       return
     }
 
+    activeOutputDir = config.outputDir
+
     if (shutdownHookInstalled.compareAndSet(false, true)) {
       Runtime.getRuntime().addShutdownHook(Thread({
         val target = System.getProperty("parikshan.target")?.lowercase()
-
         // Wasm target manages its own video lifecycle via WasmDriver's shutdown hook.
         if (target == "wasm" || target == "web") {
           return@Thread
         }
 
-        val clsName = activeClassName
-        val drv = activeDriver
-        activeClassName = null
-        activeDriver = null
-
-        if (clsName == null || drv == null) return@Thread
-
-        // Apply post-roll if enabled
-        if (config.postRollMs > 0) {
-            runCatching { Thread.sleep(config.postRollMs) }
-        }
-
-        if (target == "desktop" || target == null || target == "") {
-           runCatching {
-              val token = System.getProperty("parikshan.token") ?: ""
-              val command = Command.StopRecording(id = nextId(), sessionName = clsName).apply { this.token = token }
-              val json = ProtocolJson.encodeCommand(command)
-              val url = URI("http://${clientConfig.host}:${clientConfig.port}/").toURL()
-              val conn = url.openConnection() as HttpURLConnection
-              conn.requestMethod = "POST"
-              conn.setRequestProperty("Content-Type", "application/json")
-              conn.doOutput = true
-              conn.connectTimeout = 5000
-              conn.readTimeout = 10000
-              conn.outputStream.use { it.write(json.toByteArray()) }
-              conn.inputStream.readBytes()
-           }
-        } else {
-           runBlocking {
-               runCatching { drv.send(Command.StopRecording(id = nextId(), sessionName = clsName)) }
-           }
+        val recorder = activeRecorder
+        activeRecorder = null
+        if (recorder != null) {
+          runBlocking {
+            runCatching {
+              val path = recorder.stop()
+              if (path != null) {
+                registerVideoPath(path)
+              }
+            }
+          }
         }
       }, "parikshan-video-session-shutdown"))
     }
 
     lock.withLock {
-      activeDriver = driver
-      
-      if (config.strategy == VideoStrategy.SESSION) {
-          if (!sessionRecordingStarted) {
-              sendStart(driver = driver, className = "e2e_session", config = config)
-              sessionRecordingStarted = true
+      if (config.granularity == VideoGranularity.RUN) {
+        if (!sessionRecordingStarted) {
+          val target = System.getProperty("parikshan.target")?.lowercase() ?: "desktop"
+          val recorder = VideoRecorderFactory.create(target, driver, config)
+          activeRecorder = recorder
+          recorder.start("e2e_session", config.outputDir)
+          sessionRecordingStarted = true
+        } else {
+          val recorder = activeRecorder
+          if (recorder is DesktopVideoRecorder) {
+            recorder.updateDriver(driver)
           }
-          return
-      }
-
-      if (activeClassName == className) {
+        }
         return
       }
-      val previous = activeClassName
-      if (previous != null) {
-        sendStop(driver = driver, sessionName = previous)
+
+      if (config.granularity == VideoGranularity.CLASS) {
+        if (activeClassName == className) {
+          val recorder = activeRecorder
+          if (recorder is DesktopVideoRecorder) {
+            recorder.updateDriver(driver)
+          }
+          return
+        }
+        val previousRecorder = activeRecorder
+        activeRecorder = null
+        if (previousRecorder != null) {
+          val path = previousRecorder.stop()
+          if (path != null) {
+            registerVideoPath(path)
+          }
+        }
+        val target = System.getProperty("parikshan.target")?.lowercase() ?: "desktop"
+        val recorder = VideoRecorderFactory.create(target, driver, config)
+        activeRecorder = recorder
+        recorder.start(className, config.outputDir)
+        activeClassName = className
+        return
       }
-      sendStart(driver = driver, className = className, config = config)
-      activeClassName = className
+
+      if (config.granularity == VideoGranularity.TEST) {
+        val previousRecorder = activeRecorder
+        activeRecorder = null
+        if (previousRecorder != null) {
+          val path = previousRecorder.stop()
+          if (path != null) {
+            registerVideoPath(path)
+          }
+        }
+        val target = System.getProperty("parikshan.target")?.lowercase() ?: "desktop"
+        val recorder = VideoRecorderFactory.create(target, driver, config)
+        activeRecorder = recorder
+        recorder.start("${className}_$methodName", config.outputDir)
+      }
     }
   }
 
-  private suspend fun sendStart(
+  suspend fun afterScenario(
     driver: TestDriver,
+    config: ParikshanVideoConfig,
     className: String,
-    config: ParikshanVideoConfig
+    methodName: String
   ) {
-    val outputPath = resolveOutputPath(className = className, outputDir = config.outputDir)
-    val response =
-      driver.send(
-        Command.StartRecording(
-          id = nextId(),
-          sessionName = className,
-          path = outputPath,
-          fps = config.fps,
-          showCursor = config.showCursor
-        )
-      )
-    checkResponse(response, action = "startRecording($className)")
-  }
-
-  private suspend fun sendStop(
-    driver: TestDriver,
-    sessionName: String
-  ) {
-    val response =
-      driver.send(
-        Command.StopRecording(
-          id = nextId(),
-          sessionName = sessionName
-        )
-      )
-    checkResponse(response, action = "stopRecording($sessionName)")
-  }
-
-  private fun resolveOutputPath(
-    className: String,
-    outputDir: String
-  ): String {
-    val simpleName = className.substringAfterLast('.').replace('$', '_')
-    val rawTarget = System.getProperty("parikshan.target")
-    val target = rawTarget?.lowercase()?.trim() ?: ""
-    val ext = when (target) {
-      "wasm", "web" -> "webm"
-      "desktop", "ios", "android", "", "null" -> "mp4"
-      else -> "webm"
+    if (!config.enabled) {
+      return
     }
 
-    val file = File(outputDir, "$simpleName.$ext").absoluteFile
-    file.parentFile?.mkdirs()
-    return file.absolutePath
-  }
-
-  private fun checkResponse(
-    response: Response,
-    action: String
-  ) {
-    if (response is Response.Error) {
-      // Don't crash the test if video recording fails, just log it.
-      System.err.println("WARN: $action failed: ${response.message}")
+    lock.withLock {
+      if (config.granularity == VideoGranularity.TEST) {
+        val recorder = activeRecorder
+        activeRecorder = null
+        if (recorder != null) {
+          val path = recorder.stop()
+          if (path != null) {
+            registerVideoPath(path)
+          }
+        }
+      }
     }
   }
-
-  private fun nextId(): String =
-    "video-${Random.nextLong().toString(16)}"
 }

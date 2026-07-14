@@ -7,7 +7,7 @@ compose = "1.10.1"
 androidx-activityCompose = "1.10.1"
 dokka = "2.2.0"
 coroutines = "1.10.2"
-serialization = "1.9.0"
+serialization = "1.7.3"
 ktor = "3.3.0"
 jcodec = "0.2.5"
 playwright = "1.58.0"
@@ -15,8 +15,10 @@ androidx-test-runner = "1.6.2"
 androidx-uiautomator = "2.3.0"
 androidx-espresso = "3.6.1"
 androidx-compose-ui-test = "1.7.8"
+binary-compatibility-validator = "0.18.1"
 
 [libraries]
+maven-publish-gradle-plugin = { module = "com.vanniktech:gradle-maven-publish-plugin", version.ref = "maven-publish" }
 android-documentation-plugin = { module = "org.jetbrains.dokka:android-documentation-plugin", version.ref = "dokka" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 androidx-activityCompose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activityCompose" }
@@ -48,3 +50,4 @@ compose = { id = "org.jetbrains.compose", version.ref = "compose" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 android-application = { id = "com.android.application", version.ref = "agp" }
 dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
+binary-compatibility-validator = { id = "org.jetbrains.kotlinx.binary-compatibility-validator", version.ref = "binary-compatibility-validator" }

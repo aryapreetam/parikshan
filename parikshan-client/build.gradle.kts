@@ -6,8 +6,9 @@ plugins {
   alias(libs.plugins.serialization)
   alias(libs.plugins.compose)
   alias(libs.plugins.compose.compiler)
-  alias(libs.plugins.maven.publish)
+  id("parikshan.publishing")
   alias(libs.plugins.dokka)
+  alias(libs.plugins.binary.compatibility.validator)
 }
 
 dokka {
@@ -19,6 +20,9 @@ dokka {
 }
 
 kotlin {
+  sourceSets.all {
+    languageSettings.optIn("io.github.aryapreetam.parikshan.InternalParikshanApi")
+  }
   jvmToolchain(17)
   androidLibrary {
     namespace = "io.github.aryapreetam.parikshan.client"
@@ -51,8 +55,14 @@ kotlin {
     }
 
     jvmMain.dependencies {
+      api("org.jetbrains.kotlin:kotlin-test-junit5")
+      api("org.jetbrains.kotlin:kotlin-test")
       implementation(libs.ktor.client.cio)
       implementation(libs.playwright.java)
+      implementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
+      implementation(libs.jcodec.javase)
+      implementation("org.mp4parser:isoparser:1.9.56")
+      implementation("org.mp4parser:muxer:1.9.56")
     }
 
     androidMain.dependencies {
@@ -61,9 +71,24 @@ kotlin {
       implementation(libs.androidx.uiautomator)
       implementation(libs.androidx.test.runner)
     }
+
+    val iosMain by creating {
+      dependencies {
+        @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+        implementation(compose.uiTest)
+      }
+    }
+
+    wasmJsMain.dependencies {
+      @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+      implementation(compose.uiTest)
+    }
   }
 }
 
 mavenPublishing {
-  coordinates(project.group.toString(), project.name, project.version.toString())
+  pom {
+    name.set("Parikshan Client")
+    description.set("Client library for Parikshan Compose Multiplatform E2E")
+  }
 }

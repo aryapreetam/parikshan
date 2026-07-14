@@ -1,4 +1,4 @@
-name: Publish Multiplatform Release
+name: Release
 
 on:
   push:
@@ -20,9 +20,9 @@ env:
   JAVA_VERSION: '21'
 
 jobs:
-  # Reuse CI (lint + tests + e2e dogfooding)
+  # Reuse CI (lint + tests + e2e)
   ci:
-    name: CI (lint, build+tests, 4-pillar e2e)
+    name: CI (lint, build+tests, e2e)
     uses: ./.github/workflows/ci.yml
 
   # Build artifacts in parallel after all tests succeed
@@ -48,16 +48,16 @@ jobs:
           node-version: '20'
       - name: Build APK and wasm
         run: |
-          ./gradlew :sample:androidApp:assembleRelease
-          ./gradlew :sample:composeApp:wasmJsBrowserDistribution
+          ./gradlew :samples:multiplatform-showcase:androidApp:assembleRelease
+          ./gradlew :samples:multiplatform-showcase:composeApp:wasmJsBrowserDistribution
       - name: Collect artifacts (APK + wasm)
         run: |
           mkdir -p $GITHUB_WORKSPACE/release-upload
-          APK_SRC=$(find sample/androidApp/build/outputs/apk -type f -name '*-release-*.apk' | head -n1)
+          APK_SRC=$(find samples/multiplatform-showcase/androidApp/build/outputs/apk -type f -name '*-release-*.apk' | head -n1)
           if [ -n "$APK_SRC" ]; then
             cp "$APK_SRC" "$GITHUB_WORKSPACE/release-upload/sample-app-android-unsigned.apk"
           fi
-          WASM_DIR="$GITHUB_WORKSPACE/sample/composeApp/build/dist/wasmJs/productionExecutable"
+          WASM_DIR="$GITHUB_WORKSPACE/samples/multiplatform-showcase/composeApp/build/dist/wasmJs/productionExecutable"
           if [ -d "$WASM_DIR" ]; then
             (cd "$WASM_DIR" && zip -r "$GITHUB_WORKSPACE/release-upload/sample-app-wasm.zip" ./*)
           fi
@@ -90,12 +90,12 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
       - name: Build Desktop DMG
-        run: ./gradlew :sample:composeApp:packageDmg
+        run: ./gradlew :samples:multiplatform-showcase:composeApp:packageDmg
       - name: Collect DMG artifacts
         run: |
           mkdir -p $GITHUB_WORKSPACE/release-upload
           ARCH_SUFFIX="${{ matrix.arch }}"
-          DMG_SRC=$(find sample/composeApp/build/compose/binaries -type f -name '*.dmg' | head -n1)
+          DMG_SRC=$(find samples/multiplatform-showcase/composeApp/build/compose/binaries -type f -name '*.dmg' | head -n1)
           if [ -n "$DMG_SRC" ]; then
             cp "$DMG_SRC" "$GITHUB_WORKSPACE/release-upload/sample-app-desktop-$ARCH_SUFFIX.dmg"
           fi
@@ -120,12 +120,12 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
       - name: Build Windows MSI
-        run: ./gradlew :sample:composeApp:packageMsi
+        run: ./gradlew :samples:multiplatform-showcase:composeApp:packageMsi
       - name: Collect MSI artifacts
         shell: bash
         run: |
           mkdir -p $GITHUB_WORKSPACE/release-upload
-          MSI_SRC=$(find sample/composeApp/build/compose/binaries/main/msi -type f -name '*.msi' | head -n1)
+          MSI_SRC=$(find samples/multiplatform-showcase/composeApp/build/compose/binaries/main/msi -type f -name '*.msi' | head -n1)
           if [ -n "$MSI_SRC" ]; then
             cp "$MSI_SRC" "$GITHUB_WORKSPACE/release-upload/sample-app-windows.msi"
           fi
@@ -160,34 +160,10 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_KEY_CONTENTS }}
       - name: Publish to Gradle Plugin Portal
-        run: ./gradlew :parikshan-gradle-plugin:publishPlugins --no-configuration-cache
+        run: ./gradlew :gradle-plugins:publishPlugins --no-configuration-cache
         env:
           GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
           GRADLE_PUBLISH_SECRET: ${{ secrets.GRADLE_PUBLISH_SECRET }}
-
-  create-github-release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    needs: [ publish-library ]
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: all-artifacts
-          merge-multiple: true
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          files: |
-            all-artifacts/sample-app-android-unsigned.apk
-            all-artifacts/sample-app-desktop-x64.dmg
-            all-artifacts/sample-app-desktop-aarch64.dmg
-            all-artifacts/sample-app-windows.msi
-            all-artifacts/sample-app-wasm.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   deploy-site:
     name: Deploy GitHub Pages (Landing, API, Demo)
@@ -211,49 +187,17 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      # 1. Build Site Root (Docsify from README)
-      - name: Prepare Site Root
+      # 1. Build Site Root (MkDocs Material)
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install MkDocs Material
         run: |
-          mkdir -p site
-          cat > site/index.html <<'EOF'
-          <!DOCTYPE html>
-          <html>
-          <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>parikshan</title>
-          <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify-themeable@0/dist/css/theme-simple.css">
-          </head>
-          <body>
-          <div id="app"></div>
-          <script type="module">
-          import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
-          mermaid.initialize({ startOnLoad: false, theme: 'default' });
-          window.$docsify = {
-            name: 'parikshan',
-            repo: 'https://github.com/aryapreetam/parikshan',
-            homepage: 'README.MD',
-            loadSidebar: false,
-            loadNavbar: false,
-            coverpage: false,
-            plugins: [
-              function(hook, vm) {
-                hook.doneEach(function() {
-                  mermaid.run({ querySelector: '.mermaid' });
-                });
-              }
-            ]
-          }
-          </script>
-          <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/docsify.min.js"></script>
-          <script src="https://cdn.jsdelivr.net/npm/docsify-themeable@0"></script>
-          </body>
-          </html>
-          EOF
-          cp README.MD site/
-          cp CONTRIBUTING.md site/
-          cp -r readme_images site/ || true
-          cp -r docs site/ || true
+          python -m pip install --upgrade pip
+          pip install mkdocs-material
+      - name: Build MkDocs Site
+        run: mkdocs build --clean
 
       # 2. Add API Reference (Dokka)
       - name: Generate API Docs
@@ -263,16 +207,13 @@ jobs:
           mkdir -p site/api
           cp -r parikshan/build/dokka/html/* site/api/
 
-      # 3. Add Demo Site (Wasm - Reuses pre-built Wasm artifact from build-linux)
-      - name: Download Wasm Demo Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: release-upload-linux
-          path: linux-artifacts
+      # 3. Add Demo Site (Wasm)
+      - name: Build Wasm Demo
+        run: ./gradlew :samples:multiplatform-showcase:composeApp:wasmJsBrowserDistribution
       - name: Prepare Demo Site
         run: |
           mkdir -p site/demo
-          unzip -o linux-artifacts/sample-app-wasm.zip -d site/demo
+          cp -r samples/multiplatform-showcase/composeApp/build/dist/wasmJs/productionExecutable/* site/demo/
 
       # 4. Deploy to GitHub Pages
       - name: Configure Pages

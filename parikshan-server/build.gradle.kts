@@ -3,16 +3,8 @@ plugins {
   alias(libs.plugins.serialization)
   alias(libs.plugins.compose)
   alias(libs.plugins.compose.compiler)
-  alias(libs.plugins.maven.publish)
-  alias(libs.plugins.dokka)
-}
-
-dokka {
-  moduleName.set("parikshan-server")
-  dokkaSourceSets.configureEach {
-    includes.from("src/main/kotlin/Module.md")
-    includes.from("src/main/kotlin/io/github/aryapreetam/parikshan/server/package.md")
-  }
+  id("parikshan.publishing")
+  alias(libs.plugins.binary.compatibility.validator)
 }
 
 kotlin {
@@ -28,9 +20,18 @@ dependencies {
   implementation(libs.ktor.server.netty)
   implementation(libs.ktor.server.websockets)
   implementation(libs.jcodec.javase)
-  implementation(compose.desktop.currentOs)
+  compileOnly(compose.desktop.currentOs)
 }
 
 mavenPublishing {
-  coordinates(project.group.toString(), project.name, project.version.toString())
+  pom {
+    name.set("Parikshan Server")
+    description.set("Server library for Parikshan Compose Multiplatform E2E")
+  }
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+  compilerOptions {
+    freeCompilerArgs.add("-opt-in=io.github.aryapreetam.parikshan.InternalParikshanApi")
+  }
 }

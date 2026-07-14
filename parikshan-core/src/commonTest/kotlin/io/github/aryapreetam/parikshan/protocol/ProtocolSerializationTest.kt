@@ -19,7 +19,7 @@ class ProtocolSerializationTest {
         assertTrue(okResp is Response.Ok)
         assertEquals("456", okResp.id)
 
-        val nodeInfoJson = """{"type": "nodeinfo", "id": "789", "bounds": {"left": 0.0, "top": 0.0, "right": 100.0, "bottom": 100.0}, "visible": true}"""
+        val nodeInfoJson = """{"type": "node_info", "id": "789", "bounds": {"left": 0.0, "top": 0.0, "right": 100.0, "bottom": 100.0}, "visible": true}"""
         val nodeInfoResp = ProtocolJson.decodeResponse(nodeInfoJson)
         assertTrue(nodeInfoResp is Response.NodeInfo)
         assertEquals("789", nodeInfoResp.id)

@@ -1,7 +1,7 @@
 rootProject.name = "parikshan-root"
 
 pluginManagement {
-  includeBuild("parikshan-gradle-plugin")
+  includeBuild("gradle-plugins")
 
   repositories {
     google {
@@ -29,6 +29,18 @@ dependencyResolutionManagement {
     }
     mavenCentral()
   }
+  versionCatalogs {
+    create("libs") {
+      val kotlinOverride = providers.gradleProperty("kotlinVersion").orNull
+      if (!kotlinOverride.isNullOrBlank()) {
+        version("kotlin", kotlinOverride)
+      }
+      val composeOverride = providers.gradleProperty("composeVersion").orNull
+      if (!composeOverride.isNullOrBlank()) {
+        version("compose", composeOverride)
+      }
+    }
+  }
 }
 
 plugins {
@@ -39,6 +51,7 @@ include(":parikshan")
 include(":parikshan-core")
 include(":parikshan-server")
 include(":parikshan-client")
-// include(":parikshan-gradle-plugin") // Now an included build
-include(":sample:composeApp")
-include(":sample:androidApp")
+include(":samples:multiplatform-showcase:composeApp")
+include(":samples:multiplatform-showcase:androidApp")
+project(":samples:multiplatform-showcase:composeApp").projectDir = file("samples/multiplatform-showcase/composeApp")
+project(":samples:multiplatform-showcase:androidApp").projectDir = file("samples/multiplatform-showcase/androidApp")

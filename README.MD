@@ -1,42 +1,31 @@
-<h1 align="center">Parikshan</h1>
-<p align="center"><b>Compose Multiplatform E2E Testing Framework</b></p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Compose%20Multiplatform-v1.10.1-4285F4?logo=jetpackcompose" alt="Compose Multiplatform Version">
-  <img src="https://img.shields.io/badge/Kotlin-v2.3.21-blueviolet?logo=kotlin" alt="Kotlin Version">
-</p>
-
+<h1 align="center">
+  <img src="docs/assets/logo.png" width="64" height="64" style="vertical-align: middle; margin-right: 14px;" alt="Parikshan Logo"/>
+  Parikshan
+</h1>
+<p align="center">End-to-End testing framework for Compose Multiplatform</p>
 <p align="center">
   <a href="https://github.com/aryapreetam/parikshan/actions/workflows/release.yml">
-    <img src="https://github.com/aryapreetam/parikshan/actions/workflows/release.yml/badge.svg" alt="Release workflow status">
+    <img src="https://github.com/aryapreetam/parikshan/actions/workflows/release.yml/badge.svg" alt="Release status">
   </a>
   <a href="https://mvnrepository.com/artifact/io.github.aryapreetam/parikshan">
     <img src="https://img.shields.io/maven-central/v/io.github.aryapreetam/parikshan?label=Maven%20Central&color=blue" alt="Maven Central Version">
   </a>
-  <a href="https://github.com/aryapreetam/parikshan/blob/main/LICENSE">
-    <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License">
+  <a href="https://kotlinlang.org/docs/components-stability.html">
+    <img src="https://kotl.in/badges/experimental.svg" alt="Kotlin Experimental">
   </a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Android-3DDC84?logo=android&logoColor=white" alt="Android">
-  <img src="https://img.shields.io/badge/iOS-000000?logo=apple&logoColor=white" alt="iOS">
-  <img src="https://img.shields.io/badge/Desktop/JVM-0078D6?logo=desktop&logoColor=white" alt="Desktop">
-  <img src="https://img.shields.io/badge/Web(wasm)-4285F4?logo=google-chrome&logoColor=white" alt="Web">
+  <img src="docs/assets/demo.png" width="100%" alt="Parikshan E2E Execution Demo"/>
 </p>
 
-Parikshan is a testing framework designed specifically for **Compose Multiplatform**. It provides a unified, cross-platform DSL to write end-to-end (E2E) UI tests that run on Android, iOS, Desktop, and Web (Wasm) using a single codebase.
+### Features
 
-### Why Parikshan?
+- Write test in Kotlin, run it on Android, iOS, Desktop, and Web (Wasm).
+- No test related dependencies OR code in the main app.
+- Built-in screenshot capture and video recording (including headless CI).
 
-Writing E2E tests for multiplatform apps often requires juggling multiple tools like Appium, Maestro, and Playwright, each with its own configuration and production code "pollution." Parikshan aims to simplify this:
-
-- **Zero-Pollution**: No testing code or "test-only" modules are included in your production builds.
-- **Unified DSL**: Write once in Kotlin and run across all supported platforms.
-- **Architecture-Aware**: Automatically discovers your app modules and orchestrates the installation and execution lifecycle.
-- **Built-in Recording**: Automatically generates videos of your test runs (even in headless CI environments).
-
-[**📖 Full Documentation & API Reference**](https://aryapreetam.github.io/parikshan/api/) | [**🌐 Wasm Demo**](https://aryapreetam.github.io/parikshan/demo/)
+[**📖 API Reference**](https://aryapreetam.github.io/parikshan/api/)
 
 ---
 
@@ -47,7 +36,7 @@ In your **shared library** (e.g., `:composeApp`) `build.gradle.kts`:
 
 ```kotlin
 plugins {
-    id("io.github.aryapreetam.parikshan") version "0.0.1"
+  id("io.github.aryapreetam.parikshan") version "0.0.3"
 }
 ```
 
@@ -56,16 +45,13 @@ Create a test in `src/commonTest/kotlin`:
 
 ```kotlin
 class MyE2ETest {
-    @Test
-    fun testLoginFlow() = e2eTest {
-        // Simple, intent-based DSL
-        waitFor("login_button")
-        inputText("username_field", "admin")
-        click("login_button")
-        
-        assertVisible("dashboard_screen")
-        screenshot("login-success")
-    }
+  @Test
+  fun testLoginFlow() = e2eTest {
+    inputText("username_field", "admin")
+    click("login_button")
+    assertVisible("dashboard_screen")
+    screenshot("login-success")
+  }
 }
 ```
 
@@ -75,31 +61,20 @@ class MyE2ETest {
 ./gradlew e2eIosTest
 ./gradlew e2eDesktopTest
 ./gradlew e2eWasmTest
+
+# OR many at once concurrently
+
+./gradlew e2eTest --targets=android,desktop,wasm
 ```
 
 ---
 
-## 📦 Try the Sample App
+## 📦 Examples
 
-Validate the library on your platform by downloading the pre-built sample application:
-
-| Platform | Download Link |
-|----------|--------------|
-| 🍏 **macOS (Intel)** | [Download x64 DMG](https://github.com/aryapreetam/parikshan/releases/latest/download/sample-app-desktop-x64.dmg) |
-| 🍎 **macOS (Apple Silicon)** | [Download arm64 DMG](https://github.com/aryapreetam/parikshan/releases/latest/download/sample-app-desktop-aarch64.dmg) |
-| 🪟 **Windows** | [Download MSI](https://github.com/aryapreetam/parikshan/releases/latest/download/sample-app-windows.msi) |
-| 🤖 **Android** | [Download APK](https://github.com/aryapreetam/parikshan/releases/latest/download/sample-app-android-unsigned.apk) |
-| 🌐 **Web (Wasm)** | [Download ZIP](https://github.com/aryapreetam/parikshan/releases/latest/download/sample-app-wasm.zip) |
-|  **iOS Simulator** | [Download ZIP](https://github.com/aryapreetam/parikshan/releases/latest/download/sample-app-ios-simulator.zip) |
+See the [sample project tests](https://github.com/aryapreetam/parikshan/tree/main/samples/multiplatform-showcase/composeApp/src/commonTest/kotlin/sample/app) for working examples of how to write E2E tests using the Parikshan DSL.
 
 ---
 
 ## License
 
-MIT License © 2026 aryapreetam and contributors. See [LICENSE](./LICENSE) for details.
-
----
-
-## 🙏 Acknowledgments
-
-This library was built with inspiration from the excellent work of the Kotlin and Compose Multiplatform communities, including [terrakok's KMP Web Wizard](https://terrakok.github.io/kmp-web-wizard/) and the many developers pushing the boundaries of cross-platform testing.
+MIT License © 2026 aryapreetam. See [LICENSE](./LICENSE) for details.

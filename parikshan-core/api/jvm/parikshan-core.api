@@ -1,0 +1,1100 @@
+public abstract interface annotation class io/github/aryapreetam/parikshan/AfterAll : java/lang/annotation/Annotation {
+}
+
+public abstract interface annotation class io/github/aryapreetam/parikshan/BeforeAll : java/lang/annotation/Annotation {
+}
+
+public final class io/github/aryapreetam/parikshan/E2ETestConfig {
+	public fun <init> ()V
+	public fun <init> (JJLjava/lang/String;Z)V
+	public synthetic fun <init> (JJLjava/lang/String;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()J
+	public final fun component2 ()J
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Z
+	public final fun copy (JJLjava/lang/String;Z)Lio/github/aryapreetam/parikshan/E2ETestConfig;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/E2ETestConfig;JJLjava/lang/String;ZILjava/lang/Object;)Lio/github/aryapreetam/parikshan/E2ETestConfig;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCaptureScreenshotOnFailure ()Z
+	public final fun getCommandDelayMs ()J
+	public final fun getDefaultWaitTimeoutMs ()J
+	public final fun getFailureScreenshotPath ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/aryapreetam/parikshan/E2ETestDslKt {
+	public static final fun e2eTest (Lio/github/aryapreetam/parikshan/TestDriver;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun e2eTest$default (Lio/github/aryapreetam/parikshan/TestDriver;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static final fun isAndroid (Lio/github/aryapreetam/parikshan/E2ETestScope;)Z
+	public static final fun isDesktop (Lio/github/aryapreetam/parikshan/E2ETestScope;)Z
+	public static final fun isIos (Lio/github/aryapreetam/parikshan/E2ETestScope;)Z
+	public static final fun isWasm (Lio/github/aryapreetam/parikshan/E2ETestScope;)Z
+}
+
+public final class io/github/aryapreetam/parikshan/E2ETestScope {
+	public final fun artifactPath (Ljava/lang/String;)Ljava/lang/String;
+	public final fun assertContains (Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun assertContains (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun assertFailure (Ljava/lang/String;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun assertNotVisible (Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun assertNotVisible (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun assertNotVisible$default (Lio/github/aryapreetam/parikshan/E2ETestScope;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;JLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun assertNotVisible$default (Lio/github/aryapreetam/parikshan/E2ETestScope;Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun assertText (Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun assertText (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun assertValue (Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun assertValue (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun assertVisible (Lio/github/aryapreetam/parikshan/protocol/Selector;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun assertVisible (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun click (Lio/github/aryapreetam/parikshan/protocol/Selector;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun click (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun drag (DDDDJLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun drag (Lio/github/aryapreetam/parikshan/protocol/Selector;DDJLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun drag (Ljava/lang/String;DDJLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun drag$default (Lio/github/aryapreetam/parikshan/E2ETestScope;DDDDJLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun drag$default (Lio/github/aryapreetam/parikshan/E2ETestScope;Lio/github/aryapreetam/parikshan/protocol/Selector;DDJLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun drag$default (Lio/github/aryapreetam/parikshan/E2ETestScope;Ljava/lang/String;DDJLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun getTargetPlatform ()Ljava/lang/String;
+	public final fun getTree (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun hasVisibleNode (Lio/github/aryapreetam/parikshan/protocol/Selector;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun hasVisibleNode (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun input (Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun input (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun pressBack (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun pressHome (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun relaunchApp (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun resetApp (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun resolveNode (Lio/github/aryapreetam/parikshan/protocol/Selector;ZLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun resolveNode (Ljava/lang/String;ZLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun resolveNode$default (Lio/github/aryapreetam/parikshan/E2ETestScope;Lio/github/aryapreetam/parikshan/protocol/Selector;ZLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun resolveNode$default (Lio/github/aryapreetam/parikshan/E2ETestScope;Ljava/lang/String;ZLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun resolveVisibleNode (Lio/github/aryapreetam/parikshan/protocol/Selector;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun resolveVisibleNode (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun retry (IJLkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun retry$default (Lio/github/aryapreetam/parikshan/E2ETestScope;IJLkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun screenshot (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun screenshotPath (Ljava/lang/String;)Ljava/lang/String;
+	public final fun scroll (Lio/github/aryapreetam/parikshan/protocol/Selector;Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun scroll (Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun takeScreenshot (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun waitFor (Lio/github/aryapreetam/parikshan/protocol/Selector;JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun waitFor (Ljava/lang/String;JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun waitFor$default (Lio/github/aryapreetam/parikshan/E2ETestScope;Lio/github/aryapreetam/parikshan/protocol/Selector;JLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun waitFor$default (Lio/github/aryapreetam/parikshan/E2ETestScope;Ljava/lang/String;JLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public abstract interface annotation class io/github/aryapreetam/parikshan/InternalParikshanApi : java/lang/annotation/Annotation {
+}
+
+public abstract interface annotation class io/github/aryapreetam/parikshan/Order : java/lang/annotation/Annotation {
+	public abstract fun value ()I
+}
+
+public abstract interface annotation class io/github/aryapreetam/parikshan/ParikshanScenario : java/lang/annotation/Annotation {
+	public abstract fun testName ()Ljava/lang/String;
+}
+
+public final class io/github/aryapreetam/parikshan/ResolvedSelector {
+	public fun <init> (Lio/github/aryapreetam/parikshan/protocol/Selector;Lio/github/aryapreetam/parikshan/ResolvedSelector$MatchType;Lio/github/aryapreetam/parikshan/protocol/NodeSnapshot;Ljava/util/List;)V
+	public synthetic fun <init> (Lio/github/aryapreetam/parikshan/protocol/Selector;Lio/github/aryapreetam/parikshan/ResolvedSelector$MatchType;Lio/github/aryapreetam/parikshan/protocol/NodeSnapshot;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lio/github/aryapreetam/parikshan/protocol/Selector;
+	public final fun component2 ()Lio/github/aryapreetam/parikshan/ResolvedSelector$MatchType;
+	public final fun component3 ()Lio/github/aryapreetam/parikshan/protocol/NodeSnapshot;
+	public final fun component4 ()Ljava/util/List;
+	public final fun copy (Lio/github/aryapreetam/parikshan/protocol/Selector;Lio/github/aryapreetam/parikshan/ResolvedSelector$MatchType;Lio/github/aryapreetam/parikshan/protocol/NodeSnapshot;Ljava/util/List;)Lio/github/aryapreetam/parikshan/ResolvedSelector;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/ResolvedSelector;Lio/github/aryapreetam/parikshan/protocol/Selector;Lio/github/aryapreetam/parikshan/ResolvedSelector$MatchType;Lio/github/aryapreetam/parikshan/protocol/NodeSnapshot;Ljava/util/List;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/ResolvedSelector;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAllMatches ()Ljava/util/List;
+	public final fun getMatchType ()Lio/github/aryapreetam/parikshan/ResolvedSelector$MatchType;
+	public final fun getNode ()Lio/github/aryapreetam/parikshan/protocol/NodeSnapshot;
+	public final fun getSelector ()Lio/github/aryapreetam/parikshan/protocol/Selector;
+	public final fun getTag ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/aryapreetam/parikshan/ResolvedSelector$MatchType : java/lang/Enum {
+	public static final field Tag Lio/github/aryapreetam/parikshan/ResolvedSelector$MatchType;
+	public static final field Text Lio/github/aryapreetam/parikshan/ResolvedSelector$MatchType;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/aryapreetam/parikshan/ResolvedSelector$MatchType;
+	public static fun values ()[Lio/github/aryapreetam/parikshan/ResolvedSelector$MatchType;
+}
+
+public final class io/github/aryapreetam/parikshan/SelectorResolutionException : java/lang/IllegalArgumentException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class io/github/aryapreetam/parikshan/SelectorResolutionKt {
+	public static final fun ambiguousTextMessage (Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/util/List;)Ljava/lang/String;
+	public static final fun resolveNode (Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/util/List;Z)Lio/github/aryapreetam/parikshan/ResolvedSelector;
+	public static synthetic fun resolveNode$default (Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/util/List;ZILjava/lang/Object;)Lio/github/aryapreetam/parikshan/ResolvedSelector;
+}
+
+public abstract interface class io/github/aryapreetam/parikshan/TestDriver {
+	public abstract fun close (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun getTargetPlatform ()Ljava/lang/String;
+	public fun relaunchApp (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun reset (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun resolveArtifactPath (Ljava/lang/String;)Ljava/lang/String;
+	public abstract fun send (Lio/github/aryapreetam/parikshan/protocol/Command;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun updateVirtualCursor (DD)V
+}
+
+public final class io/github/aryapreetam/parikshan/TestDriver$DefaultImpls {
+	public static fun relaunchApp (Lio/github/aryapreetam/parikshan/TestDriver;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun reset (Lio/github/aryapreetam/parikshan/TestDriver;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun resolveArtifactPath (Lio/github/aryapreetam/parikshan/TestDriver;Ljava/lang/String;)Ljava/lang/String;
+	public static fun updateVirtualCursor (Lio/github/aryapreetam/parikshan/TestDriver;DD)V
+}
+
+public abstract interface class io/github/aryapreetam/parikshan/client/VideoRecorder {
+	public abstract fun start (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun stop (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Bounds {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Bounds$Companion;
+	public fun <init> (DDDD)V
+	public final fun component1 ()D
+	public final fun component2 ()D
+	public final fun component3 ()D
+	public final fun component4 ()D
+	public final fun copy (DDDD)Lio/github/aryapreetam/parikshan/protocol/Bounds;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Bounds;DDDDILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Bounds;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBottom ()D
+	public final fun getCenterX ()D
+	public final fun getCenterY ()D
+	public final fun getHeight ()D
+	public final fun getLeft ()D
+	public final fun getRight ()D
+	public final fun getTop ()D
+	public final fun getWidth ()D
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Bounds$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Bounds$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Bounds;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Bounds;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Bounds$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public abstract class io/github/aryapreetam/parikshan/protocol/Command {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$Companion;
+	public synthetic fun <init> (ILkotlinx/serialization/internal/SerializationConstructorMarker;)V
+	public abstract fun getId ()Ljava/lang/String;
+	public abstract fun getToken ()Ljava/lang/String;
+	public abstract fun setToken (Ljava/lang/String;)V
+	public static final synthetic fun write$Self (Lio/github/aryapreetam/parikshan/protocol/Command;Lkotlinx/serialization/encoding/CompositeEncoder;Lkotlinx/serialization/descriptors/SerialDescriptor;)V
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$AssertText : io/github/aryapreetam/parikshan/protocol/Command, io/github/aryapreetam/parikshan/protocol/Command$HasSelector {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$AssertText$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Lio/github/aryapreetam/parikshan/protocol/Selector;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$AssertText;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$AssertText;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$AssertText;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getExpected ()Ljava/lang/String;
+	public fun getId ()Ljava/lang/String;
+	public fun getSelector ()Lio/github/aryapreetam/parikshan/protocol/Selector;
+	public fun getTag ()Ljava/lang/String;
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$AssertText$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$AssertText$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$AssertText;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$AssertText;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$AssertText$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$AssertVisible : io/github/aryapreetam/parikshan/protocol/Command, io/github/aryapreetam/parikshan/protocol/Command$HasSelector {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$AssertVisible$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lio/github/aryapreetam/parikshan/protocol/Selector;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$AssertVisible;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$AssertVisible;Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$AssertVisible;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun getSelector ()Lio/github/aryapreetam/parikshan/protocol/Selector;
+	public fun getTag ()Ljava/lang/String;
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$AssertVisible$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$AssertVisible$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$AssertVisible;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$AssertVisible;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$AssertVisible$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$Click : io/github/aryapreetam/parikshan/protocol/Command, io/github/aryapreetam/parikshan/protocol/Command$HasSelector {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$Click$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lio/github/aryapreetam/parikshan/protocol/Selector;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$Click;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$Click;Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$Click;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun getSelector ()Lio/github/aryapreetam/parikshan/protocol/Selector;
+	public fun getTag ()Ljava/lang/String;
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$Click$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$Click$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$Click;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$Click;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$Click$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$Drag : io/github/aryapreetam/parikshan/protocol/Command {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$Drag$Companion;
+	public fun <init> (Ljava/lang/String;DDDDJLjava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;DDDDJLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()D
+	public final fun component3 ()D
+	public final fun component4 ()D
+	public final fun component5 ()D
+	public final fun component6 ()J
+	public final fun component7 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;DDDDJLjava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$Drag;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$Drag;Ljava/lang/String;DDDDJLjava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$Drag;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDurationMs ()J
+	public final fun getFromX ()D
+	public final fun getFromY ()D
+	public fun getId ()Ljava/lang/String;
+	public final fun getToX ()D
+	public final fun getToY ()D
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$Drag$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$Drag$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$Drag;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$Drag;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$Drag$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$GetTree : io/github/aryapreetam/parikshan/protocol/Command {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$GetTree$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$GetTree;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$GetTree;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$GetTree;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$GetTree$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$GetTree$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$GetTree;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$GetTree;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$GetTree$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public abstract interface class io/github/aryapreetam/parikshan/protocol/Command$HasSelector {
+	public abstract fun getSelector ()Lio/github/aryapreetam/parikshan/protocol/Selector;
+	public abstract fun getTag ()Ljava/lang/String;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$Input : io/github/aryapreetam/parikshan/protocol/Command, io/github/aryapreetam/parikshan/protocol/Command$HasSelector {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$Input$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Lio/github/aryapreetam/parikshan/protocol/Selector;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$Input;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$Input;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$Input;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun getSelector ()Lio/github/aryapreetam/parikshan/protocol/Selector;
+	public fun getTag ()Ljava/lang/String;
+	public final fun getText ()Ljava/lang/String;
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$Input$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$Input$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$Input;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$Input;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$Input$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$Ping : io/github/aryapreetam/parikshan/protocol/Command {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$Ping$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$Ping;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$Ping;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$Ping;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$Ping$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$Ping$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$Ping;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$Ping;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$Ping$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$PressBack : io/github/aryapreetam/parikshan/protocol/Command {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$PressBack$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$PressBack;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$PressBack;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$PressBack;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$PressBack$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$PressBack$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$PressBack;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$PressBack;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$PressBack$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$PressHome : io/github/aryapreetam/parikshan/protocol/Command {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$PressHome$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$PressHome;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$PressHome;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$PressHome;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$PressHome$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$PressHome$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$PressHome;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$PressHome;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$PressHome$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$RelaunchApp : io/github/aryapreetam/parikshan/protocol/Command {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$RelaunchApp$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$RelaunchApp;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$RelaunchApp;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$RelaunchApp;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$RelaunchApp$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$RelaunchApp$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$RelaunchApp;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$RelaunchApp;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$RelaunchApp$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$Reset : io/github/aryapreetam/parikshan/protocol/Command {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$Reset$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$Reset;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$Reset;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$Reset;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$Reset$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$Reset$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$Reset;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$Reset;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$Reset$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$Screenshot : io/github/aryapreetam/parikshan/protocol/Command {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$Screenshot$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$Screenshot;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$Screenshot;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$Screenshot;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDevicePath ()Ljava/lang/String;
+	public final fun getHostPath ()Ljava/lang/String;
+	public fun getId ()Ljava/lang/String;
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$Screenshot$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$Screenshot$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$Screenshot;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$Screenshot;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$Screenshot$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$Scroll : io/github/aryapreetam/parikshan/protocol/Command, io/github/aryapreetam/parikshan/protocol/Command$HasSelector {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$Scroll$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;
+	public final fun component4 ()Lio/github/aryapreetam/parikshan/protocol/Selector;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$Scroll;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$Scroll;Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$Scroll;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDirection ()Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;
+	public fun getId ()Ljava/lang/String;
+	public fun getSelector ()Lio/github/aryapreetam/parikshan/protocol/Selector;
+	public fun getTag ()Ljava/lang/String;
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$Scroll$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$Scroll$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$Scroll;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$Scroll;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$Scroll$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$Shutdown : io/github/aryapreetam/parikshan/protocol/Command {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$Shutdown$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$Shutdown;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$Shutdown;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$Shutdown;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$Shutdown$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$Shutdown$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$Shutdown;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$Shutdown;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$Shutdown$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$StartRecording : io/github/aryapreetam/parikshan/protocol/Command {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$StartRecording$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IZLjava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IZLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()I
+	public final fun component5 ()Z
+	public final fun component6 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IZLjava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$StartRecording;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$StartRecording;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IZLjava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$StartRecording;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFps ()I
+	public fun getId ()Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getSessionName ()Ljava/lang/String;
+	public final fun getShowCursor ()Z
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$StartRecording$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$StartRecording$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$StartRecording;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$StartRecording;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$StartRecording$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$StopRecording : io/github/aryapreetam/parikshan/protocol/Command {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$StopRecording$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$StopRecording;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$StopRecording;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$StopRecording;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public final fun getSessionName ()Ljava/lang/String;
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$StopRecording$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$StopRecording$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$StopRecording;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$StopRecording;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$StopRecording$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$WaitFor : io/github/aryapreetam/parikshan/protocol/Command, io/github/aryapreetam/parikshan/protocol/Command$HasSelector {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$WaitFor$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;JLio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()J
+	public final fun component4 ()Lio/github/aryapreetam/parikshan/protocol/Selector;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;JLio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$WaitFor;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$WaitFor;Ljava/lang/String;Ljava/lang/String;JLio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$WaitFor;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun getSelector ()Lio/github/aryapreetam/parikshan/protocol/Selector;
+	public fun getTag ()Ljava/lang/String;
+	public final fun getTimeoutMs ()J
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$WaitFor$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$WaitFor$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$WaitFor;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$WaitFor;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$WaitFor$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/CommandKt {
+	public static final fun resolvedSelector (Lio/github/aryapreetam/parikshan/protocol/Command;)Lio/github/aryapreetam/parikshan/protocol/Selector;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/NodeSnapshot {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/NodeSnapshot$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ZLio/github/aryapreetam/parikshan/protocol/Bounds;I)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ZLio/github/aryapreetam/parikshan/protocol/Bounds;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Z
+	public final fun component4 ()Lio/github/aryapreetam/parikshan/protocol/Bounds;
+	public final fun component5 ()I
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;ZLio/github/aryapreetam/parikshan/protocol/Bounds;I)Lio/github/aryapreetam/parikshan/protocol/NodeSnapshot;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/NodeSnapshot;Ljava/lang/String;Ljava/lang/String;ZLio/github/aryapreetam/parikshan/protocol/Bounds;IILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/NodeSnapshot;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArea ()D
+	public final fun getBounds ()Lio/github/aryapreetam/parikshan/protocol/Bounds;
+	public final fun getHeight ()D
+	public final fun getTag ()Ljava/lang/String;
+	public final fun getText ()Ljava/lang/String;
+	public final fun getVisible ()Z
+	public final fun getWidth ()D
+	public final fun getZOrder ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/NodeSnapshot$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/NodeSnapshot$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/NodeSnapshot;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/NodeSnapshot;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/NodeSnapshot$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/ProtocolJson {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/ProtocolJson;
+	public final fun decodeCommand (Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command;
+	public final fun decodeResponse (Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Response;
+	public final fun encodeCommand (Lio/github/aryapreetam/parikshan/protocol/Command;)Ljava/lang/String;
+	public final fun encodeResponse (Lio/github/aryapreetam/parikshan/protocol/Response;)Ljava/lang/String;
+	public final fun getInstance ()Lkotlinx/serialization/json/Json;
+}
+
+public abstract interface class io/github/aryapreetam/parikshan/protocol/Response {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Response$Companion;
+	public abstract fun getId ()Ljava/lang/String;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Response$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Response$Error : io/github/aryapreetam/parikshan/protocol/Response {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Response$Error$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Response$Error;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Response$Error;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Response$Error;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public final fun getMessage ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Response$Error$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Response$Error$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Response$Error;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Response$Error;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Response$Error$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Response$NodeInfo : io/github/aryapreetam/parikshan/protocol/Response {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Response$NodeInfo$Companion;
+	public fun <init> (Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Bounds;ZLjava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Bounds;ZLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lio/github/aryapreetam/parikshan/protocol/Bounds;
+	public final fun component3 ()Z
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Bounds;ZLjava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Response$NodeInfo;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Response$NodeInfo;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/Bounds;ZLjava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Response$NodeInfo;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBounds ()Lio/github/aryapreetam/parikshan/protocol/Bounds;
+	public fun getId ()Ljava/lang/String;
+	public final fun getText ()Ljava/lang/String;
+	public final fun getVisible ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Response$NodeInfo$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Response$NodeInfo$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Response$NodeInfo;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Response$NodeInfo;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Response$NodeInfo$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Response$Ok : io/github/aryapreetam/parikshan/protocol/Response {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Response$Ok$Companion;
+	public fun <init> (Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Response$Ok;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Response$Ok;Ljava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Response$Ok;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Response$Ok$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Response$Ok$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Response$Ok;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Response$Ok;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Response$Ok$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Response$Tree : io/github/aryapreetam/parikshan/protocol/Response {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Response$Tree$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/util/List;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/util/List;)Lio/github/aryapreetam/parikshan/protocol/Response$Tree;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Response$Tree;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Response$Tree;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public final fun getNodes ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Response$Tree$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Response$Tree$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Response$Tree;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Response$Tree;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Response$Tree$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/ScrollDirection : java/lang/Enum {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/ScrollDirection$Companion;
+	public static final field Down Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;
+	public static final field Left Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;
+	public static final field Right Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;
+	public static final field Up Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;
+	public static fun values ()[Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/ScrollDirection$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public abstract interface class io/github/aryapreetam/parikshan/protocol/Selector {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Selector$Companion;
+	public abstract fun getIndex ()Ljava/lang/Integer;
+	public abstract fun getRaw ()Ljava/lang/String;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Selector$Auto : io/github/aryapreetam/parikshan/protocol/Selector {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Selector$Auto$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/Integer;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/Integer;
+	public final fun copy (Ljava/lang/String;Ljava/lang/Integer;)Lio/github/aryapreetam/parikshan/protocol/Selector$Auto;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Selector$Auto;Ljava/lang/String;Ljava/lang/Integer;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Selector$Auto;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getIndex ()Ljava/lang/Integer;
+	public fun getRaw ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Selector$Auto$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Selector$Auto$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Selector$Auto;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Selector$Auto;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Selector$Auto$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Selector$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Selector$Tag : io/github/aryapreetam/parikshan/protocol/Selector {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Selector$Tag$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/Integer;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/Integer;
+	public final fun copy (Ljava/lang/String;Ljava/lang/Integer;)Lio/github/aryapreetam/parikshan/protocol/Selector$Tag;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Selector$Tag;Ljava/lang/String;Ljava/lang/Integer;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Selector$Tag;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getIndex ()Ljava/lang/Integer;
+	public fun getRaw ()Ljava/lang/String;
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Selector$Tag$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Selector$Tag$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Selector$Tag;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Selector$Tag;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Selector$Tag$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Selector$Text : io/github/aryapreetam/parikshan/protocol/Selector {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Selector$Text$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/Integer;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/Integer;
+	public final fun copy (Ljava/lang/String;Ljava/lang/Integer;)Lio/github/aryapreetam/parikshan/protocol/Selector$Text;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Selector$Text;Ljava/lang/String;Ljava/lang/Integer;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Selector$Text;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getIndex ()Ljava/lang/Integer;
+	public fun getRaw ()Ljava/lang/String;
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Selector$Text$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Selector$Text$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Selector$Text;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Selector$Text;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Selector$Text$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/SelectorKt {
+	public static final fun atIndex (Lio/github/aryapreetam/parikshan/protocol/Selector;I)Lio/github/aryapreetam/parikshan/protocol/Selector;
+	public static final fun auto (Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Selector$Auto;
+	public static final fun first (Lio/github/aryapreetam/parikshan/protocol/Selector;)Lio/github/aryapreetam/parikshan/protocol/Selector;
+	public static final fun last (Lio/github/aryapreetam/parikshan/protocol/Selector;)Lio/github/aryapreetam/parikshan/protocol/Selector;
+	public static final fun tag (Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Selector$Tag;
+	public static final fun text (Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Selector$Text;
+}
+

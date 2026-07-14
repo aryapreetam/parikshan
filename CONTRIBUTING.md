@@ -1,350 +1,101 @@
-# Contributing to Compose Multiplatform Library Template
+# Contributing to Parikshan
 
-Thank you for your interest in contributing! This document provides guidelines for developers working on this template.
+Thank you for your interest in contributing to Parikshan! This document provides the guidelines and commands you need to build, test, and submit your changes.
 
 ---
 
 ## 🏗️ Project Structure
 
-```
-parikshan/
-├── .github/workflows/      # CI/CD pipelines
-│   ├── ci.yml             # Reusable CI (lint, tests, build)
-│   ├── push-ci.yml        # Runs on every push/PR
-│   └── release.yml        # Runs on version tags (v*)
-├── parikshan/             # The actual library code
-│   ├── src/
-│   │   ├── commonMain/    # Shared Kotlin code
-│   │   └── commonTest/    # Shared tests
-│   └── build.gradle.kts   # Library build config + publishing
-├── sample/                # Sample app demonstrating library usage
-│   ├── composeApp/        # Multiplatform sample app (library module)
-│   ├── androidApp/        # Standard Android executable launcher
-│   └── iosApp/            # iOS wrapper for Compose app
-├── docs/                  # Documentation
-├── readme_images/         # Images used in README
-└── README.MD              # Main documentation (becomes homepage)
-```
+Parikshan is a complex multi-project build. Understanding the boundaries is critical:
+
+- **`:parikshan-core`**: The protocol and selector resolution engine. (Pure Kotlin, no UI dependencies).
+- **`:parikshan-client`**: The developer-facing E2E DSL and platform drivers.
+- **`:parikshan-server`**: The in-app HTTP/WebSocket bridge that reads Compose semantics.
+- **`:gradle-plugins`**: Contains publication scripts and the automation runner plugin (which automates app installation, execution, and video recording).
+- **`:parikshan`**: The aggregator module (empty, used for documentation and publishing).
+- **`:sample`**: A split-sample architecture containing a library (`composeApp`) and an executable (`androidApp`) used to verify the framework.
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-
 - JDK 17 or later
-- Android Studio Ladybug or later (for Android development)
-- Xcode 15+ (for iOS development, macOS only)
-- Node.js (for wasm development)
+- Node.js v20+ (for Wasm testing)
+- macOS with Xcode 15+ (only required if running iOS tests)
 
-### Initial Setup
+### 1. Clone and Build
+```bash
+git clone https://github.com/aryapreetam/parikshan.git
+cd parikshan
+./gradlew assemble
+```
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/aryapreetam/parikshan.git
-   cd parikshan
-   ```
+### 2. Run the Unit Tests (Fast Feedback)
+Before testing E2E behavior, ensure the core logic and test-isolation filters are intact:
+```bash
+# Run all unit tests across JVM, Wasm, iOS, and Android
+./gradlew test
+```
 
-2. **Build the project**
-   ```bash
-   ./gradlew build
-   ```
+### 3. Run the E2E Tests (Integration)
+Parikshan dogfoods itself. To verify that your changes work in a real application environment, run the E2E orchestration tasks against the sample app:
 
-3. **Run tests**
-   ```bash
-   # Run all tests
-   ./gradlew test
-   
-   # Platform-specific tests
-   ./gradlew :parikshan:jvmTest
-   ./gradlew :parikshan:iosSimulatorArm64Test
-   ./gradlew :parikshan:wasmJsBrowserTest
-   ./gradlew :parikshan-client:testAndroid  # Android unit tests
-   ```
+```bash
+# Desktop (JVM)
+./gradlew :samples:multiplatform-showcase:composeApp:e2eDesktopTest
+
+# Web (Wasm) - Requires Playwright
+npx playwright install --with-deps chromium
+./gradlew :samples:multiplatform-showcase:composeApp:e2eWasmTest
+
+# Android (Requires a running Emulator/Device)
+./gradlew :samples:multiplatform-showcase:composeApp:e2eAndroidTest
+
+# iOS (Requires macOS and Simulator)
+./gradlew :samples:multiplatform-showcase:composeApp:e2eIosTest
+```
+*Note: Video recording is disabled by default locally. Add `-Dparikshan.video.enabled=true` to your Gradle command to test the recording pipeline.*
 
 ---
 
 ## 🔧 Development Workflow
 
-### Working on the Library
-
-1. Make changes in `parikshan/src/commonMain/kotlin/`
-2. Write tests in `parikshan/src/commonTest/kotlin/`
-3. Run tests: `./gradlew :parikshan:test`
-4. Check code style: `./gradlew lintRelease`
-
-### Testing Changes in Sample App
-
-1. Make changes in `parikshan/`
-2. The sample app automatically resolves the local library project via dependency injection
-3. Run the sample app on your target platform:
-
-   **Android:**
+1. **Find an Issue**: Check the issue tracker for open bugs or feature requests. If proposing a major architectural change, please open an issue to discuss it first.
+2. **Branch**: Create a feature branch (`git checkout -b fix/your-fix-name`).
+3. **Code & Test**: Write your fix. If you change core behavior, you **must** verify it by running the E2E tests above.
+4. **Format**: Ensure your code meets the styling guidelines:
    ```bash
-   ./gradlew :sample:androidApp:assembleDebug
-   # Or open in Android Studio and run
+   ./gradlew lintRelease
    ```
-
-   **Desktop:**
-   ```bash
-   ./gradlew :sample:composeApp:run
-   ```
-
-   **iOS:**
-   ```bash
-   # Open sample/iosApp/iosApp.xcodeproj in Xcode
-   # Select a simulator and press Run
-   ```
-
-   **Web (wasm):**
-   ```bash
-   ./gradlew :sample:composeApp:wasmJsBrowserDevelopmentRun --continuous
-   # Opens at http://localhost:8080
-   ```
-
-### Publishing to Maven Local (for testing)
-
-Test your library locally before publishing to Maven Central:
-
-```bash
-./gradlew :parikshan:publishToMavenLocal
-```
-
-Then in another project, add:
-```kotlin
-repositories {
-    mavenLocal()
-    mavenCentral()
-}
-
-dependencies {
-    implementation("io.github.aryapreetam:parikshan:0.0.1")
-}
-```
-
----
-
-## 📦 Publishing to Maven Central
-
-### Setup (One-time)
-
-1. **Create Sonatype Account**
-   - Sign up at https://central.sonatype.com/
-   - Create a namespace (e.g., `io.github.yourusername`)
-
-2. **Generate GPG Key**
-   ```bash
-   # Generate key
-   gpg --gen-key
-   
-   # List keys to find key ID
-   gpg --list-secret-keys --keyid-format=long
-   
-   # Export for GitHub secrets (ASCII-armored)
-   gpg --export-secret-keys --armor <KEY_ID> > private-key.asc
-   
-   # Upload public key to keyserver
-   gpg --keyserver keyserver.ubuntu.com --send-keys <KEY_ID>
-   ```
-
-3. **Configure GitHub Secrets**
-
-   Go to: `Settings → Secrets and variables → Actions → New repository secret`
-
-   Add these secrets:
-   - `MAVEN_CENTRAL_USERNAME`: Your Sonatype username
-   - `MAVEN_CENTRAL_PASSWORD`: Your Sonatype password (or token)
-   - `SIGNING_KEY_ID`: Last 8 characters of your GPG key ID
-   - `SIGNING_PASSWORD`: Passphrase for your GPG key
-   - `GPG_KEY_CONTENTS`: Contents of `private-key.asc` (ASCII-armored key)
-
-4. **Configure Local Publishing (optional)**
-
-   Add to `~/.gradle/gradle.properties`:
-   ```properties
-   signing.keyId=<last 8 chars of key ID>
-   signing.password=<your passphrase>
-   signing.secretKeyRingFile=/Users/yourname/.gnupg/secring.gpg
-   
-   mavenCentralUsername=<your username>
-   mavenCentralPassword=<your password>
-   ```
-
-### Release Process
-
-1. **Update version in `gradle.properties`**
-   ```properties
-   libVersion=0.0.1 // Bump this
-   ```
-
-2. **Commit and push**
-   ```bash
-   git add .
-   git commit -m "Release v0.0.1"
-   git push
-   ```
-
-3. **Create and push tag**
-   ```bash
-   git tag v0.0.1
-   git push origin v0.0.1
-   ```
-
-4. **Monitor GitHub Actions**
-   - Go to `Actions` tab
-   - Watch the `Publish Multiplatform Release` workflow
-   - It will:
-     - Run all tests
-     - Build artifacts (APK, DMG, wasm, iOS)
-     - Create GitHub Release
-     - Publish to Maven Central
-     - Deploy docs to GitHub Pages
-
----
-
-## 🧪 Running Tests
-
-### Unit Tests
-
-```bash
-# All platforms
-./gradlew test
-
-# Specific platforms
-./gradlew :parikshan:jvmTest
-./gradlew :parikshan:iosSimulatorArm64Test
-./gradlew :parikshan:wasmJsBrowserTest
-./gradlew :parikshan-client:testAndroid  # Android
-```
-
-### UI Tests
-
-```bash
-# Android (requires emulator)
-./gradlew :sample:androidApp:connectedAndroidTest
-```
-
-### Lint
-
-```bash
-./gradlew lintRelease
-```
-
----
-
-## 🎨 Adding New Targets
-
-### Adding a New Platform (e.g., tvOS)
-
-1. **Add target in `parikshan/build.gradle.kts`**
-   ```kotlin
-   kotlin {
-     // ...existing targets...
-     tvosArm64()
-     tvosSimulatorArm64()
-   }
-   ```
-
-2. **Add target in `sample/composeApp/build.gradle.kts`**
-   ```kotlin
-   kotlin {
-     // ...existing targets...
-     tvosArm64()
-     tvosSimulatorArm64()
-   }
-   ```
-
-3. **Update CI workflows**
-   - Add tvOS testing in `.github/workflows/ci.yml`
-   - Add tvOS artifact build in `.github/workflows/release.yml`
-
-4. **Test locally**
-   ```bash
-   ./gradlew :parikshan:tvosSimulatorArm64Test
-   ```
+5. **Commit**: Write clear, descriptive commit messages outlining *what* changed and *why*.
 
 ---
 
 ## 📚 Documentation
 
-### Updating API Docs
+If your PR introduces a new public API (e.g., a new selector or DSL command), you must include KDoc comments explaining its *intent*.
 
-API documentation is generated automatically via Dokka:
-
+To verify how your documentation will look on the live site:
 ```bash
-# Generate locally
-./gradlew :parikshan:dokkaGeneratePublicationHtmlCustom
+./gradlew :parikshan:dokkaGeneratePublicationHtml
 ```
-
-On release, docs are automatically published to: `https://yourusername.github.io/repo-name/api/`
-
-### Updating Homepage
-
-Edit `README.MD` - it's automatically converted to the homepage via Docsify.
+Open `parikshan/build/dokka/html/index.html` in your browser.
 
 ---
 
-## 🐛 Troubleshooting
+## 🤝 Submitting a Pull Request
 
-### Common Issues
+When you are ready, open a PR against the `main` branch. 
 
-**Issue: "Task :parikshan:signKotlinMultiplatformPublication not found"**
-- Ensure GPG key is properly configured
-- Check `signing.keyId` is set (local) or `signingInMemoryKey` (CI)
+Your PR will automatically trigger the **multiplatform CI pipeline**, which runs:
+1. Lint checks
+2. Parallel Unit Tests
+3. Parallel E2E Tests (Android, iOS, Desktop, Wasm) on headless runners.
 
-**Issue: "iOS simulator tests fail"**
-- Make sure Xcode is installed
-- Run: `xcodebuild -downloadAllPlatforms`
-- Check available simulators: `xcrun simctl list devices`
+**Expectations:**
+- You must fill out the PR Template checklist.
+- If CI fails, it is your responsibility to investigate the logs and push a fix.
+- PRs that introduce "test-only" dependencies into the production server module will be rejected to maintain our Zero-Pollution guarantee.
 
-**Issue: "wasm tests fail with CHROME_BIN not found"**
-- Install Chrome: `brew install --cask google-chrome`
-- Or set: `export CHROME_BIN=/path/to/chrome`
-
-**Issue: "Maven Central publishing fails"**
-- Verify namespace ownership in Sonatype
-- Check all secrets are correctly set in GitHub
-- Ensure version is unique (not already published)
-
----
-
-## 📝 Code Style
-
-- Follow [Kotlin Coding Conventions](https://kotlinlang.org/docs/coding-conventions.html)
-- Use meaningful variable and function names
-- Add KDoc comments for public APIs
-- Keep functions small and focused
-- Write tests for all public APIs
-
----
-
-## 🤝 Pull Request Guidelines
-
-1. **Fork the repository** and create a branch from `main`
-2. **Make your changes** with clear commits
-3. **Add tests** for new functionality
-4. **Update documentation** if needed
-5. **Run all tests** locally before submitting
-6. **Submit PR** with clear description
-
-### PR Checklist
-
-- [ ] Tests pass locally (`./gradlew test`)
-- [ ] Code style checks pass (`./gradlew lintRelease`)
-- [ ] Documentation updated (if applicable)
-- [ ] Commit messages are clear
-- [ ] No merge conflicts with `main`
-
----
-
-## 📞 Getting Help
-
-- Open an issue for bugs or questions
-- Check existing issues before creating new ones
-- Provide minimal reproduction steps for bugs
-
----
-
-## 📄 License
-
-By contributing, you agree that your contributions will be licensed under the MIT License.
+Thank you for helping make Compose Multiplatform testing better!

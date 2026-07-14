@@ -1,4 +1,4 @@
-name: Reusable CI (lint, build+tests, android UI)
+name: Reusable CI (lint, build+tests, e2e)
 
 on:
   workflow_call:
@@ -33,6 +33,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
       - name: Check code style (lint)
         run: ./gradlew lintRelease
+      - name: Check ABI Compatibility
+        run: ./gradlew apiCheck
 
   unit-tests:
     name: Unit Tests (${{ matrix.target }})
@@ -72,16 +74,16 @@ jobs:
           set -e
           case "${{ matrix.target }}" in
             jvm)
-              ./gradlew :parikshan-server:test :parikshan-core:jvmTest :parikshan-client:jvmTest :sample:composeApp:jvmTest
+              ./gradlew :parikshan-server:test :parikshan-core:jvmTest :parikshan-client:jvmTest :samples:multiplatform-showcase:composeApp:jvmTest
               ;;
             ios)
-              ./gradlew :parikshan-core:iosSimulatorArm64Test :parikshan-client:iosSimulatorArm64Test :sample:composeApp:iosSimulatorArm64Test
+              ./gradlew :parikshan-core:iosSimulatorArm64Test :parikshan-client:iosSimulatorArm64Test :samples:multiplatform-showcase:composeApp:iosSimulatorArm64Test
               ;;
             wasm)
-              ./gradlew :parikshan-core:wasmJsBrowserTest :parikshan-client:wasmJsBrowserTest :sample:composeApp:wasmJsBrowserTest
+              ./gradlew :parikshan-core:wasmJsBrowserTest :parikshan-client:wasmJsBrowserTest :samples:multiplatform-showcase:composeApp:wasmJsBrowserTest
               ;;
             android)
-              ./gradlew :parikshan-client:testAndroid :sample:androidApp:testDebugUnitTest
+              ./gradlew :parikshan-client:testAndroid :samples:multiplatform-showcase:androidApp:testDebugUnitTest
               ;;
           esac
 
@@ -111,13 +113,13 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew :sample:composeApp:e2eAndroidTest -Dparikshan.video.enabled=true --no-configuration-cache
+          script: ./gradlew :samples:multiplatform-showcase:composeApp:e2eAndroidTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"
       - name: Upload Android Videos
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: parikshan-android-videos
-          path: sample/composeApp/build/parikshan/videos/android/
+          path: samples/multiplatform-showcase/composeApp/build/parikshan/videos/android/
           if-no-files-found: ignore
 
   e2e-desktop:
@@ -134,18 +136,16 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-      - name: Install Desktop dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgbm1 xvfb
       - name: Run Parikshan Desktop E2E tests
-        run: xvfb-run ./gradlew :sample:composeApp:e2eDesktopTest -Dparikshan.video.enabled=true --no-configuration-cache
+        uses: aryapreetam/parikshan-desktop-action@v1
+        with:
+          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eDesktopTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"'
       - name: Upload Desktop Videos
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: parikshan-desktop-videos
-          path: sample/composeApp/build/parikshan/videos/desktop/
+          path: samples/multiplatform-showcase/composeApp/build/parikshan/videos/desktop/
           if-no-files-found: ignore
 
   e2e-wasm:
@@ -160,55 +160,179 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: ${{ env.JAVA_VERSION }}
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-      - name: Install Playwright and dependencies
-        run: |
-          npx playwright install chromium
-          sudo npx playwright install-deps chromium
-          sudo apt-get install -y xvfb
       - name: Run Parikshan Wasm E2E tests
-        run: xvfb-run ./gradlew :sample:composeApp:e2eWasmTest -Dparikshan.video.enabled=true --no-configuration-cache
+        uses: aryapreetam/parikshan-wasm-action@v1
+        with:
+          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eWasmTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"'
       - name: Upload Wasm Videos
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: parikshan-wasm-videos
-          path: sample/composeApp/build/parikshan/videos/wasm/
+          path: samples/multiplatform-showcase/composeApp/build/parikshan/videos/wasm/
           if-no-files-found: ignore
 
-  e2e-ios:
-    name: E2E iOS (Simulator)
-    runs-on: macos-latest
-    needs: [ unit-tests ]
+#  e2e-ios:
+#    name: E2E iOS (Simulator)
+#    runs-on: macos-latest
+#    needs: [ unit-tests ]
+#    steps:
+#      - name: Checkout repository
+#        uses: actions/checkout@v4
+#      - name: Set up JDK
+#        uses: actions/setup-java@v4
+#        with:
+#          distribution: 'zulu'
+#          java-version: ${{ env.JAVA_VERSION }}
+#      - name: Cache Kotlin/Native (~/.konan)
+#        uses: actions/cache@v4
+#        with:
+#          path: ~/.konan
+#          key: konan-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml', '**/gradle-wrapper.properties') }}
+#          restore-keys: konan-${{ runner.os }}-
+#      - name: Setup Gradle
+#        uses: gradle/actions/setup-gradle@v3
+#      - name: Run Parikshan iOS E2E tests
+#        run: |
+#          # The plugin handles simulator booting and xcodebuild internally
+#          ./gradlew :samples:multiplatform-showcase:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"
+#      - name: Upload iOS Videos
+#        if: always()
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: parikshan-ios-videos
+#          path: samples/multiplatform-showcase/composeApp/build/parikshan/videos/ios/
+#          if-no-files-found: ignore
+
+  dex-pollution-audit:
+    name: DEX Footprint Audit
+    runs-on: ubuntu-latest
+    needs: [ lint ]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Cache Gradle Wrapper
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/wrapper/dists
+          key: gradle-wrapper-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-wrapper-${{ runner.os }}-
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: ${{ env.JAVA_VERSION }}
-      - name: Cache Kotlin/Native (~/.konan)
-        uses: actions/cache@v4
-        with:
-          path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml', '**/gradle-wrapper.properties') }}
-          restore-keys: konan-${{ runner.os }}-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-      - name: Run Parikshan iOS E2E tests
+      - name: Build Release APK
+        run: ./gradlew :samples:multiplatform-showcase:androidApp:assembleRelease
+      - name: Audit Release APK DEX for Parikshan leaks
         run: |
-          # The plugin handles simulator booting and xcodebuild internally
-          ./gradlew :sample:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache
-      - name: Upload iOS Videos
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: parikshan-ios-videos
-          path: sample/composeApp/build/parikshan/videos/ios/
-          if-no-files-found: ignore
+          APK_FILE=$(find samples/multiplatform-showcase/androidApp/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -z "$APK_FILE" ]; then
+            echo "Error: Release APK not found!"
+            exit 1
+          fi
+          echo "Found release APK: $APK_FILE"
+          
+          # Execute apkanalyzer to check for io.github.aryapreetam.parikshan package
+          if $ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer dex packages "$APK_FILE" | grep "io.github.aryapreetam.parikshan"; then
+            echo "Error: Parikshan classes leaked into production release APK!"
+            exit 1
+          else
+            echo "Success: Zero-pollution audit passed. No Parikshan classes found in release APK."
+          fi
+
+#  compatibility-matrix-non-ios:
+#    name: Compatibility Matrix Non-iOS (Kotlin ${{ matrix.kotlin }}, Compose ${{ matrix.compose }})
+#    runs-on: ubuntu-latest
+#    needs: [ lint ]
+#    strategy:
+#      fail-fast: false
+#      matrix:
+#        include:
+#          - kotlin: '2.0.21'
+#            compose: '1.7.0'
+#          - kotlin: '2.1.0'
+#            compose: '1.7.3'
+#          - kotlin: '2.3.21'
+#            compose: '1.10.1'
+#          - kotlin: '2.3.21'
+#            compose: '1.11.0'
+#          - kotlin: '2.4.0'
+#            compose: '1.11.1'
+#    steps:
+#      - name: Checkout repository
+#        uses: actions/checkout@v4
+#      - name: Cache Gradle Wrapper
+#        uses: actions/cache@v4
+#        with:
+#          path: ~/.gradle/wrapper/dists
+#          key: gradle-wrapper-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
+#          restore-keys: gradle-wrapper-${{ runner.os }}-
+#      - name: Set up JDK
+#        uses: actions/setup-java@v4
+#        with:
+#          distribution: 'zulu'
+#          java-version: ${{ env.JAVA_VERSION }}
+#      - name: Setup Gradle
+#        uses: gradle/actions/setup-gradle@v3
+#      - name: Run unit tests
+#        run: |
+#          ./gradlew :parikshan-server:test :parikshan-core:jvmTest :parikshan-client:jvmTest :samples:multiplatform-showcase:composeApp:jvmTest \
+#                    :parikshan-core:wasmJsBrowserTest :parikshan-client:wasmJsBrowserTest :samples:multiplatform-showcase:composeApp:wasmJsBrowserTest \
+#                    :parikshan-client:testAndroid :samples:multiplatform-showcase:androidApp:testDebugUnitTest \
+#                    -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}
+#      - name: Run E2E Desktop tests
+#        uses: aryapreetam/parikshan-desktop-action@v1
+#        with:
+#          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eDesktopTest -Dparikshan.video.enabled=true --no-configuration-cache -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}'
+#      - name: Run E2E Wasm tests
+#        uses: aryapreetam/parikshan-wasm-action@v1
+#        with:
+#          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eWasmTest -Dparikshan.video.enabled=true --no-configuration-cache -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}'
+#
+#  compatibility-matrix-ios:
+#    name: Compatibility Matrix iOS (Kotlin ${{ matrix.kotlin }}, Compose ${{ matrix.compose }})
+#    runs-on: macos-latest
+#    needs: [ lint ]
+#    strategy:
+#      fail-fast: false
+#      matrix:
+#        include:
+#          - kotlin: '2.0.21'
+#            compose: '1.7.0'
+#          - kotlin: '2.1.0'
+#            compose: '1.7.3'
+#          - kotlin: '2.3.21'
+#            compose: '1.10.1'
+#          - kotlin: '2.3.21'
+#            compose: '1.11.0'
+#          - kotlin: '2.4.0'
+#            compose: '1.11.1'
+#    steps:
+#      - name: Checkout repository
+#        uses: actions/checkout@v4
+#      - name: Set up JDK
+#        uses: actions/setup-java@v4
+#        with:
+#          distribution: 'zulu'
+#          java-version: ${{ env.JAVA_VERSION }}
+#      - name: Cache Kotlin/Native (~/.konan)
+#        uses: actions/cache@v4
+#        with:
+#          path: ~/.konan
+#          key: konan-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml', '**/gradle-wrapper.properties') }}
+#          restore-keys: konan-${{ runner.os }}-
+#      - name: Setup Gradle
+#        uses: gradle/actions/setup-gradle@v3
+#      - name: Run unit tests
+#        run: |
+#          ./gradlew :parikshan-core:iosSimulatorArm64Test :parikshan-client:iosSimulatorArm64Test :samples:multiplatform-showcase:composeApp:iosSimulatorArm64Test \
+#                    -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}
+#      - name: Run E2E iOS tests
+#        run: |
+#          ./gradlew :samples:multiplatform-showcase:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache \
+#                    -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}

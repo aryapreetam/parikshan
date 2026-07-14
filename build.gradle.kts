@@ -8,6 +8,7 @@ plugins {
   alias(libs.plugins.compose.compiler).apply(false)
   alias(libs.plugins.serialization).apply(false)
   alias(libs.plugins.android.application).apply(false)
+  alias(libs.plugins.binary.compatibility.validator).apply(false)
 }
 
 // Apply template setup check
@@ -19,7 +20,7 @@ allprojects {
 
   plugins.withId("maven-publish") {
     tasks.named("publishToMavenLocal") {
-      dependsOn(gradle.includedBuild("parikshan-gradle-plugin").task(":publishToMavenLocal"))
+      dependsOn(gradle.includedBuild("gradle-plugins").task(":publishToMavenLocal"))
     }
   }
 }

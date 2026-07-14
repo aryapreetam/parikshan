@@ -24,6 +24,35 @@ abstract class E2ETestTask : DefaultTask() {
   var keepAlive: Boolean = false
 
   @get:Input
+  @set:Option(option = "layout", description = "Specifies the layout mode: default or side-by-side")
+  var layout: String = "default"
+
+  @get:Input
+  @set:Option(option = "window-size", description = "Global window width and height override (format: <width>x<height>, e.g. 360x800)")
+  var windowSize: String = ""
+
+  @get:Input
+  @set:Option(option = "desktop-window-size", description = "Desktop-specific size override (format: <width>x<height>)")
+  var desktopWindowSize: String = ""
+
+  @get:Input
+  @set:Option(option = "desktop-window-position", description = "Desktop-specific screen coordinates (format: <x>,<y>)")
+  var desktopWindowPosition: String = ""
+
+  @get:Input
+  @set:Option(option = "wasm-window-size", description = "Wasm-specific size override (format: <width>x<height>)")
+  var wasmWindowSize: String = ""
+
+  @get:Input
+  @set:Option(option = "wasm-window-position", description = "Wasm-specific screen coordinates (format: <x>,<y>)")
+  var wasmWindowPosition: String = ""
+
+  @get:Input
+  @set:Option(option = "app-mode", description = "Launches target client in standalone app mode (hiding browser chrome/toolbars for Wasm).")
+  var appMode: Boolean = false
+
+
+  @get:Input
   @set:Option(option = "reclaim-ports", description = "Force terminate conflicting active sessions of other applications on default ports.")
   var reclaimPorts: Boolean = false
 
@@ -332,6 +361,23 @@ abstract class E2ETestTask : DefaultTask() {
             host = host.get(),
             logger = logger
           )
+          val optDesktopSize = desktopWindowSize.takeIf { it.isNotBlank() } ?: windowSize
+          val size = parseSize(optDesktopSize)
+          val pos = parsePosition(desktopWindowPosition) ?: if (layout == "side-by-side") Pair(10, 50) else null
+          if (size != null) {
+            System.setProperty("parikshan.desktop.windowWidth", size.first.toString())
+            System.setProperty("parikshan.desktop.windowHeight", size.second.toString())
+          } else {
+            System.clearProperty("parikshan.desktop.windowWidth")
+            System.clearProperty("parikshan.desktop.windowHeight")
+          }
+          if (pos != null) {
+            System.setProperty("parikshan.desktop.windowX", pos.first.toString())
+            System.setProperty("parikshan.desktop.windowY", pos.second.toString())
+          } else {
+            System.clearProperty("parikshan.desktop.windowX")
+            System.clearProperty("parikshan.desktop.windowY")
+          }
           DesktopProcess.start(
             jar = appJarFile.get().asFile,
             token = token.get(),
@@ -347,22 +393,32 @@ abstract class E2ETestTask : DefaultTask() {
           )
           writeSession("desktop", TargetSession(token.get(), port, System.currentTimeMillis()))
           port
+
         }
 
         val activeToken = if (canReuse && session != null) session.token else token.get()
 
         classes.forEach { testClass ->
           logger.lifecycle("Parikshan [desktop]: Running $testClass...")
+          val systemProps = mutableMapOf(
+            "parikshan.target" to "desktop",
+            "parikshan.host" to host.get(),
+            "parikshan.port" to resolvedPort.toString(),
+            "parikshan.token" to activeToken,
+            "parikshan.desktop.launchManifest" to desktopLaunchManifestFile.get().asFile.absolutePath
+          )
+          System.getProperty("parikshan.desktop.windowX")?.let { systemProps["parikshan.desktop.windowX"] = it }
+          System.getProperty("parikshan.desktop.windowY")?.let { systemProps["parikshan.desktop.windowY"] = it }
+          System.getProperty("parikshan.desktop.windowWidth")?.let { systemProps["parikshan.desktop.windowWidth"] = it }
+          System.getProperty("parikshan.desktop.windowHeight")?.let { systemProps["parikshan.desktop.windowHeight"] = it }
+          if (System.getProperty("parikshan.background") == "true") {
+            systemProps["parikshan.background"] = "true"
+          }
+
           val exitCode = spawnTestJvm(
             target = "desktop",
             testClass = testClass,
-            systemProperties = mapOf(
-              "parikshan.target" to "desktop",
-              "parikshan.host" to host.get(),
-              "parikshan.port" to resolvedPort.toString(),
-              "parikshan.token" to activeToken,
-              "parikshan.desktop.launchManifest" to desktopLaunchManifestFile.get().asFile.absolutePath
-            ),
+            systemProperties = systemProps,
             activeProcesses = activeProcesses
           )
           if (exitCode != 0) {
@@ -435,16 +491,37 @@ abstract class E2ETestTask : DefaultTask() {
 
         classes.forEach { testClass ->
           logger.lifecycle("Parikshan [wasm]: Running $testClass...")
+          val systemProps = mutableMapOf(
+            "parikshan.target" to "wasm",
+            "parikshan.token" to activeToken,
+            "parikshan.wasm.url" to "http://127.0.0.1:$resolvedPort"
+          )
+          val isAppModeActive = appMode || (layout == "side-by-side")
+          systemProps["parikshan.wasm.appMode"] = isAppModeActive.toString()
+
+          val resolvedWasmSize = parseSize(wasmWindowSize.takeIf { it.isNotBlank() } ?: windowSize) ?: Pair(1280, 600)
+          systemProps["parikshan.wasm.viewportWidth"] = resolvedWasmSize.first.toString()
+          systemProps["parikshan.wasm.viewportHeight"] = resolvedWasmSize.second.toString()
+
+          val resolvedWasmPos = if (layout == "side-by-side") {
+            val resolvedDesktopSize = parseSize(desktopWindowSize.takeIf { it.isNotBlank() } ?: windowSize) ?: Pair(800, 600)
+            val resolvedDesktopPos = parsePosition(desktopWindowPosition) ?: Pair(10, 50)
+            Pair(resolvedDesktopPos.first + resolvedDesktopSize.first, resolvedDesktopPos.second)
+          } else {
+            parsePosition(wasmWindowPosition)
+          }
+          if (resolvedWasmPos != null) {
+            systemProps["parikshan.wasm.windowX"] = resolvedWasmPos.first.toString()
+            systemProps["parikshan.wasm.windowY"] = resolvedWasmPos.second.toString()
+          }
+
           val exitCode = spawnTestJvm(
             target = "wasm",
             testClass = testClass,
-            systemProperties = mapOf(
-              "parikshan.target" to "wasm",
-              "parikshan.token" to activeToken,
-              "parikshan.wasm.url" to "http://127.0.0.1:$resolvedPort"
-            ),
+            systemProperties = systemProps,
             activeProcesses = activeProcesses
           )
+
           if (exitCode != 0) {
             printTestFailures("wasm", testClass)
             WasmServer.stop()
@@ -960,7 +1037,10 @@ abstract class E2ETestTask : DefaultTask() {
       "parikshan.wasm.headless",
       "parikshan.wasm.viewportWidth",
       "parikshan.wasm.viewportHeight",
-      "parikshan.wasm.bridgeReadyTimeoutMs"
+      "parikshan.wasm.bridgeReadyTimeoutMs",
+      "parikshan.wasm.windowX",
+      "parikshan.wasm.windowY",
+      "parikshan.wasm.appMode"
     )
     propsToForward.forEach { prop ->
       val v = System.getProperty(prop) ?: project.findProperty(prop)?.toString()

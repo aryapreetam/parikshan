@@ -36,6 +36,14 @@ internal object DesktopTargetConfigurer {
     val appJarFileProvider = project.tasks.named<org.gradle.jvm.tasks.Jar>(appJarTaskNameVal)
       .flatMap { it.archiveFile }
 
+    val optWindowSize = project.providers.gradleProperty("parikshan.windowSize")
+      .orElse(project.providers.systemProperty("parikshan.windowSize"))
+    val optDesktopSize = project.providers.gradleProperty("parikshan.desktop.windowSize")
+      .orElse(project.providers.systemProperty("parikshan.desktop.windowSize"))
+      .orElse(optWindowSize)
+    val optDesktopPos = project.providers.gradleProperty("parikshan.desktop.windowPosition")
+      .orElse(project.providers.systemProperty("parikshan.desktop.windowPosition"))
+
     val startDesktopTask = project.tasks.register("startParikshanDesktopApp") {
       group = "verification"
       inputs.file(appJarFileProvider)
@@ -47,6 +55,20 @@ internal object DesktopTargetConfigurer {
           host = hostVal,
           logger = logger
         )
+        val sizeStr = optDesktopSize.orNull
+        val posStr = optDesktopPos.orNull
+
+        val size = parseSize(sizeStr)
+        val pos = parsePosition(posStr)
+        if (size != null) {
+          System.setProperty("parikshan.desktop.windowWidth", size.first.toString())
+          System.setProperty("parikshan.desktop.windowHeight", size.second.toString())
+        }
+        if (pos != null) {
+          System.setProperty("parikshan.desktop.windowX", pos.first.toString())
+          System.setProperty("parikshan.desktop.windowY", pos.second.toString())
+        }
+
         DesktopProcess.start(
           jar = jar,
           token = tokenVal,
@@ -89,7 +111,7 @@ internal object DesktopTargetConfigurer {
         hostTestClasspath = hostTestTask.get().classpath,
         e2eTestClasses = e2eTestClasses,
         target = "Desktop",
-        logger = project.logger
+        logger = logger
       )
       systemProperty("parikshan.host", hostVal)
       doFirst {
@@ -102,6 +124,20 @@ internal object DesktopTargetConfigurer {
           portVal.toString()
         }
         systemProperty("parikshan.port", port)
+
+        val sizeStr = optDesktopSize.orNull
+        val posStr = optDesktopPos.orNull
+
+        val size = parseSize(sizeStr)
+        val pos = parsePosition(posStr)
+        if (size != null) {
+          systemProperty("parikshan.desktop.windowWidth", size.first.toString())
+          systemProperty("parikshan.desktop.windowHeight", size.second.toString())
+        }
+        if (pos != null) {
+          systemProperty("parikshan.desktop.windowX", pos.first.toString())
+          systemProperty("parikshan.desktop.windowY", pos.second.toString())
+        }
       }
       systemProperty("parikshan.target", "desktop")
       systemProperty("parikshan.token", tokenVal)
@@ -146,6 +182,14 @@ internal object DesktopProcess {
       if (background) {
         add("-Dparikshan.background=true")
       }
+      val wX = System.getProperty("parikshan.desktop.windowX")
+      val wY = System.getProperty("parikshan.desktop.windowY")
+      val wW = System.getProperty("parikshan.desktop.windowWidth")
+      val wH = System.getProperty("parikshan.desktop.windowHeight")
+      if (!wX.isNullOrEmpty()) add("-Dparikshan.desktop.windowX=$wX")
+      if (!wY.isNullOrEmpty()) add("-Dparikshan.desktop.windowY=$wY")
+      if (!wW.isNullOrEmpty()) add("-Dparikshan.desktop.windowWidth=$wW")
+      if (!wH.isNullOrEmpty()) add("-Dparikshan.desktop.windowHeight=$wH")
       title?.let { add("-Dparikshan.desktop.windowTitle=$it") }
       add("-cp")
       add(jar.absolutePath)
@@ -195,7 +239,6 @@ internal object DesktopProcess {
       conn.outputStream.use { it.write(json.toByteArray()) }
       conn.responseCode
     }
-    Thread.sleep(3000)
     process?.let { active ->
       if (active.isAlive) {
         active.destroy()

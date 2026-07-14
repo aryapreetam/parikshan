@@ -51,6 +51,16 @@ internal object WasmTargetConfigurer {
       }
     }
 
+    val optWindowSize = project.providers.gradleProperty("parikshan.windowSize")
+      .orElse(project.providers.systemProperty("parikshan.windowSize"))
+    val optWasmSize = project.providers.gradleProperty("parikshan.wasm.windowSize")
+      .orElse(project.providers.systemProperty("parikshan.wasm.windowSize"))
+      .orElse(optWindowSize)
+    val optWasmPos = project.providers.gradleProperty("parikshan.wasm.windowPosition")
+      .orElse(project.providers.systemProperty("parikshan.wasm.windowPosition"))
+    val optAppMode = project.providers.gradleProperty("parikshan.appMode")
+      .orElse(project.providers.systemProperty("parikshan.appMode"))
+
     project.registerE2eTestWithReport("e2eWasmTest", "Wasm") {
       group = "verification"
       dependsOn(installPlaywrightTask, startWasmTask)
@@ -60,7 +70,7 @@ internal object WasmTargetConfigurer {
         hostTestClasspath = hostTestTask.get().classpath,
         e2eTestClasses = e2eTestClasses,
         target = "Wasm",
-        logger = project.logger
+        logger = logger
       )
       systemProperty("parikshan.target", "wasm")
       systemProperty("parikshan.token", tokenVal)
@@ -68,6 +78,23 @@ internal object WasmTargetConfigurer {
         val portFile = wasmPortFileVal
         val port = if (portFile.exists()) portFile.readText().trim() else wasmServerPortVal.toString()
         systemProperty("parikshan.wasm.url", "http://127.0.0.1:$port")
+
+        val sizeStr = optWasmSize.orNull
+        val posStr = optWasmPos.orNull
+
+        val size = parseSize(sizeStr)
+        val pos = parsePosition(posStr)
+        val appModeVal = optAppMode.orNull?.toBoolean() ?: false
+        systemProperty("parikshan.wasm.appMode", appModeVal.toString())
+
+        if (size != null) {
+          systemProperty("parikshan.wasm.viewportWidth", size.first.toString())
+          systemProperty("parikshan.wasm.viewportHeight", size.second.toString())
+        }
+        if (pos != null) {
+          systemProperty("parikshan.wasm.windowX", pos.first.toString())
+          systemProperty("parikshan.wasm.windowY", pos.second.toString())
+        }
       }
       if (isBackgroundRequested) {
         systemProperty("parikshan.wasm.headless", "true")

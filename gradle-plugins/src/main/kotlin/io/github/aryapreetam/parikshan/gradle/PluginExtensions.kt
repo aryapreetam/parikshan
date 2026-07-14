@@ -572,3 +572,22 @@ internal fun Project.resolveProductionSources(): List<File> {
   return dirs.filter { it.exists() }.distinct()
 }
 
+internal fun parseSize(input: String?): Pair<Int, Int>? {
+  if (input.isNullOrBlank()) return null
+  val regex = Regex("^(\\d+)x(\\d+)$")
+  val match = regex.matchEntire(input.trim()) ?: return null
+  val width = match.groupValues[1].toIntOrNull() ?: return null
+  val height = match.groupValues[2].toIntOrNull() ?: return null
+  return Pair(width, height)
+}
+
+internal fun parsePosition(input: String?): Pair<Int, Int>? {
+  if (input.isNullOrBlank()) return null
+  val regex = Regex("^(-?\\d+),(-?\\d+)$")
+  val match = regex.matchEntire(input.trim()) ?: return null
+  val x = match.groupValues[1].toIntOrNull() ?: return null
+  val y = match.groupValues[2].toIntOrNull() ?: return null
+  return Pair(x, y)
+}
+
+

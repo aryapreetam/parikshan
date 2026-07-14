@@ -419,37 +419,107 @@ class E2ETestScope internal constructor(
     )
   }
 
+  /**
+   * Resolves and returns a [NodeSnapshot] for the element matching the provided [selector].
+   *
+   * This retrieves a point-in-time snapshot of the node's properties (such as bounds, tag, text, and visibility).
+   *
+   * @param selector the query matching the target element.
+   * @param requireVisible if true, the resolution will only succeed if the matching node is currently visible.
+   * @return the resolved [NodeSnapshot].
+   * @throws IllegalArgumentException if the selector cannot be resolved to a unique node.
+   */
   suspend fun resolveNode(
     selector: Selector,
     requireVisible: Boolean = true
   ): NodeSnapshot =
     resolveSelectorOrThrow(selector = selector, requireVisible = requireVisible).node
 
+  /**
+   * Resolves and returns a [NodeSnapshot] for the element matching the provided [selector] string.
+   *
+   * This is a convenience shortcut for [resolveNode] using [String.asAutoSelector].
+   *
+   * @param selector the query matching the target element.
+   * @param requireVisible if true, the resolution will only succeed if the matching node is currently visible.
+   * @return the resolved [NodeSnapshot].
+   */
   suspend fun resolveNode(
     selector: String,
     requireVisible: Boolean = true
   ): NodeSnapshot = resolveNode(selector = selector.asAutoSelector(), requireVisible = requireVisible)
 
+  /**
+   * Resolves and returns a visible [NodeSnapshot] matching the provided [selector] string.
+   *
+   * This is a convenience shortcut for [resolveNode] with `requireVisible = true`.
+   *
+   * @param selector the query matching the target element.
+   * @return the resolved visible [NodeSnapshot].
+   */
   suspend fun resolveVisibleNode(selector: String): NodeSnapshot =
     resolveNode(selector = selector, requireVisible = true)
 
+  /**
+   * Resolves and returns a visible [NodeSnapshot] matching the provided [selector].
+   *
+   * This is a convenience shortcut for [resolveNode] with `requireVisible = true`.
+   *
+   * @param selector the query matching the target element.
+   * @return the resolved visible [NodeSnapshot].
+   */
   suspend fun resolveVisibleNode(selector: Selector): NodeSnapshot =
     resolveNode(selector = selector, requireVisible = true)
 
+  /**
+   * Checks whether a visible node matching the provided [selector] string exists in the current UI tree.
+   *
+   * Unlike [resolveNode], this method does not throw an exception if the node is missing or invisible,
+   * making it safe for conditional branching in tests.
+   *
+   * @param selector the query matching the target element.
+   * @return true if a visible node matches the selector, false otherwise.
+   */
   suspend fun hasVisibleNode(selector: String): Boolean =
     hasVisibleNode(selector = selector.asAutoSelector())
 
+  /**
+   * Checks whether a visible node matching the provided [selector] exists in the current UI tree.
+   *
+   * Unlike [resolveNode], this method does not throw an exception if the node is missing or invisible,
+   * making it safe for conditional branching in tests.
+   *
+   * @param selector the query matching the target element.
+   * @return true if a visible node matches the selector, false otherwise.
+   */
   suspend fun hasVisibleNode(selector: Selector): Boolean =
     runCatching {
       resolveVisibleNode(selector)
     }.isSuccess
 
+  /**
+   * Fetches the entire current UI hierarchy as a list of [NodeSnapshot]s.
+   *
+   * Calling this method forces the test runner to synchronize and wait for outstanding UI operations to settle.
+   *
+   * @return a list representing all nodes currently present in the Compose Multiplatform semantic tree.
+   */
   suspend fun getTree(): List<NodeSnapshot> {
     val nodes = fetchTree()
     settleAfterCommand()
     return nodes
   }
 
+  /**
+   * Captures a screenshot of the current application screen and saves it to the specified [path].
+   *
+   * Depending on the target platform:
+   * - On Desktop/JVM: Captures the active window frame bounds.
+   * - On Web/WasmJs: Playwright captures the viewport canvas.
+   * - On Android/iOS: Triggers a device screenshot via ADB or Simctl.
+   *
+   * @param path the target file path where the screenshot PNG will be stored.
+   */
   suspend fun screenshot(path: String) {
     expectOk(
       action = "screenshot($path)",
@@ -465,13 +535,32 @@ class E2ETestScope internal constructor(
     settleAfterCommand()
   }
 
+  /**
+   * Captures a screenshot of the current application screen and saves it to the specified [hostPath].
+   *
+   * This is a semantic alias for [screenshot].
+   *
+   * @param hostPath the target file path on the host machine.
+   */
   suspend fun takeScreenshot(hostPath: String) {
     screenshot(hostPath)
   }
 
+  /**
+   * Resolves a relative path to an absolute path inside the project's build and report output directory.
+   *
+   * @param relativePath the path relative to the test runner's artifact output base.
+   * @return the resolved absolute path string.
+   */
   fun artifactPath(relativePath: String): String =
     driver.resolveArtifactPath(relativePath)
 
+  /**
+   * Helper that resolves a logical name into a standard screenshot file path inside the build directory.
+   *
+   * @param name the logical name of the screenshot (e.g. "login-success").
+   * @return the resolved absolute file path for the screenshot.
+   */
   fun screenshotPath(name: String): String =
     artifactPath("screenshots/${name.trim().ifEmpty { "unnamed" }}.png")
 

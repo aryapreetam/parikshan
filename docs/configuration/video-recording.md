@@ -37,6 +37,27 @@ Use the following system properties to configure video capture:
 
 ---
 
+## 🛠️ Troubleshooting & Requirements
+
+### Desktop
+* **Requirements**: JVM runtime requires OS screen recording permissions (especially on macOS under "Security & Privacy -> Screen Recording").
+* **Focus Stealing**: If the desktop application window steals keyboard focus during tests, disable focus requesting by passing `-Dparikshan.desktop.focus=false`.
+
+### Web (WasmJs)
+* **Requirements**: Playwright browser binaries must be installed (normally handled automatically by the Gradle plugin).
+* **Format**: Videos are recorded as `.webm` files.
+
+### Android
+* **Requirements**: The Android SDK and `adb` must be available in your system path.
+* **Device Targeting**: If multiple emulators/devices are active, specify the target serial with `-Dparikshan.android.serial="<serial>"`.
+* **Duration Limit**: Android's `screenrecord` CLI utility has a maximum duration limit of 180 seconds.
+
+### iOS
+* **Requirements**: macOS host with Xcode Command Line Tools.
+* **Stream Optimization**: Installing `ffmpeg` (`brew install ffmpeg`) on the host machine allows automatic stream processing to `faststart` MP4 format on test completion.
+
+---
+
 ## Example Usage
 
 Run Desktop E2E tests with video recording enabled:

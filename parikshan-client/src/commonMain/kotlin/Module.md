@@ -1,9 +1,8 @@
 # Module parikshan-client
 
-The client module is the primary entry point for developers. It provides the end-to-end (E2E) testing DSL and the platform-specific drivers that execute the tests.
+The client module contains the host-side platform-specific drivers and test runner orchestration logic that executes the E2E tests.
 
 ## Key Components
 
-- **E2E DSL**: A Kotlin DSL (e.g., `click()`, `input()`, `assertVisible()`) for writing test scenarios in the `commonTest` source set.
-- **Drivers**: Modules that handle communication with Android, iOS, Wasm, and Desktop applications.
-- **Session Management**: Controls video recording lifecycles and app restarts during test execution.
+- **Drivers**: Platform-specific implementations (Android, iOS, Wasm, Desktop) that establish communication channels with the application under test and send protocol commands.
+- **Session Management**: Manages video recording streams, screenshot captures, and application process keep-alive states during test execution.

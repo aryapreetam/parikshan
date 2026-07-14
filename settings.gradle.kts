@@ -1,6 +1,7 @@
 rootProject.name = "parikshan-root"
 
 pluginManagement {
+  includeBuild("build-logic")
   includeBuild("gradle-plugins")
 
   repositories {

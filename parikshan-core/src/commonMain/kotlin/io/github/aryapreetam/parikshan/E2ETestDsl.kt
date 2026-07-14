@@ -38,6 +38,8 @@ interface TestDriver {
 
   fun resolveArtifactPath(relativePath: String): String =
     "build/parikshan/${relativePath.trimStart('/', '\\')}"
+
+  fun setRouteTarget(platform: String?) {}
 }
 
 data class E2ETestConfig(
@@ -717,6 +719,23 @@ class E2ETestScope internal constructor(
     }
     throw lastError ?: RuntimeException("Retry failed after $maxAttempts attempts")
   }
+
+  /**
+   * Executes the given [block] only on the specified [target] platform during synchronized execution,
+   * or if the single active driver platform matches the specified [target].
+   */
+  suspend fun onTarget(target: Target, block: suspend E2ETestScope.() -> Unit) {
+    if (driver.targetPlatform == "sync") {
+      driver.setRouteTarget(target.platformName)
+      try {
+        block()
+      } finally {
+        driver.setRouteTarget(null)
+      }
+    } else if (driver.targetPlatform == target.platformName) {
+      block()
+    }
+  }
 }
 
 /**
@@ -760,7 +779,7 @@ private enum class MatchPolicy {
   CONTAINS
 }
 
-@Target(AnnotationTarget.FUNCTION)
+@kotlin.annotation.Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.SOURCE)
 annotation class ParikshanScenario(
   val testName: String = ""
@@ -785,3 +804,10 @@ fun E2ETestScope.isAndroid(): Boolean = targetPlatform == "android"
  * Returns true if the current test execution target is an iOS simulator or device.
  */
 fun E2ETestScope.isIos(): Boolean = targetPlatform == "ios"
+
+enum class Target(val platformName: String) {
+  Desktop("desktop"),
+  Wasm("wasm"),
+  Android("android"),
+  Ios("ios")
+}

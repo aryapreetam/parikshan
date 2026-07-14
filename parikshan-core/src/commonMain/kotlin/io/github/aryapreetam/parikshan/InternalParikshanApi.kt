@@ -10,7 +10,7 @@ package io.github.aryapreetam.parikshan
   message = "This is an internal Parikshan API. It is not intended for public use and may change without notice."
 )
 @Retention(AnnotationRetention.BINARY)
-@Target(
+@kotlin.annotation.Target(
   AnnotationTarget.CLASS,
   AnnotationTarget.FUNCTION,
   AnnotationTarget.PROPERTY,

@@ -275,7 +275,21 @@ class ParikshanPlugin : Plugin<Project> {
         })
         
         hostTestClassesDirs.setFrom(hostTestTask.get().testClassesDirs)
-        hostTestClasspath.setFrom(hostTestTask.get().classpath)
+        val filesList = mutableListOf<org.gradle.api.file.FileCollection>()
+        filesList.add(hostTestTask.get().classpath)
+        if (project.tasks.names.contains("e2eDesktopTest")) {
+          filesList.add(project.tasks.named<Test>("e2eDesktopTest").get().classpath)
+        }
+        if (project.tasks.names.contains("e2eWasmTest")) {
+          filesList.add(project.tasks.named<Test>("e2eWasmTest").get().classpath)
+        }
+        if (project.tasks.names.contains("e2eAndroidTest")) {
+          filesList.add(project.tasks.named<Test>("e2eAndroidTest").get().classpath)
+        }
+        if (project.tasks.names.contains("e2eIosTest")) {
+          filesList.add(project.tasks.named<Test>("e2eIosTest").get().classpath)
+        }
+        hostTestClasspath.setFrom(project.files(filesList))
         junitConsoleJars.setFrom(junitConsoleConfig)
         this.e2eTestClasses.set(project.provider { e2eTestClasses })
         projectPath.set(project.path)

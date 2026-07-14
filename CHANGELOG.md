@@ -5,7 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.0.3] - 2026-07-14
+
+### Added
+- Added iOS ComposeScene remote E2E driver, zero-config standalone Android E2E support, and improved gestures (dragging/swiping) for Wasm and Desktop.
+- Added parallel multi-target test execution (`e2eTest`), unified multi-platform HTML reporting, and automated video recording configuration.
+- Added video file links in reports
+
+### Fixed
+- Fixed Wasm tag-stripping issues, overlay scrolling bugs on iOS, and AWT focus stealing during background tests.
+- Fixed a polymorphic JSON serialization exception in `ProtocolSerializationTest` and resolved port conflicts during parallel execution.
+- Removed legacy setup template scripts and consolidated the documentation website layout.
+
 
 ## [0.0.2] - 2026-06-02
 

@@ -13,7 +13,7 @@ on:
       - 'parikshan-core/**'
       - 'parikshan-client/**'
       - 'parikshan-server/**'
-      - 'parikshan-gradle-plugin/**'
+      - 'gradle-plugins/**'
       - 'gradle/**'
       - 'gradle.properties'
       - 'settings.gradle.kts'
@@ -28,7 +28,7 @@ on:
       - 'parikshan-core/**'
       - 'parikshan-client/**'
       - 'parikshan-server/**'
-      - 'parikshan-gradle-plugin/**'
+      - 'gradle-plugins/**'
       - 'gradle/**'
       - 'gradle.properties'
       - 'settings.gradle.kts'
@@ -81,7 +81,7 @@ jobs:
           fi
 
   ci:
-    name: Reuse CI (lint, build+tests, android UI)
+    name: Reuse CI (lint, build+tests, multiplatform e2e)
     needs: check-template-setup
     if: needs.check-template-setup.outputs.is_configured == 'true'
     uses: ./.github/workflows/ci.yml

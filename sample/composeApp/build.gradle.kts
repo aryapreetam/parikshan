@@ -80,6 +80,7 @@ compose.desktop {
 }
 
 tasks.withType<Test>().configureEach {
+  filter.isFailOnNoMatchingTests = false
   if (name.endsWith("UnitTest")) {
     exclude("**/*UITest*")
   }

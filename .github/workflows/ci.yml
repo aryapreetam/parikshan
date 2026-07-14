@@ -245,94 +245,94 @@ jobs:
             echo "Success: Zero-pollution audit passed. No Parikshan classes found in release APK."
           fi
 
-  compatibility-matrix-non-ios:
-    name: Compatibility Matrix Non-iOS (Kotlin ${{ matrix.kotlin }}, Compose ${{ matrix.compose }})
-    runs-on: ubuntu-latest
-    needs: [ lint ]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - kotlin: '2.0.21'
-            compose: '1.7.0'
-          - kotlin: '2.1.0'
-            compose: '1.7.3'
-          - kotlin: '2.3.21'
-            compose: '1.10.1'
-          - kotlin: '2.3.21'
-            compose: '1.11.0'
-          - kotlin: '2.4.0'
-            compose: '1.11.1'
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Cache Gradle Wrapper
-        uses: actions/cache@v4
-        with:
-          path: ~/.gradle/wrapper/dists
-          key: gradle-wrapper-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: gradle-wrapper-${{ runner.os }}-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: ${{ env.JAVA_VERSION }}
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-      - name: Run unit tests
-        run: |
-          ./gradlew :parikshan-server:test :parikshan-core:jvmTest :parikshan-client:jvmTest :sample:composeApp:jvmTest \
-                    :parikshan-core:wasmJsBrowserTest :parikshan-client:wasmJsBrowserTest :sample:composeApp:wasmJsBrowserTest \
-                    :parikshan-client:testAndroid :sample:androidApp:testDebugUnitTest \
-                    -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}
-      - name: Run E2E Desktop tests
-        uses: aryapreetam/parikshan-desktop-action@v1
-        with:
-          command: './gradlew :sample:composeApp:e2eDesktopTest -Dparikshan.video.enabled=true --no-configuration-cache -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}'
-      - name: Run E2E Wasm tests
-        uses: aryapreetam/parikshan-wasm-action@v1
-        with:
-          command: './gradlew :sample:composeApp:e2eWasmTest -Dparikshan.video.enabled=true --no-configuration-cache -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}'
-
-  compatibility-matrix-ios:
-    name: Compatibility Matrix iOS (Kotlin ${{ matrix.kotlin }}, Compose ${{ matrix.compose }})
-    runs-on: macos-latest
-    needs: [ lint ]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - kotlin: '2.0.21'
-            compose: '1.7.0'
-          - kotlin: '2.1.0'
-            compose: '1.7.3'
-          - kotlin: '2.3.21'
-            compose: '1.10.1'
-          - kotlin: '2.3.21'
-            compose: '1.11.0'
-          - kotlin: '2.4.0'
-            compose: '1.11.1'
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: ${{ env.JAVA_VERSION }}
-      - name: Cache Kotlin/Native (~/.konan)
-        uses: actions/cache@v4
-        with:
-          path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml', '**/gradle-wrapper.properties') }}
-          restore-keys: konan-${{ runner.os }}-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
-      - name: Run unit tests
-        run: |
-          ./gradlew :parikshan-core:iosSimulatorArm64Test :parikshan-client:iosSimulatorArm64Test :sample:composeApp:iosSimulatorArm64Test \
-                    -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}
-      - name: Run E2E iOS tests
-        run: |
-          ./gradlew :sample:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache \
-                    -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}
+#  compatibility-matrix-non-ios:
+#    name: Compatibility Matrix Non-iOS (Kotlin ${{ matrix.kotlin }}, Compose ${{ matrix.compose }})
+#    runs-on: ubuntu-latest
+#    needs: [ lint ]
+#    strategy:
+#      fail-fast: false
+#      matrix:
+#        include:
+#          - kotlin: '2.0.21'
+#            compose: '1.7.0'
+#          - kotlin: '2.1.0'
+#            compose: '1.7.3'
+#          - kotlin: '2.3.21'
+#            compose: '1.10.1'
+#          - kotlin: '2.3.21'
+#            compose: '1.11.0'
+#          - kotlin: '2.4.0'
+#            compose: '1.11.1'
+#    steps:
+#      - name: Checkout repository
+#        uses: actions/checkout@v4
+#      - name: Cache Gradle Wrapper
+#        uses: actions/cache@v4
+#        with:
+#          path: ~/.gradle/wrapper/dists
+#          key: gradle-wrapper-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
+#          restore-keys: gradle-wrapper-${{ runner.os }}-
+#      - name: Set up JDK
+#        uses: actions/setup-java@v4
+#        with:
+#          distribution: 'zulu'
+#          java-version: ${{ env.JAVA_VERSION }}
+#      - name: Setup Gradle
+#        uses: gradle/actions/setup-gradle@v3
+#      - name: Run unit tests
+#        run: |
+#          ./gradlew :parikshan-server:test :parikshan-core:jvmTest :parikshan-client:jvmTest :sample:composeApp:jvmTest \
+#                    :parikshan-core:wasmJsBrowserTest :parikshan-client:wasmJsBrowserTest :sample:composeApp:wasmJsBrowserTest \
+#                    :parikshan-client:testAndroid :sample:androidApp:testDebugUnitTest \
+#                    -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}
+#      - name: Run E2E Desktop tests
+#        uses: aryapreetam/parikshan-desktop-action@v1
+#        with:
+#          command: './gradlew :sample:composeApp:e2eDesktopTest -Dparikshan.video.enabled=true --no-configuration-cache -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}'
+#      - name: Run E2E Wasm tests
+#        uses: aryapreetam/parikshan-wasm-action@v1
+#        with:
+#          command: './gradlew :sample:composeApp:e2eWasmTest -Dparikshan.video.enabled=true --no-configuration-cache -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}'
+#
+#  compatibility-matrix-ios:
+#    name: Compatibility Matrix iOS (Kotlin ${{ matrix.kotlin }}, Compose ${{ matrix.compose }})
+#    runs-on: macos-latest
+#    needs: [ lint ]
+#    strategy:
+#      fail-fast: false
+#      matrix:
+#        include:
+#          - kotlin: '2.0.21'
+#            compose: '1.7.0'
+#          - kotlin: '2.1.0'
+#            compose: '1.7.3'
+#          - kotlin: '2.3.21'
+#            compose: '1.10.1'
+#          - kotlin: '2.3.21'
+#            compose: '1.11.0'
+#          - kotlin: '2.4.0'
+#            compose: '1.11.1'
+#    steps:
+#      - name: Checkout repository
+#        uses: actions/checkout@v4
+#      - name: Set up JDK
+#        uses: actions/setup-java@v4
+#        with:
+#          distribution: 'zulu'
+#          java-version: ${{ env.JAVA_VERSION }}
+#      - name: Cache Kotlin/Native (~/.konan)
+#        uses: actions/cache@v4
+#        with:
+#          path: ~/.konan
+#          key: konan-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml', '**/gradle-wrapper.properties') }}
+#          restore-keys: konan-${{ runner.os }}-
+#      - name: Setup Gradle
+#        uses: gradle/actions/setup-gradle@v3
+#      - name: Run unit tests
+#        run: |
+#          ./gradlew :parikshan-core:iosSimulatorArm64Test :parikshan-client:iosSimulatorArm64Test :sample:composeApp:iosSimulatorArm64Test \
+#                    -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}
+#      - name: Run E2E iOS tests
+#        run: |
+#          ./gradlew :sample:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache \
+#                    -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}

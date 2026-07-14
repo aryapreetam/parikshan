@@ -36,7 +36,7 @@ abstract class E2ETestTask : DefaultTask() {
   var desktopWindowSize: String = ""
 
   @get:Input
-  @set:Option(option = "desktop-window-position", description = "Desktop-specific screen coordinates (format: <x>,<y>)")
+  @set:Option(option = "desktop-window-position", description = "Desktop-specific screen coordinates (format: <x>,<y> or <x>x<y>)")
   var desktopWindowPosition: String = ""
 
   @get:Input
@@ -44,7 +44,7 @@ abstract class E2ETestTask : DefaultTask() {
   var wasmWindowSize: String = ""
 
   @get:Input
-  @set:Option(option = "wasm-window-position", description = "Wasm-specific screen coordinates (format: <x>,<y>)")
+  @set:Option(option = "wasm-window-position", description = "Wasm-specific screen coordinates (format: <x>,<y> or <x>x<y>)")
   var wasmWindowPosition: String = ""
 
   @get:Input

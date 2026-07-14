@@ -583,7 +583,7 @@ internal fun parseSize(input: String?): Pair<Int, Int>? {
 
 internal fun parsePosition(input: String?): Pair<Int, Int>? {
   if (input.isNullOrBlank()) return null
-  val regex = Regex("^(-?\\d+),(-?\\d+)$")
+  val regex = Regex("^(-?\\d+)(?:,|x)(-?\\d+)$")
   val match = regex.matchEntire(input.trim()) ?: return null
   val x = match.groupValues[1].toIntOrNull() ?: return null
   val y = match.groupValues[2].toIntOrNull() ?: return null

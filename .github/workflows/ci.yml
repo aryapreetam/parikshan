@@ -184,7 +184,7 @@ jobs:
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          distribution: 'temurin'
           java-version: ${{ env.JAVA_VERSION }}
       - name: Cache Kotlin/Native (~/.konan)
         uses: actions/cache@v4
@@ -194,10 +194,19 @@ jobs:
           restore-keys: konan-${{ runner.os }}-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
+      - name: Find available iOS Simulator
+        run: |
+          DEVICE_UDID=$(xcrun simctl list devices available | grep -E "iPhone" | head -n 1 | grep -oE "[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}")
+          if [ -z "$DEVICE_UDID" ]; then
+            echo "No available iPhone simulator found!"
+            exit 1
+          fi
+          echo "Found Simulator UDID: $DEVICE_UDID"
+          echo "SIMULATOR_UDID=$DEVICE_UDID" >> "$GITHUB_ENV"
       - name: Run Parikshan iOS E2E tests
         run: |
           # The plugin handles simulator booting and xcodebuild internally
-          ./gradlew :samples:multiplatform-showcase:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"
+          ./gradlew :samples:multiplatform-showcase:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching" -Pparikshan.ios.device="$SIMULATOR_UDID"
       - name: Upload iOS Videos
         if: always()
         uses: actions/upload-artifact@v4

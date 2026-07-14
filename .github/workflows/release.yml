@@ -1,4 +1,3 @@
-# Publish Multiplatform Release
 name: Release
 
 on:

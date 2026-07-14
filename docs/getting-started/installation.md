@@ -8,7 +8,7 @@ Add the plugin to your root `settings.gradle.kts` or `build.gradle.kts`:
 
 ```kotlin
 plugins {
-    id("io.github.aryapreetam.parikshan") version "0.0.2"
+  id("io.github.aryapreetam.parikshan") version "0.0.2"
 }
 ```
 
@@ -16,7 +16,7 @@ Then apply the plugin to your target multiplatform application module (typically
 
 ```kotlin
 plugins {
-    id("io.github.aryapreetam.parikshan")
+  id("io.github.aryapreetam.parikshan")
 }
 ```
 
@@ -28,26 +28,26 @@ Configure target settings in the application module's `build.gradle.kts`. The co
 
 ```kotlin
 parikshan {
-    // Port used by the embedded test servers (defaults to 9877)
-    port.set(9877)
+  // Port used by the embedded test servers (defaults to 9877)
+  port.set(9877)
     
-    // Fully qualified activity name to launch on Android targets
-    androidLaunchActivityClassName.set("com.example.app.MainActivity")
+  // Fully qualified activity name to launch on Android targets
+  androidLaunchActivityClassName.set("com.example.app.MainActivity")
     
-    // Local server port for WasmJs web distribution (defaults to 8081)
-    wasmServerPort.set(8081)
+  // Local server port for WasmJs web distribution (defaults to 8081)
+  wasmServerPort.set(8081)
     
-    // IP address/host that the test runner communicates with (defaults to "127.0.0.1")
-    host.set("127.0.0.1")
+  // IP address/host that the test runner communicates with (defaults to "127.0.0.1")
+  host.set("127.0.0.1")
     
-    // Maximum wait time in milliseconds for the target application to boot (defaults to 90000)
-    startupTimeoutMs.set(90_000L)
+  // Maximum wait time in milliseconds for the target application to boot (defaults to 90000)
+  startupTimeoutMs.set(90_000L)
     
-    // Polling frequency in milliseconds when checking for server readiness (defaults to 250)
-    startupPollIntervalMs.set(250L)
+  // Polling frequency in milliseconds when checking for server readiness (defaults to 250)
+  startupPollIntervalMs.set(250L)
     
-    // Overrides the desktop window title when launched
-    desktopWindowTitle.set("Parikshan E2E Playground")
+  // Overrides the desktop window title when launched
+  desktopWindowTitle.set("Parikshan E2E Playground")
 }
 ```
 

@@ -4,6 +4,7 @@ plugins {
   alias(libs.plugins.compose)
   alias(libs.plugins.compose.compiler)
   id("parikshan.publishing")
+  alias(libs.plugins.binary.compatibility.validator)
 }
 
 kotlin {

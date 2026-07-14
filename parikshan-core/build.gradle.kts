@@ -6,6 +6,7 @@ plugins {
   alias(libs.plugins.serialization)
   id("parikshan.publishing")
   alias(libs.plugins.dokka)
+  alias(libs.plugins.binary.compatibility.validator)
 }
 
 dokka {

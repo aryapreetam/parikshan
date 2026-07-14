@@ -8,6 +8,7 @@ plugins {
   alias(libs.plugins.compose.compiler)
   id("parikshan.publishing")
   alias(libs.plugins.dokka)
+  alias(libs.plugins.binary.compatibility.validator)
 }
 
 dokka {

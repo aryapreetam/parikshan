@@ -1,0 +1,176 @@
+public final class io/github/aryapreetam/parikshan/E2ETestEntry_jvmKt {
+	public static final fun e2eTest (Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;)V
+	public static synthetic fun e2eTest$default (Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
+}
+
+public final class io/github/aryapreetam/parikshan/IosDriverConfig {
+	public static final field $stable I
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;I)V
+	public synthetic fun <init> (Ljava/lang/String;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()I
+	public final fun copy (Ljava/lang/String;I)Lio/github/aryapreetam/parikshan/IosDriverConfig;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/IosDriverConfig;Ljava/lang/String;IILjava/lang/Object;)Lio/github/aryapreetam/parikshan/IosDriverConfig;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHost ()Ljava/lang/String;
+	public final fun getPort ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/aryapreetam/parikshan/client/AndroidVideoRecorder : io/github/aryapreetam/parikshan/client/VideoRecorder {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;J)V
+	public fun start (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun stop (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class io/github/aryapreetam/parikshan/client/DesktopVideoRecorder : io/github/aryapreetam/parikshan/client/VideoRecorder {
+	public static final field $stable I
+	public fun <init> (Lio/github/aryapreetam/parikshan/TestDriver;Lio/github/aryapreetam/parikshan/client/ParikshanVideoConfig;)V
+	public final fun getSegments ()Ljava/util/List;
+	public final fun pause ()V
+	public final fun resume ()V
+	public fun start (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun stop (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun updateDriver (Lio/github/aryapreetam/parikshan/TestDriver;)V
+}
+
+public final class io/github/aryapreetam/parikshan/client/IosVideoRecorder : io/github/aryapreetam/parikshan/client/VideoRecorder {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;J)V
+	public fun start (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun stop (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class io/github/aryapreetam/parikshan/client/ParikshanClient {
+	public static final field $stable I
+	public fun <init> ()V
+	public fun <init> (Lio/github/aryapreetam/parikshan/client/ParikshanClientConfig;)V
+	public synthetic fun <init> (Lio/github/aryapreetam/parikshan/client/ParikshanClientConfig;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun connect (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun disconnect (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun send (Lio/github/aryapreetam/parikshan/protocol/Command;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class io/github/aryapreetam/parikshan/client/ParikshanClientConfig {
+	public static final field $stable I
+	public fun <init> ()V
+	public fun <init> (Ljava/lang/String;ILjava/lang/String;IJJ)V
+	public synthetic fun <init> (Ljava/lang/String;ILjava/lang/String;IJJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()I
+	public final fun component5 ()J
+	public final fun component6 ()J
+	public final fun copy (Ljava/lang/String;ILjava/lang/String;IJJ)Lio/github/aryapreetam/parikshan/client/ParikshanClientConfig;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/client/ParikshanClientConfig;Ljava/lang/String;ILjava/lang/String;IJJILjava/lang/Object;)Lio/github/aryapreetam/parikshan/client/ParikshanClientConfig;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getConnectRetries ()I
+	public final fun getConnectRetryDelayMs ()J
+	public final fun getHost ()Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getPort ()I
+	public final fun getRequestTimeoutMs ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/aryapreetam/parikshan/client/ParikshanJUnit5Extension : org/junit/jupiter/api/extension/AfterAllCallback, org/junit/jupiter/api/extension/BeforeAllCallback {
+	public static final field $stable I
+	public fun <init> ()V
+	public fun afterAll (Lorg/junit/jupiter/api/extension/ExtensionContext;)V
+	public fun beforeAll (Lorg/junit/jupiter/api/extension/ExtensionContext;)V
+}
+
+public final class io/github/aryapreetam/parikshan/client/ParikshanMethodOrderer : org/junit/jupiter/api/MethodOrderer {
+	public static final field $stable I
+	public fun <init> ()V
+	public fun orderMethods (Lorg/junit/jupiter/api/MethodOrdererContext;)V
+}
+
+public final class io/github/aryapreetam/parikshan/client/ParikshanVideoConfig {
+	public static final field $stable I
+	public static final field Companion Lio/github/aryapreetam/parikshan/client/ParikshanVideoConfig$Companion;
+	public fun <init> (ZLjava/lang/String;IZJJLio/github/aryapreetam/parikshan/client/VideoGranularity;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Double;)V
+	public synthetic fun <init> (ZLjava/lang/String;IZJJLio/github/aryapreetam/parikshan/client/VideoGranularity;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Double;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Z
+	public final fun component10 ()Ljava/lang/Double;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()I
+	public final fun component4 ()Z
+	public final fun component5 ()J
+	public final fun component6 ()J
+	public final fun component7 ()Lio/github/aryapreetam/parikshan/client/VideoGranularity;
+	public final fun component8 ()Ljava/lang/Integer;
+	public final fun component9 ()Ljava/lang/Integer;
+	public final fun copy (ZLjava/lang/String;IZJJLio/github/aryapreetam/parikshan/client/VideoGranularity;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Double;)Lio/github/aryapreetam/parikshan/client/ParikshanVideoConfig;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/client/ParikshanVideoConfig;ZLjava/lang/String;IZJJLio/github/aryapreetam/parikshan/client/VideoGranularity;Ljava/lang/Integer;Ljava/lang/Integer;Ljava/lang/Double;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/client/ParikshanVideoConfig;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDeviceScaleFactor ()Ljava/lang/Double;
+	public final fun getEnabled ()Z
+	public final fun getFps ()I
+	public final fun getGranularity ()Lio/github/aryapreetam/parikshan/client/VideoGranularity;
+	public final fun getOutputDir ()Ljava/lang/String;
+	public final fun getPostRollMs ()J
+	public final fun getShowCursor ()Z
+	public final fun getStepDelayMs ()J
+	public final fun getVideoHeight ()Ljava/lang/Integer;
+	public final fun getVideoWidth ()Ljava/lang/Integer;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/aryapreetam/parikshan/client/ParikshanVideoConfig$Companion {
+	public final fun fromSystemProperties ()Lio/github/aryapreetam/parikshan/client/ParikshanVideoConfig;
+}
+
+public final class io/github/aryapreetam/parikshan/client/ParikshanWasmConfig {
+	public static final field $stable I
+	public static final field Companion Lio/github/aryapreetam/parikshan/client/ParikshanWasmConfig$Companion;
+	public fun <init> (Ljava/lang/String;ZIIJ)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Z
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()J
+	public final fun copy (Ljava/lang/String;ZIIJ)Lio/github/aryapreetam/parikshan/client/ParikshanWasmConfig;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/client/ParikshanWasmConfig;Ljava/lang/String;ZIIJILjava/lang/Object;)Lio/github/aryapreetam/parikshan/client/ParikshanWasmConfig;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAppUrl ()Ljava/lang/String;
+	public final fun getBridgeReadyTimeoutMs ()J
+	public final fun getHeadless ()Z
+	public final fun getViewportHeight ()I
+	public final fun getViewportWidth ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/aryapreetam/parikshan/client/ParikshanWasmConfig$Companion {
+	public final fun fromSystemProperties ()Lio/github/aryapreetam/parikshan/client/ParikshanWasmConfig;
+}
+
+public final class io/github/aryapreetam/parikshan/client/VideoGranularity : java/lang/Enum {
+	public static final field CLASS Lio/github/aryapreetam/parikshan/client/VideoGranularity;
+	public static final field RUN Lio/github/aryapreetam/parikshan/client/VideoGranularity;
+	public static final field TEST Lio/github/aryapreetam/parikshan/client/VideoGranularity;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/aryapreetam/parikshan/client/VideoGranularity;
+	public static fun values ()[Lio/github/aryapreetam/parikshan/client/VideoGranularity;
+}
+
+public final class io/github/aryapreetam/parikshan/client/VideoRecorderFactory {
+	public static final field $stable I
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/client/VideoRecorderFactory;
+	public final fun create (Ljava/lang/String;Lio/github/aryapreetam/parikshan/TestDriver;Lio/github/aryapreetam/parikshan/client/ParikshanVideoConfig;)Lio/github/aryapreetam/parikshan/client/VideoRecorder;
+}
+
+public final class io/github/aryapreetam/parikshan/client/WasmVideoRecorder : io/github/aryapreetam/parikshan/client/VideoRecorder {
+	public static final field $stable I
+	public fun <init> (Lio/github/aryapreetam/parikshan/TestDriver;)V
+	public fun start (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun stop (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+

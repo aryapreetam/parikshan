@@ -15,23 +15,22 @@ import io.github.aryapreetam.parikshan.e2eTest
 import kotlin.test.Test
 
 class LoginTest {
-
-    @Test
-    fun testSuccessfulLogin() = e2eTest {
-        // Input text into fields by their Modifier.testTag
-        input("username_field", "admin")
-        input("password_field", "password123")
+  @Test
+  fun testSuccessfulLogin() = e2eTest {
+    // Input text into fields by their Modifier.testTag
+    input("username_field", "admin")
+    input("password_field", "password123")
         
-        // Click on the login button
-        click("login_button")
+    // Click on the login button
+    click("login_button")
         
-        // Assertions
-        assertVisible("dashboard_screen")
-        assertText("welcome_header", "Welcome back, admin!")
+    // Assertions
+    assertVisible("dashboard_screen")
+    assertText("welcome_header", "Welcome back, admin!")
         
-        // Capture a verification screenshot
-        screenshot("dashboard-success")
-    }
+    // Capture a verification screenshot
+    screenshot("dashboard-success")
+  }
 }
 ```
 
@@ -105,23 +104,23 @@ import io.github.aryapreetam.parikshan.e2eTest
 import kotlin.test.Test
 
 class FormTest {
-    companion object {
-        @BeforeAll
-        fun setupClass() {
-            // Class-level setup
-        }
-
-        @AfterAll
-        fun teardownClass() {
-            // Class-level cleanup
-        }
+  companion object {
+    @BeforeAll
+    fun setupClass() {
+      // Class-level setup
     }
 
-    @Test
-    @Order(1)
-    fun testFirstMethod() = e2eTest {
-        // ...
+    @AfterAll
+    fun teardownClass() {
+      // Class-level cleanup
     }
+  }
+
+  @Test
+  @Order(1)
+  fun testFirstMethod() = e2eTest {
+    // ...
+  }
 }
 ```
 
@@ -132,11 +131,11 @@ To optimize execution speed, configure **lightweight state resets** (e.g. naviga
 import kotlin.test.BeforeTest
 
 class NavigationTest {
-    @BeforeTest
-    fun resetState() = e2eTest {
-        // Navigate back to the home screen to clean up UI state
-        navigateToSection("home_route")
-    }
+  @BeforeTest
+  fun resetState() = e2eTest {
+    // Navigate back to the home screen to clean up UI state
+    navigateToSection("home_route")
+  }
 }
 ```
 

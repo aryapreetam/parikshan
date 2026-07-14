@@ -29,6 +29,18 @@ dependencyResolutionManagement {
     }
     mavenCentral()
   }
+  versionCatalogs {
+    create("libs") {
+      val kotlinOverride = providers.gradleProperty("kotlinVersion").orNull
+      if (!kotlinOverride.isNullOrBlank()) {
+        version("kotlin", kotlinOverride)
+      }
+      val composeOverride = providers.gradleProperty("composeVersion").orNull
+      if (!composeOverride.isNullOrBlank()) {
+        version("compose", composeOverride)
+      }
+    }
+  }
 }
 
 plugins {

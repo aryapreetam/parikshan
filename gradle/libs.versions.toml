@@ -15,6 +15,7 @@ androidx-test-runner = "1.6.2"
 androidx-uiautomator = "2.3.0"
 androidx-espresso = "3.6.1"
 androidx-compose-ui-test = "1.7.8"
+binary-compatibility-validator = "0.18.1"
 
 [libraries]
 maven-publish-gradle-plugin = { module = "com.vanniktech:gradle-maven-publish-plugin", version.ref = "maven-publish" }
@@ -49,3 +50,4 @@ compose = { id = "org.jetbrains.compose", version.ref = "compose" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 android-application = { id = "com.android.application", version.ref = "agp" }
 dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
+binary-compatibility-validator = { id = "org.jetbrains.kotlinx.binary-compatibility-validator", version.ref = "binary-compatibility-validator" }

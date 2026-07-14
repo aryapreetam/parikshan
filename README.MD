@@ -10,6 +10,9 @@
   <a href="https://mvnrepository.com/artifact/io.github.aryapreetam/parikshan">
     <img src="https://img.shields.io/maven-central/v/io.github.aryapreetam/parikshan?label=Maven%20Central&color=blue" alt="Maven Central Version">
   </a>
+  <a href="https://kotlinlang.org/docs/components-stability.html">
+    <img src="https://kotl.in/badges/experimental.svg" alt="Kotlin Experimental">
+  </a>
 </p>
 
 <p align="center">

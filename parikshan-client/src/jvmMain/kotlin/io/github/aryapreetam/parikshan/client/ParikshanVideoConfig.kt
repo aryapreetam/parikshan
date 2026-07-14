@@ -28,7 +28,6 @@ data class ParikshanVideoConfig(
       val fps = System.getProperty("parikshan.video.fps")?.toIntOrNull()?.coerceIn(1, 30) ?: DEFAULT_FPS
       val showCursor = System.getProperty("parikshan.video.showCursor")?.toBoolean() ?: true
       val granularityStr = System.getProperty("parikshan.video.granularity")
-        ?: System.getProperty("parikshan.video.strategy")
         ?: DEFAULT_GRANULARITY
       val granularity = when (granularityStr.lowercase()) {
         "session", "run" -> VideoGranularity.RUN

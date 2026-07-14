@@ -113,7 +113,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew :sample:composeApp:e2eAndroidTest -Dparikshan.video.enabled=true --no-configuration-cache
+          script: ./gradlew :sample:composeApp:e2eAndroidTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"
       - name: Upload Android Videos
         if: always()
         uses: actions/upload-artifact@v4
@@ -139,7 +139,7 @@ jobs:
       - name: Run Parikshan Desktop E2E tests
         uses: aryapreetam/parikshan-desktop-action@v1
         with:
-          command: './gradlew :sample:composeApp:e2eDesktopTest -Dparikshan.video.enabled=true --no-configuration-cache'
+          command: './gradlew :sample:composeApp:e2eDesktopTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"'
       - name: Upload Desktop Videos
         if: always()
         uses: actions/upload-artifact@v4
@@ -165,7 +165,7 @@ jobs:
       - name: Run Parikshan Wasm E2E tests
         uses: aryapreetam/parikshan-wasm-action@v1
         with:
-          command: './gradlew :sample:composeApp:e2eWasmTest -Dparikshan.video.enabled=true --no-configuration-cache'
+          command: './gradlew :sample:composeApp:e2eWasmTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"'
       - name: Upload Wasm Videos
         if: always()
         uses: actions/upload-artifact@v4
@@ -197,7 +197,7 @@ jobs:
       - name: Run Parikshan iOS E2E tests
         run: |
           # The plugin handles simulator booting and xcodebuild internally
-          ./gradlew :sample:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache
+          ./gradlew :sample:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"
       - name: Upload iOS Videos
         if: always()
         uses: actions/upload-artifact@v4

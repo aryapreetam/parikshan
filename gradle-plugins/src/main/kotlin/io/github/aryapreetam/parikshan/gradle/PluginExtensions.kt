@@ -24,6 +24,12 @@ internal fun Test.configureE2eHostTestExecution(
       .map { File(it) }
       .orElse(project.layout.buildDirectory.dir("parikshan/videos/${target.lowercase()}").map { it.asFile })
 
+  val hasKotlinExtension = project.extensions.findByName("kotlin") != null
+  val sourceDirName = if (hasKotlinExtension) "src/commonTest" else "src/test"
+  val videoStrategyProvider = project.providers.gradleProperty("parikshan.video.granularity")
+      .orElse(project.providers.systemProperty("parikshan.video.granularity"))
+      .orElse("class")
+
   testClassesDirs = hostTestClassesDirs
   val launcherConfig = project.configurations.detachedConfiguration(
       project.dependencies.create("org.junit.platform:junit-platform-launcher:1.10.2"),
@@ -44,7 +50,6 @@ internal fun Test.configureE2eHostTestExecution(
 
   doFirst {
     if (e2eTestClasses.isEmpty()) {
-      val sourceDirName = if (project.extensions.findByName("kotlin") != null) "src/commonTest" else "src/test"
       throw GradleException("No E2E test classes discovered in $sourceDirName containing 'e2eTest { ... }' invocation.")
     }
 
@@ -56,12 +61,7 @@ internal fun Test.configureE2eHostTestExecution(
     }
     logger.lifecycle("Parikshan $target: running E2E test classes ${e2eTestClasses.joinToString()}")
 
-    val videoStrategyProp = project.providers.gradleProperty("parikshan.video.granularity")
-      .orElse(project.providers.systemProperty("parikshan.video.granularity"))
-      .orElse(project.providers.gradleProperty("parikshan.video.strategy"))
-      .orElse(project.providers.systemProperty("parikshan.video.strategy"))
-      .orElse("class")
-    val strategy = videoStrategyProp.get().lowercase()
+    val strategy = videoStrategyProvider.get().lowercase()
     if (strategy == "class" || strategy == "run" || strategy == "session") {
       val patterns = filter.includePatterns
       val isMethodFilter = patterns.any { pattern ->
@@ -98,7 +98,7 @@ internal fun Test.configureE2eHostTestExecution(
     "parikshan.video.showCursor",
     "parikshan.video.stepDelayMs",
     "parikshan.video.postRollMs",
-    "parikshan.video.strategy",
+    "parikshan.video.granularity",
     "parikshan.video.width",
     "parikshan.video.height",
     "parikshan.wasm.url",

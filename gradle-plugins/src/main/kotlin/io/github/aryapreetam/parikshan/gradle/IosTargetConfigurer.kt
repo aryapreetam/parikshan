@@ -250,22 +250,44 @@ internal object IosTargetConfigurer {
     }
 
     var runtime = ""
-    val devices = mutableListOf<IosSimulatorDevice>()
+    val allDevices = mutableListOf<IosSimulatorDevice>()
     output.lineSequence().forEach { line ->
-      if (line.startsWith("--")) runtime = line.trim('-', ' ')
-      else if (line.contains("(")) {
+      if (line.startsWith("--")) {
+        runtime = line.trim('-', ' ')
+      } else if (line.contains("(")) {
         val name = line.substringBefore("(").trim()
         val udid = line.substringAfter("(").substringBefore(")")
         val state = line.substringAfterLast("(").substringBefore(")")
-        if (requested == "booted" && state == "Booted" || requested == name || requested == udid) devices += IosSimulatorDevice(name, udid, runtime, state == "Booted")
+        if (name.isNotEmpty() && udid.isNotEmpty()) {
+          allDevices += IosSimulatorDevice(name, udid, runtime, state.contains("Booted", ignoreCase = true))
+        }
       }
     }
-    return devices.firstOrNull { it.isBooted } ?: devices.firstOrNull()
-      ?: throw GradleException(
-        "Parikshan iOS: No iOS Simulator found matching '$requested'. " +
-          "Run `xcrun simctl list devices available` to see available simulators, " +
-          "or set `-Pparikshan.ios.device=<name-or-udid>`."
-      )
+
+    val exactMatch = allDevices.filter {
+      requested == "booted" && it.isBooted || requested == it.name || requested == it.udid
+    }
+    exactMatch.firstOrNull { it.isBooted }?.let { return it }
+    exactMatch.firstOrNull()?.let { return it }
+
+    allDevices.firstOrNull { it.isBooted }?.let {
+      System.err.println("Parikshan iOS: Device '$requested' not found. Falling back to active booted device: ${it.name}")
+      return it
+    }
+
+    allDevices.firstOrNull { it.name.startsWith("iPhone", ignoreCase = true) }?.let {
+      System.err.println("Parikshan iOS: Device '$requested' not found. Falling back to available device: ${it.name}")
+      return it
+    }
+
+    allDevices.firstOrNull()?.let {
+      System.err.println("Parikshan iOS: Device '$requested' not found. Falling back to available device: ${it.name}")
+      return it
+    }
+
+    throw GradleException(
+      "Parikshan iOS: No available iOS Simulators detected. Run `xcrun simctl list devices available` to check your environment."
+    )
   }
 
   private fun postIosPing(port: Int, token: String): Boolean {

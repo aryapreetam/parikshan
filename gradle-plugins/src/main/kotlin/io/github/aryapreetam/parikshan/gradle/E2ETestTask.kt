@@ -875,17 +875,29 @@ abstract class E2ETestTask : DefaultTask() {
       val process = ProcessBuilder("xcrun", "simctl", "list", "devices", "available").start()
       val output = process.inputStream.bufferedReader().readText()
       process.waitFor()
-      var udid: String? = null
+      
+      val allSims = mutableListOf<IosSim>()
       output.lineSequence().forEach { line ->
         if (line.contains("(")) {
           val name = line.substringBefore("(").trim()
           val currentUdid = line.substringAfter("(").substringBefore(")")
-          if (currentUdid.isNotEmpty() && (requested == name || requested == currentUdid)) {
-            udid = currentUdid
+          val state = line.substringAfterLast("(").substringBefore(")")
+          if (name.isNotEmpty() && currentUdid.isNotEmpty()) {
+            allSims += IosSim(name, currentUdid, state.contains("Booted", ignoreCase = true))
           }
         }
       }
-      udid
+
+      val exact = allSims.firstOrNull { requested == it.name || requested == it.udid }
+      if (exact != null) return exact.udid
+
+      val booted = allSims.firstOrNull { it.isBooted }
+      if (booted != null) return booted.udid
+
+      val iphone = allSims.firstOrNull { it.name.startsWith("iPhone", ignoreCase = true) }
+      if (iphone != null) return iphone.udid
+
+      allSims.firstOrNull()?.udid
     } catch (_: Exception) {
       null
     }
@@ -942,7 +954,6 @@ abstract class E2ETestTask : DefaultTask() {
       "parikshan.video.showCursor",
       "parikshan.video.stepDelayMs",
       "parikshan.video.postRollMs",
-      "parikshan.video.strategy",
       "parikshan.video.granularity",
       "parikshan.video.width",
       "parikshan.video.height",

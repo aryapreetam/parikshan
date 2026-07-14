@@ -74,16 +74,16 @@ jobs:
           set -e
           case "${{ matrix.target }}" in
             jvm)
-              ./gradlew :parikshan-server:test :parikshan-core:jvmTest :parikshan-client:jvmTest :sample:composeApp:jvmTest
+              ./gradlew :parikshan-server:test :parikshan-core:jvmTest :parikshan-client:jvmTest :samples:multiplatform-showcase:composeApp:jvmTest
               ;;
             ios)
-              ./gradlew :parikshan-core:iosSimulatorArm64Test :parikshan-client:iosSimulatorArm64Test :sample:composeApp:iosSimulatorArm64Test
+              ./gradlew :parikshan-core:iosSimulatorArm64Test :parikshan-client:iosSimulatorArm64Test :samples:multiplatform-showcase:composeApp:iosSimulatorArm64Test
               ;;
             wasm)
-              ./gradlew :parikshan-core:wasmJsBrowserTest :parikshan-client:wasmJsBrowserTest :sample:composeApp:wasmJsBrowserTest
+              ./gradlew :parikshan-core:wasmJsBrowserTest :parikshan-client:wasmJsBrowserTest :samples:multiplatform-showcase:composeApp:wasmJsBrowserTest
               ;;
             android)
-              ./gradlew :parikshan-client:testAndroid :sample:androidApp:testDebugUnitTest
+              ./gradlew :parikshan-client:testAndroid :samples:multiplatform-showcase:androidApp:testDebugUnitTest
               ;;
           esac
 
@@ -113,13 +113,13 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew :sample:composeApp:e2eAndroidTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"
+          script: ./gradlew :samples:multiplatform-showcase:composeApp:e2eAndroidTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"
       - name: Upload Android Videos
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: parikshan-android-videos
-          path: sample/composeApp/build/parikshan/videos/android/
+          path: samples/multiplatform-showcase/composeApp/build/parikshan/videos/android/
           if-no-files-found: ignore
 
   e2e-desktop:
@@ -139,13 +139,13 @@ jobs:
       - name: Run Parikshan Desktop E2E tests
         uses: aryapreetam/parikshan-desktop-action@v1
         with:
-          command: './gradlew :sample:composeApp:e2eDesktopTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"'
+          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eDesktopTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"'
       - name: Upload Desktop Videos
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: parikshan-desktop-videos
-          path: sample/composeApp/build/parikshan/videos/desktop/
+          path: samples/multiplatform-showcase/composeApp/build/parikshan/videos/desktop/
           if-no-files-found: ignore
 
   e2e-wasm:
@@ -165,13 +165,13 @@ jobs:
       - name: Run Parikshan Wasm E2E tests
         uses: aryapreetam/parikshan-wasm-action@v1
         with:
-          command: './gradlew :sample:composeApp:e2eWasmTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"'
+          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eWasmTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"'
       - name: Upload Wasm Videos
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: parikshan-wasm-videos
-          path: sample/composeApp/build/parikshan/videos/wasm/
+          path: samples/multiplatform-showcase/composeApp/build/parikshan/videos/wasm/
           if-no-files-found: ignore
 
   e2e-ios:
@@ -197,13 +197,13 @@ jobs:
       - name: Run Parikshan iOS E2E tests
         run: |
           # The plugin handles simulator booting and xcodebuild internally
-          ./gradlew :sample:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"
+          ./gradlew :samples:multiplatform-showcase:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"
       - name: Upload iOS Videos
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: parikshan-ios-videos
-          path: sample/composeApp/build/parikshan/videos/ios/
+          path: samples/multiplatform-showcase/composeApp/build/parikshan/videos/ios/
           if-no-files-found: ignore
 
   dex-pollution-audit:
@@ -227,10 +227,10 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
       - name: Build Release APK
-        run: ./gradlew :sample:androidApp:assembleRelease
+        run: ./gradlew :samples:multiplatform-showcase:androidApp:assembleRelease
       - name: Audit Release APK DEX for Parikshan leaks
         run: |
-          APK_FILE=$(find sample/androidApp/build/outputs/apk/release -name "*.apk" | head -n 1)
+          APK_FILE=$(find samples/multiplatform-showcase/androidApp/build/outputs/apk/release -name "*.apk" | head -n 1)
           if [ -z "$APK_FILE" ]; then
             echo "Error: Release APK not found!"
             exit 1
@@ -281,18 +281,18 @@ jobs:
 #        uses: gradle/actions/setup-gradle@v3
 #      - name: Run unit tests
 #        run: |
-#          ./gradlew :parikshan-server:test :parikshan-core:jvmTest :parikshan-client:jvmTest :sample:composeApp:jvmTest \
-#                    :parikshan-core:wasmJsBrowserTest :parikshan-client:wasmJsBrowserTest :sample:composeApp:wasmJsBrowserTest \
-#                    :parikshan-client:testAndroid :sample:androidApp:testDebugUnitTest \
+#          ./gradlew :parikshan-server:test :parikshan-core:jvmTest :parikshan-client:jvmTest :samples:multiplatform-showcase:composeApp:jvmTest \
+#                    :parikshan-core:wasmJsBrowserTest :parikshan-client:wasmJsBrowserTest :samples:multiplatform-showcase:composeApp:wasmJsBrowserTest \
+#                    :parikshan-client:testAndroid :samples:multiplatform-showcase:androidApp:testDebugUnitTest \
 #                    -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}
 #      - name: Run E2E Desktop tests
 #        uses: aryapreetam/parikshan-desktop-action@v1
 #        with:
-#          command: './gradlew :sample:composeApp:e2eDesktopTest -Dparikshan.video.enabled=true --no-configuration-cache -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}'
+#          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eDesktopTest -Dparikshan.video.enabled=true --no-configuration-cache -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}'
 #      - name: Run E2E Wasm tests
 #        uses: aryapreetam/parikshan-wasm-action@v1
 #        with:
-#          command: './gradlew :sample:composeApp:e2eWasmTest -Dparikshan.video.enabled=true --no-configuration-cache -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}'
+#          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eWasmTest -Dparikshan.video.enabled=true --no-configuration-cache -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}'
 #
 #  compatibility-matrix-ios:
 #    name: Compatibility Matrix iOS (Kotlin ${{ matrix.kotlin }}, Compose ${{ matrix.compose }})
@@ -330,9 +330,9 @@ jobs:
 #        uses: gradle/actions/setup-gradle@v3
 #      - name: Run unit tests
 #        run: |
-#          ./gradlew :parikshan-core:iosSimulatorArm64Test :parikshan-client:iosSimulatorArm64Test :sample:composeApp:iosSimulatorArm64Test \
+#          ./gradlew :parikshan-core:iosSimulatorArm64Test :parikshan-client:iosSimulatorArm64Test :samples:multiplatform-showcase:composeApp:iosSimulatorArm64Test \
 #                    -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}
 #      - name: Run E2E iOS tests
 #        run: |
-#          ./gradlew :sample:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache \
+#          ./gradlew :samples:multiplatform-showcase:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache \
 #                    -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}

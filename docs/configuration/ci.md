@@ -16,7 +16,7 @@ The [parikshan-e2e-wasm](https://github.com/marketplace/actions/parikshan-e2e-wa
 - name: Run Parikshan Wasm E2E tests
   uses: aryapreetam/parikshan-wasm-action@v1
   with:
-    command: './gradlew :sample:composeApp:e2eWasmTest --no-configuration-cache'
+    command: './gradlew :samples:multiplatform-showcase:composeApp:e2eWasmTest --no-configuration-cache'
 ```
 
 ### 2. Desktop E2E Action
@@ -27,7 +27,7 @@ The [parikshan-e2e-desktop](https://github.com/marketplace/actions/parikshan-e2e
 - name: Run Parikshan Desktop E2E tests
   uses: aryapreetam/parikshan-desktop-action@v1
   with:
-    command: './gradlew :sample:composeApp:e2eDesktopTest --no-configuration-cache'
+    command: './gradlew :samples:multiplatform-showcase:composeApp:e2eDesktopTest --no-configuration-cache'
 ```
 
 ---
@@ -69,13 +69,13 @@ jobs:
       - name: Run Wasm E2E
         uses: aryapreetam/parikshan-wasm-action@v1
         with:
-          command: './gradlew :sample:composeApp:e2eWasmTest'
+          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eWasmTest'
 
       # Run Desktop E2E headlessly using Xvfb
       - name: Run Desktop E2E
         uses: aryapreetam/parikshan-desktop-action@v1
         with:
-          command: './gradlew :sample:composeApp:e2eDesktopTest'
+          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eDesktopTest'
 ```
 
 ---

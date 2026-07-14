@@ -49,16 +49,16 @@ jobs:
           node-version: '20'
       - name: Build APK and wasm
         run: |
-          ./gradlew :sample:androidApp:assembleRelease
-          ./gradlew :sample:composeApp:wasmJsBrowserDistribution
+          ./gradlew :samples:multiplatform-showcase:androidApp:assembleRelease
+          ./gradlew :samples:multiplatform-showcase:composeApp:wasmJsBrowserDistribution
       - name: Collect artifacts (APK + wasm)
         run: |
           mkdir -p $GITHUB_WORKSPACE/release-upload
-          APK_SRC=$(find sample/androidApp/build/outputs/apk -type f -name '*-release-*.apk' | head -n1)
+          APK_SRC=$(find samples/multiplatform-showcase/androidApp/build/outputs/apk -type f -name '*-release-*.apk' | head -n1)
           if [ -n "$APK_SRC" ]; then
             cp "$APK_SRC" "$GITHUB_WORKSPACE/release-upload/sample-app-android-unsigned.apk"
           fi
-          WASM_DIR="$GITHUB_WORKSPACE/sample/composeApp/build/dist/wasmJs/productionExecutable"
+          WASM_DIR="$GITHUB_WORKSPACE/samples/multiplatform-showcase/composeApp/build/dist/wasmJs/productionExecutable"
           if [ -d "$WASM_DIR" ]; then
             (cd "$WASM_DIR" && zip -r "$GITHUB_WORKSPACE/release-upload/sample-app-wasm.zip" ./*)
           fi
@@ -91,12 +91,12 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
       - name: Build Desktop DMG
-        run: ./gradlew :sample:composeApp:packageDmg
+        run: ./gradlew :samples:multiplatform-showcase:composeApp:packageDmg
       - name: Collect DMG artifacts
         run: |
           mkdir -p $GITHUB_WORKSPACE/release-upload
           ARCH_SUFFIX="${{ matrix.arch }}"
-          DMG_SRC=$(find sample/composeApp/build/compose/binaries -type f -name '*.dmg' | head -n1)
+          DMG_SRC=$(find samples/multiplatform-showcase/composeApp/build/compose/binaries -type f -name '*.dmg' | head -n1)
           if [ -n "$DMG_SRC" ]; then
             cp "$DMG_SRC" "$GITHUB_WORKSPACE/release-upload/sample-app-desktop-$ARCH_SUFFIX.dmg"
           fi
@@ -121,12 +121,12 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
       - name: Build Windows MSI
-        run: ./gradlew :sample:composeApp:packageMsi
+        run: ./gradlew :samples:multiplatform-showcase:composeApp:packageMsi
       - name: Collect MSI artifacts
         shell: bash
         run: |
           mkdir -p $GITHUB_WORKSPACE/release-upload
-          MSI_SRC=$(find sample/composeApp/build/compose/binaries/main/msi -type f -name '*.msi' | head -n1)
+          MSI_SRC=$(find samples/multiplatform-showcase/composeApp/build/compose/binaries/main/msi -type f -name '*.msi' | head -n1)
           if [ -n "$MSI_SRC" ]; then
             cp "$MSI_SRC" "$GITHUB_WORKSPACE/release-upload/sample-app-windows.msi"
           fi
@@ -210,11 +210,11 @@ jobs:
 
       # 3. Add Demo Site (Wasm)
       - name: Build Wasm Demo
-        run: ./gradlew :sample:composeApp:wasmJsBrowserDistribution
+        run: ./gradlew :samples:multiplatform-showcase:composeApp:wasmJsBrowserDistribution
       - name: Prepare Demo Site
         run: |
           mkdir -p site/demo
-          cp -r sample/composeApp/build/dist/wasmJs/productionExecutable/* site/demo/
+          cp -r samples/multiplatform-showcase/composeApp/build/dist/wasmJs/productionExecutable/* site/demo/
 
       # 4. Deploy to GitHub Pages
       - name: Configure Pages

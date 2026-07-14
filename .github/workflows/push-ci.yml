@@ -9,7 +9,7 @@ on:
     paths:
       # Run CI only when these files/directories change
       - 'parikshan/**'
-      - 'sample/**'
+      - 'samples/**'
       - 'parikshan-core/**'
       - 'parikshan-client/**'
       - 'parikshan-server/**'
@@ -24,7 +24,7 @@ on:
     paths:
       # Same path filters for PRs
       - 'parikshan/**'
-      - 'sample/**'
+      - 'samples/**'
       - 'parikshan-core/**'
       - 'parikshan-client/**'
       - 'parikshan-server/**'

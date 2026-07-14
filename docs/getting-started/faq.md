@@ -12,7 +12,7 @@ No. Parikshan performs UI automation by traversing and interacting with the Comp
 
 ### Can we use this library for standalone Android applications?
 
-Yes, provided the UI is built entirely using Jetpack Compose. Legacy Android XML-based layouts are not supported as they do not generate Compose semantic nodes. To see how to configure a standalone Android application, refer to the [:sample:androidApp](https://github.com/aryapreetam/parikshan/tree/main/sample/androidApp) module configuration.
+Yes, provided the UI is built entirely using Jetpack Compose. Legacy Android XML-based layouts are not supported as they do not generate Compose semantic nodes. To see how to configure a standalone Android application, refer to the [:samples:multiplatform-showcase:androidApp](https://github.com/aryapreetam/parikshan/tree/main/samples/multiplatform-showcase/androidApp) module configuration.
 
 ---
 
@@ -21,7 +21,7 @@ Yes, provided the UI is built entirely using Jetpack Compose. Legacy Android XML
 Yes. The custom Gradle plugin and E2E runner tasks fully support the Gradle Configuration Cache. Run verification locally using:
 
 ```bash
-./gradlew :sample:composeApp:e2eDesktopTest --configuration-cache --dry-run
+./gradlew :samples:multiplatform-showcase:composeApp:e2eDesktopTest --configuration-cache --dry-run
 ```
 
 ---

@@ -71,7 +71,7 @@ class MyE2ETest {
 
 ## 📦 Examples
 
-See the [sample project tests](https://github.com/aryapreetam/parikshan/tree/main/sample/composeApp/src/commonTest/kotlin/sample/app) for working examples of how to write E2E tests using the Parikshan DSL.
+See the [sample project tests](https://github.com/aryapreetam/parikshan/tree/main/samples/multiplatform-showcase/composeApp/src/commonTest/kotlin/sample/app) for working examples of how to write E2E tests using the Parikshan DSL.
 
 ---
 

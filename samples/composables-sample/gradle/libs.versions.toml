@@ -1,0 +1,38 @@
+[versions]
+# Compose
+compose = "1.11.1"
+composablesUi = "0.1.0"
+iconsLucide = "1.0.0"
+uriPainter = "1.0.4"
+
+# Kotlin
+kotlin = "2.4.0"
+spotless = "7.2.1"
+
+# Android
+agp = "9.2.1"
+android-compileSdk = "37"
+android-minSdk = "23"
+android-targetSdk = "37"
+activityCompose = "1.13.0"
+
+
+[libraries]
+composables-icons-lucide = { group = "com.composables", name = "icons-lucide", version.ref = "iconsLucide" }
+composables-uri-painter = { group = "com.composables", name = "compose-uri-painter", version.ref = "uriPainter" }
+composables-ui = { group = "com.composables", name = "ui", version.ref = "composablesUi" }
+compose-ui = { group = "org.jetbrains.compose.ui", name = "ui", version.ref = "compose" }
+compose-ui-tooling = { group = "org.jetbrains.compose.ui", name = "ui-tooling", version.ref = "compose" }
+compose-ui-tooling-preview = { group = "org.jetbrains.compose.ui", name = "ui-tooling-preview", version.ref = "compose" }
+
+
+androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
+
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+jetbrains-compose = { id = "org.jetbrains.compose", version.ref = "compose" }
+jetbrains-compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+jetbrains-kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }

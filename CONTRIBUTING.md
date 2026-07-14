@@ -43,17 +43,17 @@ Parikshan dogfoods itself. To verify that your changes work in a real applicatio
 
 ```bash
 # Desktop (JVM)
-./gradlew :sample:composeApp:e2eDesktopTest
+./gradlew :samples:multiplatform-showcase:composeApp:e2eDesktopTest
 
 # Web (Wasm) - Requires Playwright
 npx playwright install --with-deps chromium
-./gradlew :sample:composeApp:e2eWasmTest
+./gradlew :samples:multiplatform-showcase:composeApp:e2eWasmTest
 
 # Android (Requires a running Emulator/Device)
-./gradlew :sample:composeApp:e2eAndroidTest
+./gradlew :samples:multiplatform-showcase:composeApp:e2eAndroidTest
 
 # iOS (Requires macOS and Simulator)
-./gradlew :sample:composeApp:e2eIosTest
+./gradlew :samples:multiplatform-showcase:composeApp:e2eIosTest
 ```
 *Note: Video recording is disabled by default locally. Add `-Dparikshan.video.enabled=true` to your Gradle command to test the recording pipeline.*
 

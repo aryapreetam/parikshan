@@ -53,7 +53,7 @@ The following system and Gradle properties control the host-side and client-side
 ## 3. Viewing Videos in Reports
 
 Once E2E tests finish, a unified HTML report is generated at:
-`sample/composeApp/build/reports/tests/e2eTest/index.html`
+`samples/multiplatform-showcase/composeApp/build/reports/tests/e2eTest/index.html`
 
 * In the **Tests** tab, a "Video" column will provide a "Watch Video" link next to each test method.
 * In the **Failed tests** tab, an interactive `<video>` player is embedded directly below the failure stack trace for immediate visual debugging.

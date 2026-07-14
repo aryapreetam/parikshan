@@ -37,6 +37,7 @@ internal object IosTargetConfigurer {
       ?: project.discoverIosXcodeProject()?.absolutePath
       ?: "${project.projectDir}/../iosApp/iosApp.xcodeproj"
     val iosXcodeSchemeVal = resolveIosRuntimeProperty("parikshan.ios.xcodeScheme") ?: "iosApp"
+    val iosXcodebuildTimeoutVal = resolveIosRuntimeProperty("parikshan.ios.xcodebuildTimeoutSeconds")?.toLongOrNull() ?: 600L
 
     fun getIosBundleId(): String {
       val prop = resolveIosRuntimeProperty("parikshan.ios.bundleId")
@@ -164,10 +165,10 @@ internal object IosTargetConfigurer {
           redirectOutput(logFile)
         }.start()
 
-        val finished = buildProcess.waitFor(600, java.util.concurrent.TimeUnit.SECONDS)
+        val finished = buildProcess.waitFor(iosXcodebuildTimeoutVal, java.util.concurrent.TimeUnit.SECONDS)
         if (!finished) {
           buildProcess.destroyForcibly()
-          throw GradleException("Parikshan iOS: xcodebuild compilation timed out after 600 seconds.")
+          throw GradleException("Parikshan iOS: xcodebuild compilation timed out after $iosXcodebuildTimeoutVal seconds.")
         }
         val buildResult = buildProcess.exitValue()
 

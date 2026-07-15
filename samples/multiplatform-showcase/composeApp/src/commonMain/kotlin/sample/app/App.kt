@@ -1,5 +1,6 @@
 package sample.app
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -16,8 +17,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.Role
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.input.key.Key.Companion.R
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontLoadingStrategy
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import io.github.aryapreetam.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.Font
 
 // Import playgrounds
 import sample.app.playgrounds.FormPlayground
@@ -61,6 +68,11 @@ fun App() {
 fun SimpleGreetDemo() {
   var name by remember { mutableStateOf("") }
   var greeting by remember { mutableStateOf("") }
+  
+  val fontFamily = FontFamily(
+    Font(Res.font.NotoSansDevanagari, FontWeight.Normal),
+    Font(Res.font.NotoSansDevanagari, FontWeight.Bold)
+  )
 
   Column(
     modifier = Modifier
@@ -69,13 +81,6 @@ fun SimpleGreetDemo() {
       .padding(horizontal = 24.dp),
     horizontalAlignment = Alignment.CenterHorizontally
   ) {
-    Spacer(modifier = Modifier.height(100.dp))
-    Text(
-      text = "Parikshan",
-      fontSize = 56.sp,
-      fontWeight = FontWeight.Bold,
-      color = Color(0xFF19191C)
-    )
     Column(
       modifier = Modifier
         .weight(1f)
@@ -83,11 +88,20 @@ fun SimpleGreetDemo() {
       verticalArrangement = Arrangement.Center,
       horizontalAlignment = Alignment.CenterHorizontally
     ) {
+      Image(
+        painter = painterResource(Res.drawable.parikshan_logo),
+        contentDescription = null,
+        modifier = Modifier
+          .size(100.dp)
+          .testTag("parikshan_image")
+      )
+      Spacer(modifier = Modifier.height(56.dp))
       OutlinedTextField(
         value = name,
         onValueChange = { name = it },
-        label = { Text("Name") },
-        placeholder = { Text("Enter your name") },
+        label = { Text("Name", fontFamily = fontFamily) },
+        placeholder = { Text("Enter your name", fontFamily = fontFamily) },
+        textStyle = LocalTextStyle.current.copy(fontFamily = fontFamily),
         singleLine = true,
         shape = RoundedCornerShape(12.dp),
         modifier = Modifier
@@ -119,7 +133,8 @@ fun SimpleGreetDemo() {
         Text(
           text = "Greet",
           fontSize = 16.sp,
-          fontWeight = FontWeight.Bold
+          fontWeight = FontWeight.Bold,
+          fontFamily = fontFamily
         )
       }
 
@@ -131,6 +146,7 @@ fun SimpleGreetDemo() {
           fontSize = 28.sp,
           fontWeight = FontWeight.Bold,
           color = Color(0xFF19191C),
+          fontFamily = fontFamily,
           modifier = Modifier.testTag("greeting_label")
         )
       }

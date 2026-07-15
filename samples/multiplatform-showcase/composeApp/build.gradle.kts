@@ -18,6 +18,9 @@ kotlin {
     compileSdk = 35
     minSdk = 26
     withHostTest {}
+    androidResources {
+      enable = true
+    }
   }
   jvm()
   wasmJs {
@@ -45,6 +48,7 @@ kotlin {
       implementation(compose.components.resources)
       @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
       implementation(compose.materialIconsExtended)
+      implementation(compose.components.resources)
     }
 
     commonTest.dependencies {

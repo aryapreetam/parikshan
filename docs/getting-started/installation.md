@@ -8,7 +8,7 @@ Add the plugin to your root `settings.gradle.kts` or `build.gradle.kts`:
 
 ```kotlin
 plugins {
-  id("io.github.aryapreetam.parikshan") version "0.0.3"
+  id("io.github.aryapreetam.parikshan") version "0.0.5"
 }
 ```
 

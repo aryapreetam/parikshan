@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/demo.png" width="100%" alt="Parikshan E2E Execution Demo"/>
+  <img src="docs/assets/demo_short.gif" width="100%" alt="Parikshan E2E Execution Demo"/>
 </p>
 
 ### Features
@@ -36,7 +36,7 @@ In your **shared library** (e.g., `:composeApp`) `build.gradle.kts`:
 
 ```kotlin
 plugins {
-  id("io.github.aryapreetam.parikshan") version "0.0.3"
+  id("io.github.aryapreetam.parikshan") version "0.0.5"
 }
 ```
 

@@ -15,6 +15,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.Role
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 
 // Import playgrounds
 import sample.app.playgrounds.FormPlayground
@@ -41,9 +44,104 @@ enum class SampleScreen {
   AccessibilityPlayground
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+val isDemo = true // this will be manually changed by the developer when recording demo
+
 @Composable
 fun App() {
+  MaterialTheme {
+    if (isDemo) {
+      SimpleGreetDemo()
+    } else {
+      MultiplatformShowcaseApp()
+    }
+  }
+}
+
+@Composable
+fun SimpleGreetDemo() {
+  var name by remember { mutableStateOf("") }
+  var greeting by remember { mutableStateOf("") }
+
+  Column(
+    modifier = Modifier
+      .fillMaxSize()
+      .background(Color(0xFFFAFAFC))
+      .padding(horizontal = 24.dp),
+    horizontalAlignment = Alignment.CenterHorizontally
+  ) {
+    Spacer(modifier = Modifier.height(100.dp))
+    Text(
+      text = "Parikshan",
+      fontSize = 56.sp,
+      fontWeight = FontWeight.Bold,
+      color = Color(0xFF19191C)
+    )
+    Column(
+      modifier = Modifier
+        .weight(1f)
+        .width(320.dp),
+      verticalArrangement = Arrangement.Center,
+      horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+      OutlinedTextField(
+        value = name,
+        onValueChange = { name = it },
+        label = { Text("Name") },
+        placeholder = { Text("Enter your name") },
+        singleLine = true,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier
+          .fillMaxWidth()
+          .testTag("name_input"),
+        colors = OutlinedTextFieldDefaults.colors(
+          focusedBorderColor = Color(0xFF7F52FF),
+          focusedLabelColor = Color(0xFF7F52FF),
+          cursorColor = Color(0xFF7F52FF)
+        )
+      )
+
+      Spacer(modifier = Modifier.height(16.dp))
+
+      Button(
+        onClick = {
+          greeting = if (name.isNotBlank()) "Hello, $name!" else ""
+        },
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.buttonColors(
+          containerColor = Color(0xFF7F52FF),
+          contentColor = Color.White
+        ),
+        modifier = Modifier
+          .fillMaxWidth()
+          .height(50.dp)
+          .testTag("greet_button")
+      ) {
+        Text(
+          text = "Greet",
+          fontSize = 16.sp,
+          fontWeight = FontWeight.Bold
+        )
+      }
+
+      Spacer(modifier = Modifier.height(32.dp))
+
+      if (greeting.isNotEmpty()) {
+        Text(
+          text = greeting,
+          fontSize = 28.sp,
+          fontWeight = FontWeight.Bold,
+          color = Color(0xFF19191C),
+          modifier = Modifier.testTag("greeting_label")
+        )
+      }
+    }
+    Spacer(modifier = Modifier.height(100.dp))
+  }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MultiplatformShowcaseApp() {
   val activeScreen = remember { mutableStateOf(SampleScreen.TaskList) }
 
   PlatformBackHandler(enabled = activeScreen.value != SampleScreen.TaskList) {

@@ -1,7 +1,7 @@
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
-  id("io.github.aryapreetam.parikshan") version "0.0.3"
+  id("io.github.aryapreetam.parikshan") version "0.0.5"
 }
 
 android {

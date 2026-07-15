@@ -244,8 +244,14 @@ internal class IosRemoteDriver private constructor(
         try {
           // send() is already token-aware, ensuring secure handshake
           val resp = driver.send(Command.Ping(id = "ping-connect"))
-          if (resp is Response.Ok) return driver
+          if (resp is Response.Ok) {
+            println("Parikshan: Connected to iOS server at $baseUrl successfully after ${attempt + 1} attempts.")
+            return driver
+          }
         } catch (_: Throwable) {
+          if ((attempt + 1) % 15 == 0) {
+            println("Parikshan: Still waiting for iOS server to start at $baseUrl (attempt ${attempt + 1}/$retries)...")
+          }
           if (attempt < retries - 1) {
             delay(1000)
           }

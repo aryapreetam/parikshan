@@ -176,14 +176,20 @@ internal class AndroidRemoteDriver private constructor(
       val baseUrl = "http://${config.host}:${config.port}/"
       val driver = AndroidRemoteDriver(baseUrl)
 
-      val retries = 90 // Android instrumentation can take a long time to boot
+      val retries = 300 // Android instrumentation can take a long time to boot
 
       // Wait for the Android server to become available
       repeat(retries) { attempt ->
         try {
           val resp = driver.send(Command.Ping(id = "ping-connect"))
-          if (resp is Response.Ok) return driver
+          if (resp is Response.Ok) {
+            println("Parikshan: Connected to Android server at $baseUrl successfully after ${attempt + 1} attempts.")
+            return driver
+          }
         } catch (_: Throwable) {
+          if ((attempt + 1) % 15 == 0) {
+            println("Parikshan: Still waiting for Android server to start at $baseUrl (attempt ${attempt + 1}/$retries)...")
+          }
           if (attempt < retries - 1) {
             delay(config.connectRetryDelayMs)
           }

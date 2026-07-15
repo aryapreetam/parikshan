@@ -1,6 +1,10 @@
 package io.github.aryapreetam.parikshan
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import io.github.aryapreetam.parikshan.client.ParikshanVideoConfig
 import io.github.aryapreetam.parikshan.client.ParikshanVideoSessionManager
 import kotlin.math.max
@@ -18,37 +22,37 @@ actual fun e2eTest(
             ?.map { it.trim().lowercase() }
             ?.filter { it.isNotEmpty() }
             ?: listOf("desktop", "wasm")
-          val drivers = activeTargets.map { t ->
-            when (t) {
-              "desktop" -> DesktopDriver(
-                host = System.getProperty("parikshan.desktop.host") ?: System.getProperty("parikshan.host") ?: "127.0.0.1",
-                port = System.getProperty("parikshan.desktop.port")?.toIntOrNull() ?: System.getProperty("parikshan.port")?.toIntOrNull() ?: 9877
-              )
-              "wasm", "web" -> WasmDriver.connect()
-              "android" -> {
-                val oldHost = System.getProperty("parikshan.host")
-                val oldPort = System.getProperty("parikshan.port")
-                val androidHost = System.getProperty("parikshan.android.host") ?: oldHost
-                val androidPort = System.getProperty("parikshan.android.port") ?: oldPort
-                if (androidHost != null) System.setProperty("parikshan.host", androidHost)
-                if (androidPort != null) System.setProperty("parikshan.port", androidPort)
-                try {
-                  AndroidRemoteDriver.connect()
-                } finally {
-                  if (oldHost != null) System.setProperty("parikshan.host", oldHost) else System.clearProperty("parikshan.host")
-                  if (oldPort != null) System.setProperty("parikshan.port", oldPort) else System.clearProperty("parikshan.port")
+          val drivers = withContext(Dispatchers.IO) {
+            activeTargets.map { t ->
+              async {
+                when (t) {
+                  "desktop" -> DesktopDriver(
+                    host = System.getProperty("parikshan.desktop.host") ?: System.getProperty("parikshan.host") ?: "127.0.0.1",
+                    port = System.getProperty("parikshan.desktop.port")?.toIntOrNull() ?: System.getProperty("parikshan.port")?.toIntOrNull() ?: 9877
+                  )
+                  "wasm", "web" -> WasmDriver.connect()
+                  "android" -> {
+                    val androidHost = System.getProperty("parikshan.android.host") ?: System.getProperty("parikshan.host") ?: "127.0.0.1"
+                    val androidPort = System.getProperty("parikshan.android.port")?.toIntOrNull() ?: System.getProperty("parikshan.port")?.toIntOrNull() ?: 9879
+                    AndroidRemoteDriver.connect(
+                      io.github.aryapreetam.parikshan.client.ParikshanClientConfig(
+                        host = androidHost,
+                        port = androidPort
+                      )
+                    )
+                  }
+                  "ios" -> {
+                    IosRemoteDriver.connect(
+                      IosDriverConfig(
+                        host = System.getProperty("parikshan.ios.host") ?: System.getProperty("parikshan.host") ?: "127.0.0.1",
+                        port = System.getProperty("parikshan.ios.port")?.toIntOrNull() ?: System.getProperty("parikshan.port")?.toIntOrNull() ?: 9878
+                      )
+                    )
+                  }
+                  else -> error("Unsupported target in sync mode: $t")
                 }
               }
-              "ios" -> {
-                IosRemoteDriver.connect(
-                  IosDriverConfig(
-                    host = System.getProperty("parikshan.ios.host") ?: System.getProperty("parikshan.host") ?: "127.0.0.1",
-                    port = System.getProperty("parikshan.ios.port")?.toIntOrNull() ?: System.getProperty("parikshan.port")?.toIntOrNull() ?: 9878
-                  )
-                )
-              }
-              else -> error("Unsupported target in sync mode: $t")
-            }
+            }.awaitAll()
           }
           BroadcastDriver(drivers)
         }

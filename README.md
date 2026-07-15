@@ -44,13 +44,22 @@ plugins {
 Create a test in `src/commonTest/kotlin`:
 
 ```kotlin
-class MyE2ETest {
+package sample.app
+
+import io.github.aryapreetam.parikshan.e2eTest
+import kotlin.test.Test
+
+class SimpleGreetTest {
   @Test
-  fun testLoginFlow() = e2eTest {
-    inputText("username_field", "admin")
-    click("login_button")
-    assertVisible("dashboard_screen")
-    screenshot("login-success")
+  fun testSimpleGreeting() = e2eTest {
+    // Enter name
+    input("name_input", "परिक्षण")
+    
+    // Click Greet button
+    click("greet_button")
+    
+    // Check if greeting is displayed
+    assertVisible("Hello, परिक्षण!")
   }
 }
 ```

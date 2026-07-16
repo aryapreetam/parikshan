@@ -10,9 +10,9 @@ kotlin = "2.4.0"
 spotless = "7.2.1"
 
 # Android
-agp = "9.2.1"
+agp = "9.0.1"
 android-compileSdk = "37"
-android-minSdk = "23"
+android-minSdk = "24"
 android-targetSdk = "37"
 activityCompose = "1.13.0"
 

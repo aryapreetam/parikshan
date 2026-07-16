@@ -79,9 +79,16 @@ class ParikshanPlugin : Plugin<Project> {
     val isE2ERequested =
       project.gradle.startParameter.taskNames.any { it.contains("e2e", ignoreCase = true) } ||
         project.hasProperty("parikshan.e2e.active")
+    val taskNames = project.gradle.startParameter.taskNames
+    val isWasmRequested = taskNames.isEmpty() || taskNames.any {
+      it.contains("wasm", ignoreCase = true) || it.endsWith("e2eTest") || it.endsWith("e2e") || !it.contains("e2e", ignoreCase = true)
+    }
+    val isIosRequested = taskNames.isEmpty() || taskNames.any {
+      it.contains("ios", ignoreCase = true) || it.endsWith("e2eTest") || it.endsWith("e2e") || !it.contains("e2e", ignoreCase = true)
+    }
     var prepareIosBootSourceTask: TaskProvider<Task>? = null
 
-    if (isE2ERequested) {
+    if (isE2ERequested && isIosRequested) {
       project.pluginManager.withPlugin("org.jetbrains.kotlin.multiplatform") {
         prepareIosBootSourceTask =
           project.registerParikshanIosBootSource(
@@ -142,7 +149,7 @@ class ParikshanPlugin : Plugin<Project> {
             )
 
             // Register wasm boot source instrumentation on the resolved project
-            if (isE2ERequested) {
+            if (isE2ERequested && isWasmRequested) {
               project.registerParikshanWasmBootSource(
                 logger = gradleLogger,
                 wasmAppProject = wasmAppProject
@@ -318,7 +325,7 @@ class ParikshanPlugin : Plugin<Project> {
                 add(prepareWasmAssetsTask)
               }
               val jvmTargets = project.findJvmTargets().map { it.lowercase() }
-              if (jvmTargets.any { activeTargets.contains(it) }) {
+              if (activeTargets.contains("desktop") || activeTargets.contains("jvm") || jvmTargets.any { activeTargets.contains(it) }) {
                 val jarTaskName = extension.appJarTaskName.get()
                 val desktopAppProject = project.resolveDesktopAppProject(
                     userConfiguredPath = extension.desktopAppProjectPath.orNull
@@ -380,6 +387,14 @@ class ParikshanPlugin : Plugin<Project> {
         this.title.set(extension.desktopWindowTitle)
         buildDir.set(project.layout.buildDirectory)
         projectRootDir.set(project.rootDir.absolutePath)
+        val isCc = try {
+          val sp = project.gradle.startParameter
+          val ccProp = sp.javaClass.methods.firstOrNull { it.name == "isConfigurationCache" || it.name == "isConfigurationCacheRequested" }
+          ccProp?.invoke(sp) as? Boolean ?: false
+        } catch (e: Exception) {
+          false
+        }
+        this.configurationCacheEnabled.set(isCc)
         this@register.androidApplicationId.set(targetAndroidAppIdProvider)
         this@register.iosPort.set(iosPort)
         this@register.iosBundleId.set(project.provider { if (hasKmp) getIosBundleId() else "" })

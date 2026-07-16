@@ -25,24 +25,28 @@ internal object AndroidTargetConfigurer {
     
     val mergedManifestDirProvider = AndroidComponentsHelper.getMergedManifestDirectory(project)
 
-    val androidApplicationIdProvider = project.provider {
-      val directId = AndroidRecorder.resolveAndroidApplicationId(project)
-      if (directId != null) return@provider directId
-
-      val manifestDir = mergedManifestDirProvider.orNull?.asFile
-      if (manifestDir != null) {
-        val manifestFile = File(manifestDir, "AndroidManifest.xml")
-        val parsed = parseAndroidManifest(manifestFile, project.logger, null)
-        parsed.packageName
-      } else {
-        null
-      }
-    }
-
     val overrideLauncher = extension.androidLaunchActivityClassName.orNull
       ?: project.providers.gradleProperty("parikshan.androidLaunchActivityClassName")
            .orElse(project.providers.systemProperty("parikshan.androidLaunchActivityClassName"))
            .orNull
+
+    val androidApplicationIdProvider = project.objects.property(String::class.java)
+
+    project.gradle.projectsEvaluated {
+      val directId = AndroidRecorder.resolveAndroidApplicationId(project)
+      if (directId != null) {
+        androidApplicationIdProvider.set(directId)
+      } else {
+        val manifestDir = mergedManifestDirProvider.orNull?.asFile
+        if (manifestDir != null) {
+          val manifestFile = File(manifestDir, "AndroidManifest.xml")
+          val parsed = parseAndroidManifest(manifestFile, null, overrideLauncher)
+          if (parsed.packageName != null) {
+            androidApplicationIdProvider.set(parsed.packageName)
+          }
+        }
+      }
+    }
 
     fun resolveAndroidRuntimeProperty(name: String): String? =
       project.providers.gradleProperty(name).orElse(project.providers.systemProperty(name)).orNull
@@ -52,6 +56,8 @@ internal object AndroidTargetConfigurer {
       ?: resolveAndroidRuntimeProperty("parikshan.android.serial")
       ?: System.getenv("PARIKSHAN_ANDROID_SERIAL")
     val sessionTokenVal = sessionToken
+
+    val portProvider = project.providers.gradleProperty("parikshan.port").orElse("9879")
 
     val androidPreflightTask = project.tasks.register("parikshanAndroidPreflight") {
       group = "verification"
@@ -71,11 +77,13 @@ internal object AndroidTargetConfigurer {
 
     project.tasks.register("stopParikshanAndroidApp") {
       group = "verification"
+      val appIdProvider = androidApplicationIdProvider
+      val portValProvider = portProvider
       doLast {
         val serial = AndroidRecorder.resolveDeviceSerial(logger, androidProjectDirVal, androidSerialVal)
-        val portVal = project.providers.gradleProperty("parikshan.port").orNull ?: "9879"
+        val portVal = portValProvider.get()
         ProcessBuilder("adb", "-s", serial, "forward", "--remove", "tcp:$portVal").start().waitFor()
-        val appId = androidApplicationIdProvider.orNull
+        val appId = appIdProvider.orNull
           ?: throw GradleException("Parikshan Android: Could not resolve the Android application ID.")
         ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", appId).start().waitFor()
       }
@@ -87,6 +95,9 @@ internal object AndroidTargetConfigurer {
       val installTask = if (appProject == project) "installDebug" else "${appProject.path}:installDebug"
       val testInstallTask = if (appProject == project) "installDebugAndroidTest" else "${appProject.path}:installDebugAndroidTest"
 
+      val appIdProvider = androidApplicationIdProvider
+      val portValProvider = portProvider
+
       dependsOn(androidPreflightTask, installTask, testInstallTask)
       doLast {
         val serial = AndroidRecorder.resolveDeviceSerial(logger, androidProjectDirVal, androidSerialVal)
@@ -97,7 +108,7 @@ internal object AndroidTargetConfigurer {
           parseAndroidManifest(manifestFile, logger, overrideLauncher)
         }
 
-        val appId = parsed?.packageName ?: androidApplicationIdProvider.orNull
+        val appId = parsed?.packageName ?: appIdProvider.orNull
           ?: throw GradleException("Parikshan Android: Could not resolve the Android application ID.")
         val resolvedLauncher = parsed?.launcherActivity
 
@@ -106,7 +117,7 @@ internal object AndroidTargetConfigurer {
           logger.lifecycle("Parikshan Android: Resolved launcherActivity: $resolvedLauncher")
         }
 
-        val portVal = project.providers.gradleProperty("parikshan.port").orNull ?: "9879"
+        val portVal = portValProvider.get()
         ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", appId).start().waitFor()
         ProcessBuilder("adb", "-s", serial, "forward", "tcp:$portVal", "tcp:$portVal").start().waitFor()
         val testPackage = "$appId.test"
@@ -157,9 +168,9 @@ internal object AndroidTargetConfigurer {
     }
   }
 
-  internal fun parseAndroidManifest(manifestFile: File, logger: Logger, overrideActivity: String?): ParsedManifest {
+  internal fun parseAndroidManifest(manifestFile: File, logger: Logger?, overrideActivity: String?): ParsedManifest {
     if (!manifestFile.exists()) {
-      logger.debug("Parikshan: Manifest file does not exist at ${manifestFile.absolutePath}")
+      logger?.debug("Parikshan: Manifest file does not exist at ${manifestFile.absolutePath}")
       return ParsedManifest(packageName = null, launcherActivity = overrideActivity)
     }
 
@@ -256,7 +267,7 @@ internal object AndroidTargetConfigurer {
         launcherActivities.isEmpty() -> null
         launcherActivities.size == 1 -> launcherActivities.first()
         else -> {
-          logger.lifecycle("Parikshan WARNING: Multiple launcher activities found in AndroidManifest.xml: $launcherActivities. Falling back to first one.")
+          logger?.lifecycle("Parikshan WARNING: Multiple launcher activities found in AndroidManifest.xml: $launcherActivities. Falling back to first one.")
           launcherActivities.first()
         }
       }
@@ -275,7 +286,7 @@ internal object AndroidTargetConfigurer {
 
       return ParsedManifest(packageName = packageName, launcherActivity = fullyQualifiedLauncher)
     } catch (e: Exception) {
-      logger.warn("Parikshan: Failed to parse merged AndroidManifest.xml", e)
+      logger?.warn("Parikshan: Failed to parse merged AndroidManifest.xml", e)
       return ParsedManifest(packageName = null, launcherActivity = overrideActivity)
     }
   }

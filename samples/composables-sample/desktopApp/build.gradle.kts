@@ -4,7 +4,6 @@ plugins {
   alias(libs.plugins.jetbrains.kotlin.multiplatform)
   alias(libs.plugins.jetbrains.compose)
   alias(libs.plugins.jetbrains.compose.compiler)
-  id("io.github.aryapreetam.parikshan") version "0.0.5"
 }
 
 kotlin {

@@ -80,7 +80,6 @@ class ParikshanPlugin : Plugin<Project> {
       project.gradle.startParameter.taskNames.any { it.contains("e2e", ignoreCase = true) } ||
         project.hasProperty("parikshan.e2e.active")
     var prepareIosBootSourceTask: TaskProvider<Task>? = null
-    var prepareWasmBootSourceTask: TaskProvider<Task>? = null
 
     if (isE2ERequested) {
       project.pluginManager.withPlugin("org.jetbrains.kotlin.multiplatform") {
@@ -90,10 +89,8 @@ class ParikshanPlugin : Plugin<Project> {
             logger = iosLogger,
             sessionToken = sessionToken
           )
-        prepareWasmBootSourceTask =
-          project.registerParikshanWasmBootSource(
-            logger = iosLogger
-          )
+        // Wasm boot source registration is deferred to afterEvaluate/projectsEvaluated
+        // so the resolved wasmAppProject is known before instrumenting its sources.
       }
     }
 
@@ -111,34 +108,94 @@ class ParikshanPlugin : Plugin<Project> {
       val hostTestTask = project.tasks.named<Test>(hostTestTaskName)
 
       val wasmOutputDirProvider = wasmOutputDir
-      val wasmDevDirProvider = wasmDevDir
-      val wasmProdDirProvider = wasmProdDir
-      val wasmResourcesDirProvider = wasmResourcesDir
-      val buildDirProvider = project.layout.buildDirectory
       val gradleLogger = project.logger
 
       if (hasKmp) {
-        val wasmDistributionTaskName = project.resolveWasmDistributionTaskName(extension.wasmDistributionTaskName.orNull)
-        prepareWasmAssetsTask.configure {
-          dependsOn(wasmDistributionTaskName)
-          dependsOn("wasmJsProcessResources")
-          doLast {
-            val output = wasmOutputDirProvider.get().asFile
-            output.deleteRecursively()
-            output.mkdirs()
-            val distDir = if (wasmDevDirProvider.get().asFile.exists()) wasmDevDirProvider.get().asFile else wasmProdDirProvider.get().asFile
-            if (distDir.exists()) distDir.copyRecursively(output, overwrite = true)
-            val buildDir = buildDirProvider.get().asFile
-            listOf("processedResources/wasmJs/main", "kotlin-multiplatform-resources/assemble-hierarchically/wasmJsResolveSelfResources", "kotlin-multiplatform-resources/aggregated-resources/wasmJs")
-              .map { File(buildDir, it) }.filter { it.exists() }.forEach { resDir ->
-                gradleLogger.lifecycle("Parikshan Wasm: Copying resources from ${resDir.absolutePath}")
-                resDir.copyRecursively(output, overwrite = true)
-              }
-            val indexHtml = File(output, "index.html")
-            if (!indexHtml.exists()) {
-              val srcIndex = File(wasmResourcesDirProvider.get().asFile, "index.html")
-              if (srcIndex.exists()) srcIndex.copyTo(indexHtml)
+        // Always register wasm tasks so e2eWasmTest appears in the task graph regardless
+        // of whether a sibling wasm app project exists.
+        WasmTargetConfigurer.configure(
+          project = project,
+          extension = extension,
+          sessionToken = sessionToken,
+          isBackgroundRequested = isBackgroundRequested,
+          isVideoRequested = isVideoRequested,
+          e2eTestClasses = e2eTestClasses,
+          hostTestTask = hostTestTask,
+          wasmOutputDir = wasmOutputDir.get().asFile,
+          wasmPortFile = wasmPortFile.get().asFile,
+          prepareWasmAssetsTask = prepareWasmAssetsTask,
+          installPlaywrightTask = installPlaywrightTask
+        )
+
+        // Defer wasm app project resolution to after ALL projects are evaluated.
+        // Sibling projects (e.g., :app:webApp) are not yet configured during afterEvaluate
+        // of :app:shared, so task name checks would incorrectly return null.
+        project.gradle.projectsEvaluated {
+          val wasmAppProject = project.resolveWasmAppProject(
+            userConfiguredPath = extension.wasmAppProjectPath.orNull
+          )
+
+          if (wasmAppProject != null) {
+            gradleLogger.lifecycle(
+              "Parikshan: Resolved Wasm app project: '${wasmAppProject.path}'" +
+              if (wasmAppProject == project) " (current project)" else " (cross-project)"
+            )
+
+            // Register wasm boot source instrumentation on the resolved project
+            if (isE2ERequested) {
+              project.registerParikshanWasmBootSource(
+                logger = gradleLogger,
+                wasmAppProject = wasmAppProject
+              )
+              val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.1"
+              wasmAppProject.addParikshanDependency("commonMainImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client:$pluginVersion")
             }
+
+            val wasmDistributionTaskName = wasmAppProject.resolveWasmDistributionTaskName(
+              extension.wasmDistributionTaskName.orNull
+            )
+            val distTaskPath = if (wasmAppProject == project) wasmDistributionTaskName
+                               else "${wasmAppProject.path}:${wasmDistributionTaskName}"
+            val processResPath = if (wasmAppProject == project) "wasmJsProcessResources"
+                                 else "${wasmAppProject.path}:wasmJsProcessResources"
+
+            val wasmAppBuildDir = wasmAppProject.layout.buildDirectory
+            val wasmDevDirVal = wasmAppBuildDir.dir("kotlin-webpack/wasmJs/developmentExecutable")
+            val wasmProdDirVal = wasmAppBuildDir.dir("dist/wasmJs/productionExecutable")
+            val wasmResourcesDirVal = wasmAppBuildDir.dir("processedResources/wasmJs/main")
+
+            prepareWasmAssetsTask.configure {
+              dependsOn(distTaskPath)
+              dependsOn(processResPath)
+              doLast {
+                val output = wasmOutputDirProvider.get().asFile
+                output.deleteRecursively()
+                output.mkdirs()
+                val distDir = if (wasmDevDirVal.get().asFile.exists()) wasmDevDirVal.get().asFile
+                              else wasmProdDirVal.get().asFile
+                if (distDir.exists()) distDir.copyRecursively(output, overwrite = true)
+                val wasmAppBuildDirFile = wasmAppBuildDir.get().asFile
+                listOf(
+                  "processedResources/wasmJs/main",
+                  "kotlin-multiplatform-resources/assemble-hierarchically/wasmJsResolveSelfResources",
+                  "kotlin-multiplatform-resources/aggregated-resources/wasmJs"
+                ).map { File(wasmAppBuildDirFile, it) }.filter { it.exists() }.forEach { resDir ->
+                  gradleLogger.lifecycle("Parikshan Wasm: Copying resources from ${resDir.absolutePath}")
+                  resDir.copyRecursively(output, overwrite = true)
+                }
+                val indexHtml = File(output, "index.html")
+                if (!indexHtml.exists()) {
+                  val srcIndex = File(wasmResourcesDirVal.get().asFile, "index.html")
+                  if (srcIndex.exists()) srcIndex.copyTo(indexHtml)
+                }
+              }
+            }
+          } else {
+            gradleLogger.lifecycle(
+              "Parikshan: No Wasm app project found (no wasmJsBrowserDevelopmentWebpack task detected). " +
+              "e2eWasmTest will fail at execution time. " +
+              "To configure manually: parikshan { wasmAppProjectPath = \":your:webApp\" }"
+            )
           }
         }
 
@@ -163,20 +220,6 @@ class ParikshanPlugin : Plugin<Project> {
             )
           }
         }
-
-        WasmTargetConfigurer.configure(
-          project = project,
-          extension = extension,
-          sessionToken = sessionToken,
-          isBackgroundRequested = isBackgroundRequested,
-          isVideoRequested = isVideoRequested,
-          e2eTestClasses = e2eTestClasses,
-          hostTestTask = hostTestTask,
-          wasmOutputDir = wasmOutputDir.get().asFile,
-          wasmPortFile = wasmPortFile.get().asFile,
-          prepareWasmAssetsTask = prepareWasmAssetsTask,
-          installPlaywrightTask = installPlaywrightTask
-        )
 
         IosTargetConfigurer.configure(
           project = project,

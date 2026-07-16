@@ -18,6 +18,10 @@ abstract class ParikshanExtension @Inject constructor(
   val desktopAppProjectPath: Property<String> = objects.property(String::class.java)
 
   @get:Input
+  @get:Optional
+  val wasmAppProjectPath: Property<String> = objects.property(String::class.java)
+  
+  @get:Input
   val desktopTestTaskName: Property<String> = objects.property(String::class.java)
 
   @get:Input

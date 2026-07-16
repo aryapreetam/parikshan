@@ -185,8 +185,10 @@ internal class WasmDriver private constructor(
       is Command.Click -> {
         val node = readNodeBySelector(selector)
           ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
-        invokeBridgeClick(selector)
-        performPhysicalClick(node.bounds.centerX, node.bounds.centerY)
+        val bridgeClicked = invokeBridgeClick(selector)
+        if (!bridgeClicked) {
+          performPhysicalClick(node.bounds.centerX, node.bounds.centerY)
+        }
         delay(200)
         Response.Ok(command.id)
       }
@@ -369,36 +371,37 @@ internal class WasmDriver private constructor(
   }
 
   private suspend fun performPhysicalClick(x: Double, y: Double) {
-    val clickedOnCanvas = runCatching {
-      page.evaluate(
-        """([x, y]) => {
-          function findCanvas(root) {
-            if (!root) return null;
-            if (root.tagName === 'CANVAS') return root;
-            const children = root.children || [];
-            for (let i = 0; i < children.length; i++) {
-              const found = findCanvas(children[i]);
-              if (found) return found;
-            }
-            if (root.shadowRoot) return findCanvas(root.shadowRoot);
-            return null;
-          }
-          const canvas = findCanvas(document.body);
-          if (!canvas) return false;
-          const opts = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0 };
-          canvas.dispatchEvent(new PointerEvent('pointerdown', opts));
-          canvas.dispatchEvent(new PointerEvent('pointerup', opts));
-          canvas.dispatchEvent(new MouseEvent('click', opts));
-          return true;
-        }""",
-        listOf(x, y)
-      ) as? Boolean ?: false
+    val nativeClicked = runCatching {
+      page.mouse().click(x, y)
+      true
     }.getOrDefault(false)
-    if (!clickedOnCanvas) {
-      page.mouse().move(x, y)
-      page.mouse().down()
-      delay(50)
-      page.mouse().up()
+
+    if (!nativeClicked) {
+      runCatching {
+        page.evaluate(
+          """([x, y]) => {
+            function findCanvas(root) {
+              if (!root) return null;
+              if (root.tagName === 'CANVAS') return root;
+              const children = root.children || [];
+              for (let i = 0; i < children.length; i++) {
+                const found = findCanvas(children[i]);
+                if (found) return found;
+              }
+              if (root.shadowRoot) return findCanvas(root.shadowRoot);
+              return null;
+            }
+            const canvas = findCanvas(document.body);
+            if (!canvas) return false;
+            const opts = { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 0 };
+            canvas.dispatchEvent(new PointerEvent('pointerdown', opts));
+            canvas.dispatchEvent(new PointerEvent('pointerup', opts));
+            canvas.dispatchEvent(new MouseEvent('click', opts));
+            return true;
+          }""",
+          listOf(x, y)
+        )
+      }
     }
   }
 

@@ -235,6 +235,52 @@ internal fun Project.resolveDesktopAppProject(
     return null
 }
 
+internal fun Project.resolveWasmAppProject(
+    userConfiguredPath: String?
+): Project? {
+    val markerTaskName = "wasmJsBrowserDevelopmentWebpack"
+
+    // Step 1: Explicit user configuration (highest priority)
+    if (!userConfiguredPath.isNullOrEmpty()) {
+        val configuredProject = rootProject.findProject(userConfiguredPath)
+        if (configuredProject != null && configuredProject.tasks.names.contains(markerTaskName)) {
+            return configuredProject
+        }
+        return configuredProject
+    }
+
+    // Step 2: Check current project (e.g., single-module where wasmJs is here)
+    if (this.tasks.names.contains(markerTaskName)) {
+        return this
+    }
+
+    // Step 3: Check parent sibling (e.g., :app:shared → :app:webApp)
+    val parentPath = this.path.substringBeforeLast(":")
+    if (parentPath.isNotEmpty()) {
+        val possibleSiblings = listOf(
+            "${parentPath}:webApp",
+            "${parentPath}:web"
+        )
+        for (siblingPath in possibleSiblings) {
+            val sibling = rootProject.findProject(siblingPath)
+            if (sibling != null && sibling.tasks.names.contains(markerTaskName)) {
+                return sibling
+            }
+        }
+    }
+
+    // Step 4: Check root level (e.g., :webApp at root)
+    val rootLevelApps = listOf(":webApp", ":web")
+    for (appPath in rootLevelApps) {
+        val app = rootProject.findProject(appPath)
+        if (app != null && app.tasks.names.contains(markerTaskName)) {
+            return app
+        }
+    }
+
+    return null
+}
+
 internal fun Project.discoverE2eTestClasses(): List<String> {
   val dirsToCheck = mutableListOf<File>()
   val hasKmp = pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform")
@@ -513,7 +559,12 @@ internal fun Project.findJvmTargets(): List<String> {
 
 internal fun Project.addParikshanDependency(config: String, path: String, maven: String) {
   val dep = rootProject.findProject(path)?.let { dependencies.project(mapOf("path" to it.path)) } ?: maven
-  val configuration = configurations.findByName(config) ?: return
+  val configuration = configurations.findByName(config)
+  if (configuration == null) {
+    logger.lifecycle("Parikshan: Configuration '$config' NOT found in project '${this.path}'")
+    return
+  }
+  logger.lifecycle("Parikshan: Adding dependency to project '${this.path}': configuration='$config', dependency='$dep'")
   dependencies.add(config, dep)
 }
 

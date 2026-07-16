@@ -35,6 +35,26 @@ fun ParikshanComposeViewport(viewportContainer: HTMLElement, content: @Composabl
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
+@Suppress("FunctionName")
+fun ParikshanComposeViewport(viewportContainerId: String, content: @Composable () -> Unit) {
+    ComposeViewport(viewportContainerId) {
+        Box(modifier = Modifier.fillMaxSize().then(ParikshanSemanticsGrabberElement)) {
+            content()
+        }
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Suppress("FunctionName")
+fun ParikshanComposeViewport(content: @Composable () -> Unit) {
+    ComposeViewport {
+        Box(modifier = Modifier.fillMaxSize().then(ParikshanSemanticsGrabberElement)) {
+            content()
+        }
+    }
+}
+
 private data object ParikshanSemanticsGrabberElement : ModifierNodeElement<ParikshanSemanticsGrabberNode>() {
     override fun create() = ParikshanSemanticsGrabberNode()
     override fun update(node: ParikshanSemanticsGrabberNode) {}

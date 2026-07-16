@@ -83,6 +83,19 @@ When you run the unified `e2eTest` task, individual target test results are aggr
 build/reports/e2e/index.html
 ```
 
+At the end of test run, you'll get:
+```
+========================================
+      Parikshan E2E Test Results        
+========================================
+[IOS] SUCCESS - All 43 tests passed. (8m 56s)
+========================================
+
+
+> Task :samples:multiplatform-showcase:composeApp:e2eTestReport
+Parikshan: Unified E2E HTML Report generated at file:///Users/preetam/workspace/parikshan/samples/multiplatform-showcase/composeApp/build/reports/tests/e2eTest/index.html
+```
+
 Open this file in a browser to inspect the consolidated pass/fail statuses, stack traces, and failure screenshots across all targets.
 
 ---

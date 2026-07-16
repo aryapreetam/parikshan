@@ -10,7 +10,7 @@ class NavigationIntegrationTest {
 
   @Test
   fun testNestedNavigationAndStatePreservation() = e2eTest {
-    relaunchApp()
+    
     navigateToSection("nav_navigation_playground")
     assertVisible("navigation_playground_screen")
 
@@ -39,7 +39,6 @@ class NavigationIntegrationTest {
 
   @Test
   fun testBackNavigationInterceptionFlow() = e2eTest {
-    relaunchApp()
     navigateToSection("nav_navigation_playground")
     assertVisible("navigation_playground_screen")
 

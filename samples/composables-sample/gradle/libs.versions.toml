@@ -1,7 +1,7 @@
 [versions]
 # Compose
 compose = "1.11.1"
-composablesUi = "0.1.0"
+composablesUi = "0.2.0"
 iconsLucide = "1.0.0"
 uriPainter = "1.0.4"
 
@@ -21,6 +21,7 @@ activityCompose = "1.13.0"
 composables-icons-lucide = { group = "com.composables", name = "icons-lucide", version.ref = "iconsLucide" }
 composables-uri-painter = { group = "com.composables", name = "compose-uri-painter", version.ref = "uriPainter" }
 composables-ui = { group = "com.composables", name = "ui", version.ref = "composablesUi" }
+composables-unstyled = { group = "com.composables", name = "composeunstyled-primitives", version = "2.8.2" }
 compose-ui = { group = "org.jetbrains.compose.ui", name = "ui", version.ref = "compose" }
 compose-ui-tooling = { group = "org.jetbrains.compose.ui", name = "ui-tooling", version.ref = "compose" }
 compose-ui-tooling-preview = { group = "org.jetbrains.compose.ui", name = "ui-tooling-preview", version.ref = "compose" }

@@ -56,7 +56,7 @@ fun OverlayPlayground() {
         onDismissRequest = { dropdownExpanded = false },
         modifier = Modifier.testTag("dropdown_menu")
       ) {
-        listOf("Red", "Green", "Blue", "Yellow", "Cyan", "Magenta", "Black", "White", "Gray", "Orange", "Purple", "Brown").forEach { option ->
+        listOf("Red", "Green", "Blue", "Yellow", "Cyan", "Magenta", "Black", "White", "Gray", "Orange", "Dark Black", "Dark White", "Dark Gray", "Dark Orange", "Purple", "Brown").forEach { option ->
           DropdownMenuItem(
             text = { Text("Option $option") },
             onClick = {

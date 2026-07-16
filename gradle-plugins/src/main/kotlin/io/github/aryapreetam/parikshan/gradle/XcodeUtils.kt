@@ -10,6 +10,31 @@ import java.io.File
 import javax.inject.Inject
 
 internal fun Project.discoverIosXcodeProject(): File? {
+    // 1. Search in current project directory
+    val inProject = projectDir.walkTopDown().maxDepth(3)
+        .filter { it.isDirectory && it.extension == "xcodeproj" && !it.absolutePath.contains(".gradle") && !it.absolutePath.contains("build") }
+        .firstOrNull()
+    if (inProject != null) return inProject
+
+    // 2. Search in parent directory
+    val parentDir = projectDir.parentFile
+    if (parentDir != null) {
+        val inParent = parentDir.walkTopDown().maxDepth(3)
+            .filter { it.isDirectory && it.extension == "xcodeproj" && !it.absolutePath.contains(".gradle") && !it.absolutePath.contains("build") }
+            .firstOrNull()
+        if (inParent != null) return inParent
+    }
+
+    // 3. Search in parent's parent directory
+    val grandParentDir = parentDir?.parentFile
+    if (grandParentDir != null) {
+        val inGrandParent = grandParentDir.walkTopDown().maxDepth(3)
+            .filter { it.isDirectory && it.extension == "xcodeproj" && !it.absolutePath.contains(".gradle") && !it.absolutePath.contains("build") }
+            .firstOrNull()
+        if (inGrandParent != null) return inGrandParent
+    }
+
+    // 4. Fallback to walking rootDir
     return rootDir.walkTopDown()
         .filter { it.isDirectory && it.extension == "xcodeproj" && !it.absolutePath.contains(".gradle") && !it.absolutePath.contains("build") }
         .firstOrNull()
@@ -30,7 +55,7 @@ abstract class XcodeBundleIdValueSource : ValueSource<String, XcodeBundleIdValue
     return try {
       val outputStream = ByteArrayOutputStream()
       execOperations.exec {
-        commandLine("xcodebuild", "-project", projectFile.absolutePath, "-scheme", schemeName, "-showBuildSettings")
+        commandLine("xcodebuild", "-project", projectFile.absolutePath, "-scheme", schemeName, "-sdk", "iphonesimulator", "-showBuildSettings")
         standardOutput = outputStream
         isIgnoreExitValue = true
       }

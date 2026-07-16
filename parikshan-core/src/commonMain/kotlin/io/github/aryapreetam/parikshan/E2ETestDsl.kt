@@ -149,6 +149,49 @@ class E2ETestScope internal constructor(
   }
 
   /**
+   * Scrolls the container matching the [containerTag] in the specified [direction]
+   * until the element matching the [targetTag] becomes visible.
+   */
+  suspend fun scrollUntilVisible(
+    containerTag: String,
+    targetTag: String,
+    direction: ScrollDirection = ScrollDirection.Down,
+    maxScrolls: Int = 30,
+    stabilizationDelayMs: Long = 300
+  ) {
+    scrollUntilVisible(
+      containerSelector = containerTag.asAutoSelector(),
+      targetSelector = targetTag.asAutoSelector(),
+      direction = direction,
+      maxScrolls = maxScrolls,
+      stabilizationDelayMs = stabilizationDelayMs
+    )
+  }
+
+  /**
+   * Scrolls the container matching the [containerSelector] in the specified [direction]
+   * until the element matching the [targetSelector] becomes visible.
+   */
+  suspend fun scrollUntilVisible(
+    containerSelector: Selector,
+    targetSelector: Selector,
+    direction: ScrollDirection = ScrollDirection.Down,
+    maxScrolls: Int = 30,
+    stabilizationDelayMs: Long = 300
+  ) {
+    for (i in 0 until maxScrolls) {
+      if (hasVisibleNode(targetSelector)) {
+        return
+      }
+      scroll(selector = containerSelector, direction = direction)
+      delay(stabilizationDelayMs)
+    }
+    throw AssertionError(
+      "Timed out scrolling container '${containerSelector.raw}' to locate target element: '${targetSelector.raw}' after $maxScrolls scrolls."
+    )
+  }
+
+  /**
    * Asserts that an element matching the [tag] is present and visible in the UI.
    *
    * This method has built-in waiting and will poll until the element appears or the timeout is reached.

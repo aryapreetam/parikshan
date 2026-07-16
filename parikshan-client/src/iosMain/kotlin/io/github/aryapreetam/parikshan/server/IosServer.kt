@@ -58,10 +58,16 @@ import platform.CoreGraphics.*
 import kotlinx.cinterop.readValue
 import kotlin.concurrent.AtomicInt
 import kotlin.concurrent.AtomicReference
-import kotlin.native.concurrent.Worker
+import kotlinx.coroutines.*
 
 // --- DEFINITIVE EAGER INITIALIZATION ---
 // This top-level property forces the server to start as soon as the Kotlin framework is loaded by the iOS app.
+private fun logIosServer(message: String) {
+  @Suppress("CAST_NEVER_SUCCEEDS")
+  val nsString = message as platform.Foundation.NSString
+  platform.Foundation.NSLog("%@", nsString)
+}
+
 @Suppress("unused")
 private val parikshanEagerBoot = IosServer.startIfNeeded()
 
@@ -70,19 +76,22 @@ object IosServer {
   private val serverFd = AtomicInt(-1)
   private var sessionToken: String = ""
 
+  @OptIn(DelicateCoroutinesApi::class)
   fun startIfNeeded(port: Int = 9878) {
     if (!running.compareAndSet(0, 1)) return
 
-    val worker = Worker.start(name = "parikshan-ios-server")
-    worker.executeAfter(0L) {
-      // Resolve token and port from environment
-      val tokenC = getenv("PARIKSHAN_TOKEN") ?: getenv("SIMCTL_CHILD_PARIKSHAN_TOKEN")
-      if (tokenC != null) {
-        sessionToken = platform.Foundation.NSString.stringWithUTF8String(tokenC) ?: ""
-      }
-      val portC = getenv("PARIKSHAN_PORT") ?: getenv("SIMCTL_CHILD_PARIKSHAN_PORT")
-      val resolvedPort = portC?.let { platform.Foundation.NSString.stringWithUTF8String(it)?.toIntOrNull() } ?: port
-      println("[IosServer] Server starting with token: ${sessionToken.take(8)}... on port $resolvedPort")
+    IosSemanticsAccessor.setup()
+
+    // Resolve token and port from environment
+    val tokenC = getenv("PARIKSHAN_TOKEN") ?: getenv("SIMCTL_CHILD_PARIKSHAN_TOKEN")
+    if (tokenC != null) {
+      sessionToken = platform.Foundation.NSString.stringWithUTF8String(tokenC) ?: ""
+    }
+    val portC = getenv("PARIKSHAN_PORT") ?: getenv("SIMCTL_CHILD_PARIKSHAN_PORT")
+    val resolvedPort = portC?.let { platform.Foundation.NSString.stringWithUTF8String(it)?.toIntOrNull() } ?: port
+    logIosServer("[IosServer] Server starting with token: ${sessionToken.take(8)}... on port $resolvedPort")
+
+    GlobalScope.launch(Dispatchers.Default) {
       runServer(resolvedPort)
     }
   }
@@ -100,7 +109,7 @@ object IosServer {
     memScoped {
       val fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
       if (fd < 0) {
-        println("[IosServer] Failed to create socket")
+        logIosServer("[IosServer] Failed to create socket")
         running.value = 0
         return
       }
@@ -117,7 +126,7 @@ object IosServer {
       addr.sin_addr.s_addr = 0u // INADDR_ANY
 
       if (bind(fd, addr.ptr.reinterpret(), sizeOf<sockaddr_in>().convert()) < 0) {
-        println("[IosServer] Failed to bind to port $port")
+        logIosServer("[IosServer] Failed to bind to port $port")
         close(fd)
         running.value = 0
         return
@@ -129,7 +138,7 @@ object IosServer {
         return
       }
 
-      println("[IosServer] Securely listening on port $port")
+      logIosServer("[IosServer] Securely listening on port $port")
 
       while (running.value == 1) {
         val clientFd = accept(fd, null, null)
@@ -192,7 +201,7 @@ object IosServer {
 
         // SECURITY: Token validation
         if (sessionToken.isNotEmpty() && command.token != sessionToken) {
-            println("[IosServer] ACCESS DENIED: Invalid token")
+            logIosServer("[IosServer] ACCESS DENIED: Invalid token")
             sendHttpResponse(clientFd, 401, ProtocolJson.encodeResponse(Response.Error(command.id, "Unauthorized")))
             break
         }
@@ -210,8 +219,13 @@ object IosServer {
     val result = AtomicReference<Response?>(null)
     val done = AtomicInt(0)
     dispatch_async(dispatch_get_main_queue()) {
-      result.value = handleCommand(command)
-      done.value = 1
+      try {
+        result.value = handleCommand(command)
+      } catch (e: Throwable) {
+        result.value = Response.Error(command.id, "Main thread exception: ${e.message}\n${e.stackTraceToString()}")
+      } finally {
+        done.value = 1
+      }
     }
     val deadline = platform.posix.time(null) + 30
     while (done.value == 0 && platform.posix.time(null) < deadline) {
@@ -290,7 +304,6 @@ object IosServer {
       is Command.Shutdown -> Response.Ok(command.id)
       is Command.Ping -> Response.Ok(command.id)
       is Command.Reset -> {
-          ComposeRootRegistry.clear()
           Response.Ok(command.id)
       }
       else -> Response.Ok(command.id)

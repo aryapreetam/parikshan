@@ -4,7 +4,7 @@ To install Parikshan, apply the Gradle plugin to your Compose Multiplatform proj
 
 ## 1. Apply the Plugin
 
-Add the plugin to your root `settings.gradle.kts` or `build.gradle.kts`:
+Add the plugin to your `shared` / `composeApp` `build.gradle.kts`:
 
 ```kotlin
 plugins {
@@ -12,52 +12,92 @@ plugins {
 }
 ```
 
-Then apply the plugin to your target multiplatform application module (typically `:composeApp`):
+=== "Old Structure"
 
-```kotlin
-plugins {
-  id("io.github.aryapreetam.parikshan")
-}
-```
+    ```text
+    OldStructure/
+    ├── composeApp/
+    |   └── build.gradle.kts  <- apply here
+    ├── gradle/
+    ├── iosApp/
+    ├── build.gradle.kts
+    ├── gradlew
+    ├── gradlew.bat
+    └── settings.gradle.kts
+    ```
 
----
+=== "New Structure"
 
-## 2. Configure Plugin Extension
+    ```text
+    NewStructure/
+    ├── androidApp/
+    ├── desktopApp/
+    ├── gradle/
+    ├── iosApp/
+    ├── shared/
+    |   └── build.gradle.kts  <- apply here
+    ├── webApp/
+    ├── build.gradle.kts
+    ├── gradlew
+    ├── gradlew.bat
+    └── settings.gradle.kts
+    ```
 
-Configure target settings in the application module's `build.gradle.kts`. The configuration block controls ports, timeouts, and launcher parameters:
+    ### `New Structure (separate shared Logic & UI)`
 
-```kotlin
-parikshan {
-  // Port used by the embedded test servers (defaults to 9877)
-  port.set(9877)
-    
-  // Fully qualified activity name to launch on Android targets
-  androidLaunchActivityClassName.set("com.example.app.MainActivity")
-    
-  // Local server port for WasmJs web distribution (defaults to 8081)
-  wasmServerPort.set(8081)
-    
-  // IP address/host that the test runner communicates with (defaults to "127.0.0.1")
-  host.set("127.0.0.1")
-    
-  // Maximum wait time in milliseconds for the target application to boot (defaults to 90000)
-  startupTimeoutMs.set(90_000L)
-    
-  // Polling frequency in milliseconds when checking for server readiness (defaults to 250)
-  startupPollIntervalMs.set(250L)
-    
-  // Overrides the desktop window title when launched
-  desktopWindowTitle.set("Parikshan E2E Playground")
-}
-```
+    ```text
+    NewStructure/
+    ├── ...
+    ├── sharedLogic/
+    ├── sharedUI/
+    |   └── build.gradle.kts  <- apply here
+    ├── ...
+    ```
 
----
+=== "New Structure(With Server)"
+
+    ```text
+    NewStructureWithServer/
+    ├── app/
+    │   ├── androidApp/
+    │   ├── desktopApp/
+    │   ├── iosApp/
+    │   ├── shared/
+    |   |   └── build.gradle.kts  <- apply here
+    │   └── webApp/
+    ├── core/
+    ├── gradle/
+    ├── server/
+    ├── build.gradle.kts
+    ├── gradlew
+    ├── gradlew.bat
+    └── settings.gradle.kts
+    ```
+
+=== "Standalone Android"
+
+    ```text
+    AndroidProject/
+    ├── app/
+    |   └── build.gradle.kts  <- apply here
+    ├── gradle/
+    ├── build.gradle.kts
+    ├── gradle.properties
+    ├── gradlew
+    └── settings.gradle.kts
+    ```
 
 ## 3. Core Dependencies & Project Tasks
 
 The plugin automatically configures your Kotlin Multiplatform project:
-1. Adds the necessary test dependencies to `commonMain` and `commonTest` source sets.
-2. Registers target-specific JVM-side test tasks: `e2eDesktopTest`, `e2eWasmTest`, `e2eAndroidTest`, and `e2eIosTest`.
-3. Registers the unified multi-platform parallel orchestration task: `e2eTest`.
 
-You write your test classes in `commonTest`, and they run across any selected target platform.
+1. Adds the necessary test dependencies to `commonMain` and `commonTest` source sets.
+2. Registers the unified multi-platform parallel orchestration task: `e2eTest`. 
+3. Registers target-specific JVM-side test tasks: `e2eWasmTest`, `e2eAndroidTest`, `e2eIosTest` & for `jvm`/`desktop`:
+    - `jvm("desktop")` ->  `e2eDesktopTest` OR `e2eTest --targets=desktop`
+    - `jvm("custom")` -> `e2eCustomTest` OR `e2eTest --targets=custom`
+    - `jvm()` ->  `e2eJvmTest` OR `e2eTest --targets=jvm`
+4. You can use it as `./gradlew e2eTest --targets=jvm,android,ios,wasm`
+5. If you are running tests for standalone Android project(without KMP/CMP), you can use `e2eAndroidTest` directly OR `e2eTest` without `--targets` property(target is inferred).
+
+You write your test classes in `commonTest`, and they run across any/all selected target platform.

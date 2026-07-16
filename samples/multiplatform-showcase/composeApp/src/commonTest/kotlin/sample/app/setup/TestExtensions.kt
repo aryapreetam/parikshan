@@ -34,10 +34,14 @@ suspend fun E2ETestScope.selectFromExposedDropdown(tag: String, optionText: Stri
  * Helper to click the dropdown chevron area on Wasm generically.
  */
 suspend fun E2ETestScope.clickDropdown(selector: Selector) {
-    val node = resolveNode(selector)
-    val chevronX = node.bounds.right - 16.0
-    val centerY = node.bounds.centerY
-    drag(fromX = chevronX, fromY = centerY, toX = chevronX, toY = centerY, durationMs = 100L)
+    if (isWasm()) {
+        val node = resolveNode(selector)
+        val chevronX = node.bounds.right - 16.0
+        val centerY = node.bounds.centerY
+        drag(fromX = chevronX, fromY = centerY, toX = chevronX, toY = centerY, durationMs = 100L)
+    } else {
+        click(selector)
+    }
 }
 
 suspend fun E2ETestScope.clickDropdown(tag: String) {

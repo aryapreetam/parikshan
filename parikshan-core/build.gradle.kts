@@ -28,6 +28,9 @@ kotlin {
     minSdk = 24
   }
   jvm()
+  js {
+    browser()
+  }
   wasmJs {
     browser()
   }

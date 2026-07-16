@@ -146,16 +146,23 @@ class ParikshanPlugin : Plugin<Project> {
           classpath = hostTestTask.get().classpath
         }
 
-        DesktopTargetConfigurer.configure(
-          project = project,
-          extension = extension,
-          sessionToken = sessionToken,
-          isBackgroundRequested = isBackgroundRequested,
-          isVideoRequested = isVideoRequested,
-          e2eTestClasses = e2eTestClasses,
-          hostTestTask = hostTestTask,
-          desktopLaunchManifestFile = desktopLaunchManifestFile.get().asFile
-        )
+        project.findJvmTargets().forEach { targetName ->
+          val taskName = "${targetName}Test"
+          if (project.tasks.names.contains(taskName)) {
+            val hostTestTaskForTarget = project.tasks.named<Test>(taskName)
+            DesktopTargetConfigurer.configure(
+              project = project,
+              extension = extension,
+              sessionToken = sessionToken,
+              isBackgroundRequested = isBackgroundRequested,
+              isVideoRequested = isVideoRequested,
+              e2eTestClasses = e2eTestClasses,
+              hostTestTask = hostTestTaskForTarget,
+              desktopLaunchManifestFile = project.layout.buildDirectory.file("parikshan/${targetName.lowercase()}-launch.properties").get().asFile,
+              targetName = targetName
+            )
+          }
+        }
 
         WasmTargetConfigurer.configure(
           project = project,
@@ -267,8 +274,20 @@ class ParikshanPlugin : Plugin<Project> {
                 add(installPlaywrightTask)
                 add(prepareWasmAssetsTask)
               }
-              if (activeTargets.contains("desktop") && project.tasks.names.contains(extension.appJarTaskName.get())) {
-                add(extension.appJarTaskName.get())
+              val jvmTargets = project.findJvmTargets().map { it.lowercase() }
+              if (jvmTargets.any { activeTargets.contains(it) }) {
+                val jarTaskName = extension.appJarTaskName.get()
+                val desktopAppProject = project.resolveDesktopAppProject(
+                    userConfiguredPath = extension.desktopAppProjectPath.orNull
+                )
+                if (desktopAppProject != null && desktopAppProject.tasks.names.contains(jarTaskName)) {
+                  val taskPath = if (desktopAppProject == project) {
+                    jarTaskName
+                  } else {
+                    "${desktopAppProject.path}:${jarTaskName}"
+                  }
+                  add(taskPath)
+                }
               }
             }
           }
@@ -285,7 +304,7 @@ class ParikshanPlugin : Plugin<Project> {
         
         val defaultTargets = buildList {
           if (hasKmp) {
-            add("desktop")
+            addAll(project.findJvmTargets())
             add("wasm")
             add("ios")
           }
@@ -295,11 +314,19 @@ class ParikshanPlugin : Plugin<Project> {
         }.joinToString(",")
         
         this.targets = defaultTargets
+        this.jvmTargets.set(project.provider { project.findJvmTargets() })
         
-        if (hasKmp && project.tasks.names.contains(extension.appJarTaskName.get())) {
-          val appJarFileProvider = project.tasks.named<org.gradle.jvm.tasks.Jar>(extension.appJarTaskName.get())
-            .flatMap { it.archiveFile }
-          appJarFile.set(appJarFileProvider)
+        if (hasKmp) {
+          val jarTaskName = extension.appJarTaskName.get()
+          val desktopAppProject = project.resolveDesktopAppProject(
+              userConfiguredPath = extension.desktopAppProjectPath.orNull
+          )
+
+          if (desktopAppProject != null && desktopAppProject.tasks.names.contains(jarTaskName)) {
+            val appJarFileProvider = desktopAppProject.tasks.named<org.gradle.jvm.tasks.Jar>(jarTaskName)
+              .flatMap { it.archiveFile }
+            appJarFile.set(appJarFileProvider)
+          }
         }
         
         this.desktopLaunchManifestFile.set(desktopLaunchManifestFile)
@@ -333,7 +360,9 @@ class ParikshanPlugin : Plugin<Project> {
       }
 
       project.tasks.configureEach {
-        val isE2eTask = name in setOf("e2eDesktopTest", "e2eWasmTest", "e2eIosTest", "e2eAndroidTest", "e2eTest")
+        val jvmTargets = project.findJvmTargets()
+        val e2eTaskNames = setOf("e2eWasmTest", "e2eIosTest", "e2eAndroidTest", "e2eTest") + jvmTargets.map { "e2e${it.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }}Test" }
+        val isE2eTask = name in e2eTaskNames
         if (isE2eTask) return@configureEach
 
         // Find any task that has a test filter (Test, KotlinJsTest, KotlinNativeTest, etc.)

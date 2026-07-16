@@ -4,6 +4,7 @@ import org.gradle.api.model.ObjectFactory
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.Optional
 import javax.inject.Inject
 
 abstract class ParikshanExtension @Inject constructor(
@@ -11,6 +12,10 @@ abstract class ParikshanExtension @Inject constructor(
 ) {
   @get:Input
   val appJarTaskName: Property<String> = objects.property(String::class.java).convention("packageUberJarForCurrentOS")
+
+  @get:Input
+  @get:Optional
+  val desktopAppProjectPath: Property<String> = objects.property(String::class.java)
 
   @get:Input
   val desktopTestTaskName: Property<String> = objects.property(String::class.java)

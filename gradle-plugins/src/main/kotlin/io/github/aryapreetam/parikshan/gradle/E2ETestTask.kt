@@ -7,6 +7,8 @@ import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.ProviderFactory
+import javax.inject.Inject
 import org.gradle.api.tasks.*
 import org.gradle.api.tasks.options.Option
 import java.io.File
@@ -14,6 +16,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.Future
 
 abstract class E2ETestTask : DefaultTask() {
+
+  @get:Inject
+  abstract val providers: ProviderFactory
 
   @get:Input
   @set:Option(option = "targets", description = "Comma-separated list of E2E targets to execute (e.g. desktop,wasm,android,ios)")
@@ -108,6 +113,9 @@ abstract class E2ETestTask : DefaultTask() {
 
   @get:Internal
   abstract val appJarFile: RegularFileProperty
+
+  @get:Input
+  abstract val jvmTargets: ListProperty<String>
 
   @get:Internal
   abstract val desktopLaunchManifestFile: RegularFileProperty
@@ -304,104 +312,114 @@ abstract class E2ETestTask : DefaultTask() {
     logger.lifecycle("Parikshan [$target]: Starting target E2E execution...")
 
     return withTargetLock(target) {
-      when (target) {
-      "desktop" -> {
-        val session = if (keepAlive) readSession("desktop") else null
-        val minBinaryTimestamp = getTargetOutputTimestamp("desktop")
-        val maxSourceTimestamp = getProductionSourceTimestamp()
-        val healthy = session != null && checkTargetHealth(host.get(), session.port, session.token)
-        val fresh = isTargetFresh("desktop")
-        logger.debug("Parikshan [desktop] keep-alive check: session=${session != null}, healthy=$healthy, fresh=$fresh, session.timestamp=${session?.timestamp}, minBinary=$minBinaryTimestamp, maxSource=$maxSourceTimestamp")
-        val canReuse = session != null && healthy && fresh && session.timestamp >= minBinaryTimestamp
+      val isJvmTarget = target == "desktop" || target == "jvm" || jvmTargets.get().map { it.lowercase() }.contains(target)
+      when {
+        isJvmTarget -> {
+          val session = if (keepAlive) readSession(target) else null
+          val minBinaryTimestamp = getTargetOutputTimestamp(target)
+          val maxSourceTimestamp = getProductionSourceTimestamp()
+          val healthy = session != null && checkTargetHealth(host.get(), session.port, session.token)
+          val fresh = isTargetFresh(target)
+          logger.debug("Parikshan [$target] keep-alive check: session=${session != null}, healthy=$healthy, fresh=$fresh, session.timestamp=${session?.timestamp}, minBinary=$minBinaryTimestamp, maxSource=$maxSourceTimestamp")
+          val canReuse = session != null && healthy && fresh && session.timestamp >= minBinaryTimestamp
 
-        val resolvedPort = if (canReuse && session != null) {
-          logger.lifecycle("Parikshan [desktop]: Keeping active instance alive (skipping build/launch).")
-          session.port
-        } else {
-          if (session != null) {
-            logger.lifecycle("Parikshan [desktop]: Active instance is stale or unhealthy. Relaunching...")
-            DesktopProcess.stop(
-              host = host.get(),
-              port = session.port,
-              token = session.token,
-              manifestFile = desktopLaunchManifestFile.get().asFile
-            )
-          }
-          val port = PortConflictHandler.resolvePortAndCleanStale(
-            originalPort = originalDesktopPort.get(),
-            host = host.get(),
-            logger = logger
-          )
-          DesktopProcess.start(
-            jar = appJarFile.get().asFile,
-            token = token.get(),
-            logFile = File(buildDir.get().asFile, "parikshan/desktop-app-logs.log"),
-            manifestFile = desktopLaunchManifestFile.get().asFile,
-            appArgs = appArgs.get(),
-            host = host.get(),
-            port = port,
-            timeoutMs = 15000L,
-            pollMs = 250L,
-            title = title.orNull,
-            background = true
-          )
-          writeSession("desktop", TargetSession(token.get(), port, System.currentTimeMillis()))
-          port
-        }
-
-        val activeToken = if (canReuse && session != null) session.token else token.get()
-
-        classes.forEach { testClass ->
-          logger.lifecycle("Parikshan [desktop]: Running $testClass...")
-          val exitCode = spawnTestJvm(
-            target = "desktop",
-            testClass = testClass,
-            systemProperties = mapOf(
-              "parikshan.target" to "desktop",
-              "parikshan.host" to host.get(),
-              "parikshan.port" to resolvedPort.toString(),
-              "parikshan.token" to activeToken,
-              "parikshan.desktop.launchManifest" to desktopLaunchManifestFile.get().asFile.absolutePath
-            ),
-            activeProcesses = activeProcesses
-          )
-          if (exitCode != 0) {
-            printTestFailures("desktop", testClass)
-            DesktopProcess.stop(
-              host = host.get(),
-              port = resolvedPort,
-              token = activeToken,
-              manifestFile = desktopLaunchManifestFile.get().asFile
-            )
-            clearSession("desktop")
-            return createTargetResult("desktop", false, classes, "Test class $testClass failed (exit code $exitCode). Check logs at build/parikshan/logs/desktop-${testClass.substringAfterLast('.')}.log")
-          }
-        }
-
-        if (keepAlive) {
-          val manifest = desktopLaunchManifestFile.get().asFile
-          if (manifest.exists()) {
-            val props = java.util.Properties()
-            runCatching { manifest.inputStream().use { props.load(it) } }
-            val finalPort = props.getProperty("port")?.toIntOrNull() ?: resolvedPort
-            val finalToken = props.getProperty("token") ?: activeToken
-            writeSession("desktop", TargetSession(finalToken, finalPort, System.currentTimeMillis()))
+          val jarFile = appJarFile.orNull?.asFile
+          val resolvedPort = if (canReuse && session != null) {
+            logger.lifecycle("Parikshan [$target]: Keeping active instance alive (skipping build/launch).")
+            session.port
           } else {
-            writeSession("desktop", TargetSession(activeToken, resolvedPort, System.currentTimeMillis()))
+            if (session != null) {
+              logger.lifecycle("Parikshan [$target]: Active instance is stale or unhealthy. Relaunching...")
+              DesktopProcess.stop(
+                host = host.get(),
+                port = session.port,
+                token = session.token,
+                manifestFile = desktopLaunchManifestFile.get().asFile
+              )
+            }
+            val port = PortConflictHandler.resolvePortAndCleanStale(
+              originalPort = originalDesktopPort.get(),
+              host = host.get(),
+              logger = logger
+            )
+            if (jarFile != null) {
+              DesktopProcess.start(
+                jar = jarFile,
+                token = token.get(),
+                logFile = File(buildDir.get().asFile, "parikshan/${target}-app-logs.log"),
+                manifestFile = desktopLaunchManifestFile.get().asFile,
+                appArgs = appArgs.get(),
+                host = host.get(),
+                port = port,
+                timeoutMs = 15000L,
+                pollMs = 250L,
+                title = title.orNull,
+                background = true
+              )
+              writeSession(target, TargetSession(token.get(), port, System.currentTimeMillis()))
+            } else {
+              logger.lifecycle("Parikshan [$target]: No application JAR was provided. Skipping application startup; running tests against an external or manually-started instance.")
+            }
+            port
           }
-        } else {
-          DesktopProcess.stop(
-            host = host.get(),
-            port = resolvedPort,
-            token = activeToken,
-            manifestFile = desktopLaunchManifestFile.get().asFile
-          )
-          clearSession("desktop")
-        }
-        return createTargetResult("desktop", true, classes)
-      }
 
-      "wasm" -> {
+          val activeToken = if (canReuse && session != null) session.token else token.get()
+
+          classes.forEach { testClass ->
+            logger.lifecycle("Parikshan [$target]: Running $testClass...")
+            val exitCode = spawnTestJvm(
+              target = target,
+              testClass = testClass,
+              systemProperties = mapOf(
+                "parikshan.target" to target,
+                "parikshan.host" to host.get(),
+                "parikshan.port" to resolvedPort.toString(),
+                "parikshan.token" to activeToken,
+                "parikshan.desktop.launchManifest" to desktopLaunchManifestFile.get().asFile.absolutePath
+              ),
+              activeProcesses = activeProcesses
+            )
+            if (exitCode != 0) {
+              printTestFailures(target, testClass)
+              if (jarFile != null) {
+                DesktopProcess.stop(
+                  host = host.get(),
+                  port = resolvedPort,
+                  token = activeToken,
+                  manifestFile = desktopLaunchManifestFile.get().asFile
+                )
+                clearSession(target)
+              }
+              return@withTargetLock createTargetResult(target, false, classes, "Test class $testClass failed (exit code $exitCode). Check logs at build/parikshan/logs/${target}-${testClass.substringAfterLast('.')}.log")
+            }
+          }
+
+          if (keepAlive) {
+            val manifest = desktopLaunchManifestFile.get().asFile
+            if (manifest.exists() && jarFile != null) {
+              val props = java.util.Properties()
+              runCatching { manifest.inputStream().use { props.load(it) } }
+              val finalPort = props.getProperty("port")?.toIntOrNull() ?: resolvedPort
+              val finalToken = props.getProperty("token") ?: activeToken
+              writeSession(target, TargetSession(finalToken, finalPort, System.currentTimeMillis()))
+            } else if (jarFile != null) {
+              writeSession(target, TargetSession(activeToken, resolvedPort, System.currentTimeMillis()))
+            }
+          } else {
+            if (jarFile != null) {
+              DesktopProcess.stop(
+                host = host.get(),
+                port = resolvedPort,
+                token = activeToken,
+                manifestFile = desktopLaunchManifestFile.get().asFile
+              )
+              clearSession(target)
+            }
+          }
+          return@withTargetLock createTargetResult(target, true, classes)
+        }
+
+        target == "wasm" -> {
         val session = if (keepAlive) readSession("wasm") else null
         val minBinaryTimestamp = getTargetOutputTimestamp("wasm")
         val canReuse = session != null && 
@@ -460,7 +478,7 @@ abstract class E2ETestTask : DefaultTask() {
         return createTargetResult("wasm", true, classes)
       }
 
-      "android" -> {
+        target == "android" -> {
         val isExplicit = targets.split(",").map { it.trim().lowercase() }.contains("android")
         val isAndroidE2EExplicit = isExplicit && targets != "desktop,wasm,android,ios"
         val hasAndroidDeviceSpecified = androidDevice.isNotBlank() || device.isNotBlank() || gradleAndroidSerial.orNull?.isNotBlank() == true || gradleDevice.orNull?.isNotBlank() == true || gradleSerial.orNull?.isNotBlank() == true
@@ -489,7 +507,7 @@ abstract class E2ETestTask : DefaultTask() {
         } else {
           synchronized(getLockFor("android")) {
             val serial = AndroidTargetConfigurer.AndroidRecorder.resolveDeviceSerial(logger, File(projectRootDir.get()), finalAndroidSerial)
-            val reclaim = reclaimPorts || project.providers.gradleProperty("parikshan.reclaimPorts").orNull?.toBoolean() ?: false
+            val reclaim = reclaimPorts || providers.gradleProperty("parikshan.reclaimPorts").orNull?.toBoolean() ?: false
 
             val devicePortState = checkDevicePortState(serial, 9879)
             if (devicePortState.isBusy || !PortConflictHandler.isPortAvailable("127.0.0.1", 9879)) {
@@ -607,7 +625,7 @@ abstract class E2ETestTask : DefaultTask() {
         return createTargetResult("android", true, classes)
       }
 
-      "ios" -> {
+        target == "ios" -> {
         val isExplicit = targets.split(",").map { it.trim().lowercase() }.contains("ios")
         val isIosE2EExplicit = isExplicit && targets != "desktop,wasm,android,ios"
         val hasIosDeviceSpecified = iosDevice.isNotBlank() || device.isNotBlank() || gradleIosDevice.orNull?.isNotBlank() == true || gradleDevice.orNull?.isNotBlank() == true || gradleSerial.orNull?.isNotBlank() == true
@@ -638,7 +656,7 @@ abstract class E2ETestTask : DefaultTask() {
           logger.lifecycle("Parikshan [ios]: Keeping active instance alive (skipping build/launch).")
         } else {
           synchronized(getLockFor("ios")) {
-            val reclaim = reclaimPorts || project.providers.gradleProperty("parikshan.reclaimPorts").orNull?.toBoolean() ?: false
+            val reclaim = reclaimPorts || providers.gradleProperty("parikshan.reclaimPorts").orNull?.toBoolean() ?: false
             val defaultIosPort = iosPort.get()
 
             if (!PortConflictHandler.isPortAvailable("127.0.0.1", defaultIosPort)) {
@@ -963,7 +981,7 @@ abstract class E2ETestTask : DefaultTask() {
       "parikshan.wasm.bridgeReadyTimeoutMs"
     )
     propsToForward.forEach { prop ->
-      val v = System.getProperty(prop) ?: project.findProperty(prop)?.toString()
+      val v = System.getProperty(prop) ?: providers.gradleProperty(prop).orNull
       if (!v.isNullOrEmpty()) {
         pbArgs.add("-D$prop=$v")
       }

@@ -31,6 +31,9 @@ kotlin {
     withHostTest {}
   }
   jvm()
+  js {
+    browser()
+  }
   wasmJs {
     browser()
   }

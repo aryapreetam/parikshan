@@ -335,6 +335,10 @@ class ParikshanPlugin : Plugin<Project> {
 
         val prodSources = project.resolveProductionSources()
         this.productionSources.setFrom(prodSources)
+        val testSourcesList = project.resolveTestSources()
+        this.testSources.setFrom(testSourcesList)
+        val prodClassesList = project.resolveProductionClassesDirs()
+        this.productionClassesDirs.setFrom(prodClassesList)
 
         val appProject = project.findAndroidAppProject()
         if (appProject != null) {

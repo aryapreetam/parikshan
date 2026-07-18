@@ -12,6 +12,8 @@ import org.gradle.api.tasks.options.Option
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.nio.file.*
+import java.nio.file.attribute.BasicFileAttributes
 
 abstract class E2ETestTask : DefaultTask() {
 
@@ -26,6 +28,15 @@ abstract class E2ETestTask : DefaultTask() {
   @get:Input
   @set:Option(option = "sync", description = "Execute E2E tests concurrently on all targets in synchronized lockstep mode.")
   var sync: Boolean = false
+
+  @get:Input
+  @set:Option(option = "watch", description = "Run E2E tests continuously on file changes.")
+  var watch: Boolean = false
+
+  @get:Input
+  @get:Optional
+  @set:Option(option = "compile-command", description = "The shell command to re-compile tests when files change in watch mode.")
+  var compileCommand: String = ""
 
   @get:Input
   @set:Option(option = "layout", description = "Specifies the layout mode: default or side-by-side")
@@ -168,6 +179,14 @@ abstract class E2ETestTask : DefaultTask() {
   @get:Optional
   abstract val productionSources: ConfigurableFileCollection
 
+  @get:InputFiles
+  @get:Optional
+  abstract val testSources: ConfigurableFileCollection
+
+  @get:InputFiles
+  @get:Optional
+  abstract val productionClassesDirs: ConfigurableFileCollection
+
   @get:Internal
   abstract val androidApkDir: DirectoryProperty
 
@@ -278,6 +297,17 @@ abstract class E2ETestTask : DefaultTask() {
     }
     Runtime.getRuntime().addShutdownHook(shutdownHook)
 
+    if (watch) {
+      try {
+        runWatchLoop(activeTargets, filteredClasses, activeProcesses, finalAndroidSerial, finalIosDevice)
+      } finally {
+        try {
+          Runtime.getRuntime().removeShutdownHook(shutdownHook)
+        } catch (_: Exception) {}
+      }
+      return
+    }
+
     val results = if (sync) {
       val targetStartTime = System.currentTimeMillis()
       val result = try {
@@ -326,6 +356,8 @@ abstract class E2ETestTask : DefaultTask() {
     logger.lifecycle("========================================\n")
 
     val anyFailure = results.any { !it.success }
+    writeWatchResults(!anyFailure, results)
+    
     if (anyFailure) {
       throw GradleException("Parikshan E2E test execution failed for one or more targets.")
     }
@@ -439,13 +471,15 @@ abstract class E2ETestTask : DefaultTask() {
           )
           if (exitCode != 0) {
             printTestFailures("desktop", testClass)
-            DesktopProcess.stop(
-              host = host.get(),
-              port = resolvedPort,
-              token = activeToken,
-              manifestFile = desktopLaunchManifestFile.get().asFile
-            )
-            clearSession("desktop")
+            if (!keepAlive) {
+              DesktopProcess.stop(
+                host = host.get(),
+                port = resolvedPort,
+                token = activeToken,
+                manifestFile = desktopLaunchManifestFile.get().asFile
+              )
+              clearSession("desktop")
+            }
             return createTargetResult("desktop", false, classes, "Test class $testClass failed (exit code $exitCode). Check logs at build/parikshan/logs/desktop-${testClass.substringAfterLast('.')}.log")
           }
         }
@@ -540,8 +574,10 @@ abstract class E2ETestTask : DefaultTask() {
 
           if (exitCode != 0) {
             printTestFailures("wasm", testClass)
-            WasmServer.stop()
-            clearSession("wasm")
+            if (!keepAlive) {
+              WasmServer.stop()
+              clearSession("wasm")
+            }
             return createTargetResult("wasm", false, classes, "Test class $testClass failed (exit code $exitCode). Check logs at build/parikshan/logs/wasm-${testClass.substringAfterLast('.')}.log")
           }
         }
@@ -679,7 +715,7 @@ abstract class E2ETestTask : DefaultTask() {
           }
         }
 
-        if (!keepAlive || !runSuccess) {
+        if (!keepAlive) {
           // 3. Stop App
           synchronized(getLockFor("android")) {
             val stopArgs = mutableListOf(gradlew, "$projectPathPrefix:stopParikshanAndroidApp")
@@ -830,7 +866,7 @@ abstract class E2ETestTask : DefaultTask() {
           }
         }
 
-        if (!keepAlive || !runSuccess) {
+        if (!keepAlive) {
           // 3. Stop App
           synchronized(getLockFor("ios")) {
             val stopProcess = ProcessBuilder(
@@ -1337,14 +1373,24 @@ abstract class E2ETestTask : DefaultTask() {
 
   private fun getTargetOutputTimestamp(target: String): Long {
       val files = getTargetOutputFiles(target)
-      if (files.isEmpty()) return 0L
-      return files.map { file ->
+      val classesTime = if (target == "desktop" && !productionClassesDirs.isEmpty) {
+          productionClassesDirs.files.map { classDir ->
+              if (classDir.exists() && classDir.isDirectory) {
+                  classDir.walkTopDown().filter { it.isFile }.map { it.lastModified() }.maxOrNull() ?: 0L
+              } else 0L
+          }.maxOrNull() ?: 0L
+      } else 0L
+
+      if (files.isEmpty()) return classesTime
+      val filesTime = files.map { file ->
           if (file.isDirectory) {
               file.walkTopDown().filter { it.isFile }.map { it.lastModified() }.minOrNull() ?: 0L
           } else {
               file.lastModified()
           }
       }.minOrNull() ?: 0L
+
+      return maxOf(filesTime, classesTime)
   }
 
   private fun getTargetOutputFiles(target: String): List<File> {
@@ -2004,6 +2050,217 @@ abstract class E2ETestTask : DefaultTask() {
     }
   }
 
+  private fun runWatchLoop(
+    activeTargets: List<String>,
+    filteredClasses: List<String>,
+    activeProcesses: MutableList<Process>,
+    finalAndroidSerial: String?,
+    finalIosDevice: String
+  ) {
+      val logger = logger
+      logger.lifecycle("\n========================================")
+      logger.lifecycle("   Parikshan WATCH Mode Initialized     ")
+      logger.lifecycle("========================================")
+
+      val originalKeepAlive = keepAlive
+      keepAlive = true
+
+      var totalPassed = 0
+      var totalFailed = 0
+
+      var compileJob: Process? = null
+      val runLock = Any()
+
+      fun executeCycle(modifiedFile: Path?) {
+          synchronized(runLock) {
+              val startTime = System.currentTimeMillis()
+              logger.lifecycle("\n========================================")
+              if (modifiedFile != null) {
+                  logger.lifecycle("[WATCH] Change detected: ${modifiedFile.fileName}")
+              } else {
+                  logger.lifecycle("[WATCH] Running initial test suite...")
+              }
+
+              // On source change (not initial run), rebuild the project
+              if (modifiedFile != null) {
+                  val buildCommand = if (!compileCommand.isBlank()) {
+                      compileCommand
+                  } else {
+                      val gradlew = getGradlewExecutable(File(projectRootDir.get()))
+                      val packageTask = activeTargets.mapNotNull { target ->
+                          when (target) {
+                              "desktop" -> "${projectPath.get()}:packageUberJarForCurrentOS"
+                              "wasm" -> "${projectPath.get()}:compileKotlinWasmJs"
+                              else -> null
+                          }
+                      }.joinToString(" ")
+                      val testCompileTask = "${projectPath.get()}:compileTestKotlinJvm"
+                      "$gradlew $packageTask $testCompileTask -Pparikshan.e2e.active=true --no-daemon -q"
+                  }
+
+                  logger.lifecycle("Rebuilding... ($buildCommand)")
+                  val pb = if (System.getProperty("os.name").lowercase().contains("win")) {
+                      ProcessBuilder("cmd.exe", "/c", buildCommand)
+                  } else {
+                      ProcessBuilder("sh", "-c", buildCommand)
+                  }
+                  pb.directory(File(projectRootDir.get()))
+                  pb.redirectErrorStream(true)
+                  pb.inheritIO()
+                  
+                  val process = pb.start()
+                  compileJob = process
+                  val exitCode = process.waitFor()
+                  compileJob = null
+
+                  if (exitCode != 0) {
+                      logger.lifecycle("[ERROR] Build failed (Exit code: $exitCode)")
+                      logger.lifecycle("========================================")
+                      logger.lifecycle("WATCHING: Waiting for file changes... (Total: $totalPassed PASSED, $totalFailed FAILED)")
+                      writeWatchResults(false, listOf(TargetResult("build", false, "Build failed (exit code $exitCode)")))
+                      return
+                  }
+                  logger.lifecycle("Build successful.")
+              }
+
+              logger.lifecycle("Executing E2E tests for targets: ${activeTargets.joinToString()}...")
+              
+              val results = mutableListOf<TargetResult>()
+              
+              if (sync) {
+                  val targetStartTime = System.currentTimeMillis()
+                  val result = try {
+                      executeSyncTarget(activeTargets, filteredClasses, activeProcesses, finalAndroidSerial, finalIosDevice)
+                  } catch (e: Exception) {
+                      TargetResult("sync", false, e.message ?: "Sync execution failed")
+                  }
+                  val duration = System.currentTimeMillis() - targetStartTime
+                  results.add(result.copy(durationMs = duration))
+              } else {
+                  activeTargets.forEach { target ->
+                      val targetStartTime = System.currentTimeMillis()
+                      val result = try {
+                          executeTarget(target, filteredClasses, activeProcesses, finalAndroidSerial, finalIosDevice)
+                      } catch (e: Exception) {
+                          TargetResult(target, false, e.message ?: "Execution failed")
+                      }
+                      val duration = System.currentTimeMillis() - targetStartTime
+                      results.add(result.copy(durationMs = duration))
+                  }
+              }
+
+              val anyFailure = results.any { !it.success }
+              val durationStr = formatDuration(System.currentTimeMillis() - startTime)
+
+              logger.lifecycle("----------------------------------------")
+              results.forEach { res ->
+                  val status = if (res.success) "SUCCESS" else "FAILED"
+                  logger.lifecycle("[${res.target.uppercase()}] $status - ${res.message}")
+              }
+              logger.lifecycle("========================================")
+              
+              val passedCount = results.count { it.success }
+              val failedCount = results.count { !it.success }
+              
+              if (anyFailure) {
+                  logger.lifecycle("WATCHING: Waiting for file changes... (Latest: $passedCount PASSED, $failedCount FAILED) - Last run failed after $durationStr")
+                  writeWatchResults(false, results)
+              } else {
+                  logger.lifecycle("WATCHING: Waiting for file changes... (Latest: $passedCount PASSED, $failedCount FAILED) - Last run succeeded in $durationStr")
+                  writeWatchResults(true, results)
+              }
+          }
+      }
+
+      executeCycle(null)
+
+      val watchRoots = mutableListOf<File>()
+      
+      // Always watch source files — compile externally on change
+      watchRoots.addAll(productionSources.files)
+      watchRoots.addAll(testSources.files)
+      logger.lifecycle("[WATCH] Monitoring source files for changes...")
+
+      var lastEventTime = 0L
+      val debounceMs = 500L
+      val pendingChange = java.util.concurrent.atomic.AtomicReference<Path?>(null)
+
+      val watcher = PollingWatcher(watchRoots) { file ->
+          val now = System.currentTimeMillis()
+          pendingChange.set(file.toPath())
+          
+          synchronized(activeProcesses) {
+              try { compileJob?.destroy() } catch (_: Exception) {}
+              activeProcesses.forEach {
+                  try { it.destroy() } catch (_: Exception) {}
+              }
+          }
+
+          lastEventTime = now
+      }
+
+      try {
+          while (true) {
+              Thread.sleep(100)
+              val path = pendingChange.get()
+              if (path != null && System.currentTimeMillis() - lastEventTime >= debounceMs) {
+                  pendingChange.compareAndSet(path, null)
+                  try {
+                      executeCycle(path)
+                  } catch (e: Exception) {
+                      logger.lifecycle("[WATCH] Error in watch cycle: ${e.message}")
+                  }
+              }
+          }
+      } catch (e: InterruptedException) {
+          logger.lifecycle("Watch mode interrupted.")
+      } finally {
+          watcher.close()
+          keepAlive = originalKeepAlive
+          
+          if (!keepAlive) {
+              logger.lifecycle("Watch mode shutting down. Stopping target applications...")
+              activeTargets.forEach { target ->
+                  when (target) {
+                      "desktop" -> {
+                          val session = readSession("desktop")
+                          if (session != null) {
+                              DesktopProcess.stop(host.get(), session.port, session.token, desktopLaunchManifestFile.get().asFile)
+                              clearSession("desktop")
+                          }
+                      }
+                      "wasm" -> {
+                          WasmServer.stop()
+                          clearSession("wasm")
+                      }
+                      "android" -> {
+                          val serial = AndroidTargetConfigurer.AndroidRecorder.resolveDeviceSerial(logger, File(projectRootDir.get()), finalAndroidSerial)
+                          ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", androidApplicationId.get()).start().waitFor()
+                          clearSession("android")
+                      }
+                      "ios" -> {
+                          val udid = getIosSimulatorUdid(finalIosDevice) ?: getBootedIosSimulatorUdid() ?: ""
+                          ProcessBuilder("xcrun", "simctl", "terminate", udid, iosBundleId.getOrElse("")).start().waitFor()
+                          clearSession("ios")
+                      }
+                  }
+              }
+          }
+      }
+  }
+
+  private fun writeWatchResults(success: Boolean, targets: List<TargetResult>) {
+      val resultsFile = File(buildDir.get().asFile, "parikshan/watch-results.json")
+      resultsFile.parentFile.mkdirs()
+      val targetsJson = targets.joinToString(prefix = "[", postfix = "]") { res ->
+          "{\"target\":\"${res.target}\",\"success\":${res.success},\"message\":\"${res.message.replace("\"", "\\\"")}\",\"durationMs\":${res.durationMs}}"
+      }
+      val json = "{\"timestamp\":${System.currentTimeMillis()},\"success\":$success,\"targets\":$targetsJson}"
+      runCatching {
+          resultsFile.writeText(json)
+      }
+  }
+
   private companion object {
       val targetLocks = java.util.concurrent.ConcurrentHashMap<String, Any>()
 
@@ -2011,4 +2268,75 @@ abstract class E2ETestTask : DefaultTask() {
           return targetLocks.computeIfAbsent(target) { Any() }
       }
   }
+}
+
+private class PollingWatcher(
+    val roots: List<File>,
+    val onEvent: (File) -> Unit
+) : AutoCloseable {
+    private var closed = false
+    private val thread: Thread
+
+    init {
+        thread = Thread {
+            var lastMaxTimestamp = getCurrentMaxTimestamp()
+
+            try {
+                while (!closed) {
+                    Thread.sleep(500)
+                    val current = getCurrentMaxTimestamp()
+                    if (current.second > lastMaxTimestamp.second) {
+                        lastMaxTimestamp = current
+                        if (current.first != null) {
+                            onEvent(current.first!!)
+                        }
+                    }
+                }
+            } catch (_: InterruptedException) {
+            } catch (_: Exception) {
+            }
+        }
+        thread.isDaemon = true
+        thread.name = "Parikshan-PollingWatcher"
+        thread.start()
+    }
+
+    private fun getCurrentMaxTimestamp(): Pair<File?, Long> {
+        var maxTime = 0L
+        var maxFile: File? = null
+        roots.forEach { root ->
+            if (root.exists()) {
+                if (root.isDirectory) {
+                    root.walkTopDown().forEach { file ->
+                        if (file.isFile && isInteresting(file)) {
+                            val t = file.lastModified()
+                            if (t > maxTime) {
+                                maxTime = t
+                                maxFile = file
+                            }
+                        }
+                    }
+                } else {
+                    if (isInteresting(root)) {
+                        val t = root.lastModified()
+                        if (t > maxTime) {
+                            maxTime = t
+                            maxFile = root
+                        }
+                    }
+                }
+            }
+        }
+        return Pair(maxFile, maxTime)
+    }
+
+    private fun isInteresting(file: File): Boolean {
+        val extension = file.extension.lowercase()
+        return extension in setOf("kt", "kts")
+    }
+
+    override fun close() {
+        closed = true
+        thread.interrupt()
+    }
 }

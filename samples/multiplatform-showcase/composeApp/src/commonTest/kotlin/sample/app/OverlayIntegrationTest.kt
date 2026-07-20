@@ -3,6 +3,7 @@ package sample.app
 import io.github.aryapreetam.parikshan.E2ETestScope
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.e2eTest
+import io.github.aryapreetam.parikshan.isIos
 import io.github.aryapreetam.parikshan.E2ETestLifecycle
 import sample.app.setup.selectFromExposedDropdown
 import sample.app.setup.selectDateViaInput
@@ -75,6 +76,15 @@ class OverlayIntegrationTest : E2ETestLifecycle {
 
   @Test
   fun testDatePickerInputSelection() = e2eTest {
+    // WORKAROUND: Compose Multiplatform iOS platform bug.                                                                                                           
+    // Consecutive text input sessions across the full suite contaminate the responder chain,                                                                        
+    // causing the iOS simulator's keyboard focus to get detached (IntermediateTextInputUIView                                                                       
+    // fails to become first responder). Relaunching the app resets the native window hierarchy.                                                                     
+    if (isIos()) {                                                                                                                                                   
+      relaunchApp()  
+      navigateToSection("nav_overlay_playground")
+      assertVisible("overlay_playground_screen")                                                                                                                                                
+    } 
     click("date_picker_trigger_button")
     assertVisible("date_picker_dialog")
     

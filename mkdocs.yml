@@ -53,6 +53,7 @@ nav:
   - Getting Started:
       - Installation: getting-started/installation.md
       - Quickstart: getting-started/quickstart.md
+      - Known Limitations: getting-started/known-limitations.md
       - FAQ: getting-started/faq.md
   - Configuration:
       - Gradle Plugin: configuration/gradle-plugin.md

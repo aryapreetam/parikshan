@@ -1313,8 +1313,20 @@ abstract class E2ETestTask : DefaultTask() {
   }
 
   private inline fun withTargetLock(target: String, block: () -> TargetResult): TargetResult {
-      val lockFile = File(buildDir.get().asFile, "parikshan/locks/$target.lock")
-      lockFile.parentFile.mkdirs()
+    val lockFile = File(buildDir.get().asFile, "parikshan/locks/$target.lock")
+    lockFile.parentFile.mkdirs()
+
+    while (true) {
+      if (lockFile.exists()) {
+        val pid = runCatching { lockFile.readText().trim().toLongOrNull() }.getOrNull()
+        if (pid != null) {
+          val isAlive = ProcessHandle.of(pid).map { it.isAlive }.orElse(false)
+          if (!isAlive) {
+            lockFile.delete()
+          }
+        }
+      }
+
       val raf = java.io.RandomAccessFile(lockFile, "rw")
       val channel = raf.channel
       var lock: java.nio.channels.FileLock? = null
@@ -1322,31 +1334,50 @@ abstract class E2ETestTask : DefaultTask() {
       var logged = false
 
       try {
-          while (true) {
-              try {
-                  lock = channel.tryLock()
-                  if (lock != null) {
-                      break
-                  }
-              } catch (_: Exception) {}
+        var staleBreak = false
+        while (true) {
+          try {
+            lock = channel.tryLock()
+            if (lock != null) {
+              raf.setLength(0)
+              raf.writeBytes(ProcessHandle.current().pid().toString())
+              break
+            }
+          } catch (_: Exception) {}
 
-              if (!logged) {
-                  logger.lifecycle("Parikshan [$target]: Waiting for target process lock (another test run is active)...")
-                  logged = true
-              }
-
-              if (System.currentTimeMillis() - startTime > 300000) { // 5 minutes timeout
-                  return TargetResult(target, false, "Timeout waiting for target process lock. Another process is executing tests on target '$target'.")
-              }
-              Thread.sleep(1000)
+          if (lock == null && lockFile.exists()) {
+            val pid = runCatching { lockFile.readText().trim().toLongOrNull() }.getOrNull()
+            if (pid != null && !ProcessHandle.of(pid).map { it.isAlive }.orElse(false)) {
+              runCatching { channel.close() }
+              runCatching { raf.close() }
+              lockFile.delete()
+              staleBreak = true
+              break
+            }
           }
 
-          return block()
+          if (!logged) {
+            logger.lifecycle("Parikshan [$target]: Waiting for target process lock (another test run is active)...")
+            logged = true
+          }
+
+          if (System.currentTimeMillis() - startTime > 300000) {
+            return TargetResult(target, false, "Timeout waiting for target process lock. Another process is executing tests on target '$target'.")
+          }
+          Thread.sleep(1000)
+        }
+
+        if (staleBreak) {
+          continue
+        }
+
+        return block()
       } finally {
-          runCatching { lock?.release() }
-          runCatching { channel.close() }
-          runCatching { raf.close() }
+        runCatching { lock?.release() }
+        runCatching { channel.close() }
+        runCatching { raf.close() }
       }
+    }
   }
 
   private data class DevicePortState(val isBusy: Boolean, val parikshanAppId: String?)

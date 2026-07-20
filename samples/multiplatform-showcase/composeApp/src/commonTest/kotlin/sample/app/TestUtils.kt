@@ -9,10 +9,10 @@ import kotlinx.coroutines.delay
  * Ensures the app navigation (drawer/rail) is accessible.
  */
 suspend fun E2ETestScope.openAppNavigation() {
-    // 1. If we can see a primary navigation marker, we're likely already in Wide mode or drawer is open
-    if (hasVisibleNode("nav_task_list")) {
-        return
-    }
+    // If the persistent sidebar or drawer items are already visible, no need to open a drawer                                                                       
+    if (hasVisibleNode("nav_rail") || hasVisibleNode("nav_task_list")) {                                                                                             
+        return                                                                                                                                                       
+    }  
 
     // 2. Wait for hamburger button to appear, click it, and wait for navigation menu
     waitFor("hamburger_button")
@@ -25,24 +25,46 @@ suspend fun E2ETestScope.openAppNavigation() {
  * scrolling the navigation container if necessary.
  */
 suspend fun E2ETestScope.navigateToSection(navTag: String) {
-    openAppNavigation()
-    
-    // On Wasm, the navigation rail/drawer might need scrolling if items are clipped.
-    // We look for the 'nav_rail' or 'navigation_drawer' tags.
-    val tree = getTree()
-    val navContainer = when {
-        tree.any { it.tag == "nav_rail" } -> "nav_rail"
-        tree.any { it.tag == "navigation_drawer" } -> "navigation_drawer"
-        else -> null
-    }
-    
-    if (navContainer != null) {
-        scrollUntilVisible(
-            containerSelector = Selector.Tag(navContainer),
-            targetSelector = Selector.Tag(navTag)
-        )
-    }
-    
+    openAppNavigation()                                                                                                                                              
+                                                                                                                                                                         
+    val tree = getTree()                                                                                                                                             
+    val navContainer = when {                                                                                                                                        
+        tree.any { it.tag == "nav_rail" && it.visible } -> "nav_rail"                                                                                                
+        tree.any { it.tag == "navigation_drawer" && it.visible } -> "navigation_drawer"                                                                              
+        else -> null                                                                                                                                                 
+    }                                                                                                                                                                
+                                                                                                                                                                        
+    if (navContainer != null) {                                                                                                                                      
+        val sectionOrder = listOf(                                                                                                                                   
+            "nav_task_list",                                                                                                                                         
+            "nav_input_form",                                                                                                                                        
+            "nav_scroll_demo",                                                                                                                                       
+            "nav_subtext_demo",                                                                                                                                      
+            "nav_form_playground",                                                                                                                                   
+            "nav_overlay_playground",                                                                                                                                
+            "nav_navigation_playground",                                                                                                                             
+            "nav_scroll_playground",                                                                                                                                 
+            "nav_gesture_playground",                                                                                                                                
+            "nav_timing_playground",                                                                                                                                 
+            "nav_accessibility_playground"                                                                                                                           
+        )                                                                                                                                                            
+                                                                                                                                                                        
+        val targetIndex = sectionOrder.indexOf(navTag)                                                                                                               
+        val currentIndex = sectionOrder.indexOfFirst { hasVisibleNode(it) }                                                                                          
+                                                                                                                                                                        
+        val scrollDirection = if (currentIndex != -1 && targetIndex < currentIndex) {                                                                                
+            ScrollDirection.Up                                                                                                                                       
+        } else {                                                                                                                                                     
+            ScrollDirection.Down                                                                                                                                     
+        }                                                                                                                                                            
+                                                                                                                                                                        
+        scrollUntilVisible(                                                                                                                                          
+            containerSelector = Selector.Tag(navContainer),                                                                                                          
+            targetSelector = Selector.Tag(navTag),                                                                                                                   
+            direction = scrollDirection                                                                                                                              
+        )                                                                                                                                                            
+    }                                                                                                                                                                
+                                                                                                                                                                        
     click(navTag)
 }
 

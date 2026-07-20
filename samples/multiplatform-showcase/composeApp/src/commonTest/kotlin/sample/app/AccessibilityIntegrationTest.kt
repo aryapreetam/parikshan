@@ -8,16 +8,22 @@ import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import io.github.aryapreetam.parikshan.e2eTest
 import io.github.aryapreetam.parikshan.resolveNode
 import kotlinx.coroutines.delay
+import io.github.aryapreetam.parikshan.E2ETestLifecycle
 import kotlin.test.Test
 
-class AccessibilityIntegrationTest {
+class AccessibilityIntegrationTest : E2ETestLifecycle {
+
+  override suspend fun E2ETestScope.beforeEach() {
+    navigateToSection("nav_accessibility_playground")
+    assertVisible("accessibility_playground_screen")
+  }
+
+  override suspend fun E2ETestScope.afterEach() {
+    navigateToSection("nav_task_list")
+  }
 
   @Test
   fun testAccessibilityLabelContentDescriptionMatching() = e2eTest {
-    relaunchApp()
-    navigateToSection("nav_accessibility_playground")
-    assertVisible("accessibility_playground_screen")
-
     // Target by accessibility label (content description)
     click(Selector.Auto("Settings Control Button"))
     
@@ -26,10 +32,6 @@ class AccessibilityIntegrationTest {
 
   @Test
   fun testIndexBasedDuplicateResolution() = e2eTest {
-    relaunchApp()
-    navigateToSection("nav_accessibility_playground")
-    assertVisible("accessibility_playground_screen")
-    
     // Scroll to the bottom area where the duplicate buttons are
     scrollUntilVisible(
         containerSelector = Selector.Tag("accessibility_playground_screen"),
@@ -84,10 +86,6 @@ class AccessibilityIntegrationTest {
 
   @Test
   fun testHiddenElementVisibilityStrictness() = e2eTest {
-    relaunchApp()
-    navigateToSection("nav_accessibility_playground")
-    assertVisible("accessibility_playground_screen")
-
     // The target "invisible_click_target" is size 0.dp and alpha 0f
     assertNotVisible("invisible_click_target")
     

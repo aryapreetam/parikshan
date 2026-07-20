@@ -116,9 +116,9 @@ fun App() {
               onUniqueTextAction = { selectorResultMessage.value = "Unique text clicked" },
               showScrollSuccess = showScrollSuccess.value,
               onBottomAction = { showScrollSuccess.value = true },
-              onFinalSubmit = {
+              onFinalSubmit = { message ->
                 coroutineScope.launch {
-                  snackbarHostState.showSnackbar("Final Form Submitted Successfully!")
+                  snackbarHostState.showSnackbar(message)
                 }
               }
             )
@@ -146,9 +146,9 @@ fun App() {
               onUniqueTextAction = { selectorResultMessage.value = "Unique text clicked" },
               showScrollSuccess = showScrollSuccess.value,
               onBottomAction = { showScrollSuccess.value = true },
-              onFinalSubmit = {
+              onFinalSubmit = { message ->
                 coroutineScope.launch {
-                  snackbarHostState.showSnackbar("Final Form Submitted Successfully!")
+                  snackbarHostState.showSnackbar(message)
                 }
               }
             )
@@ -270,7 +270,7 @@ private fun ContentSurface(
   onUniqueTextAction: () -> Unit,
   showScrollSuccess: Boolean,
   onBottomAction: () -> Unit,
-  onFinalSubmit: () -> Unit
+  onFinalSubmit: (String) -> Unit
 ) {
   Box(
     modifier = modifier
@@ -286,7 +286,7 @@ private fun ContentSurface(
         selectorResultMessage = selectorResultMessage,
         onTagPriorityAction = onTagPriorityAction,
         onUniqueTextAction = onUniqueTextAction,
-        onFinalSubmit = onFinalSubmit
+        onFinalSubmit = { onFinalSubmit("Final Form Submitted Successfully!") }
       )
       SampleScreen.ScrollDemo -> ScrollDemoScreen(
         showSuccess = showScrollSuccess,
@@ -296,7 +296,7 @@ private fun ContentSurface(
       
       // New Playgrounds
       SampleScreen.FormPlayground -> FormPlayground(
-        onFormSubmitted = { /* Form submission can show a snackbar or log */ }
+        onFormSubmitted = onFinalSubmit
       )
       SampleScreen.OverlayPlayground -> OverlayPlayground()
       SampleScreen.NavigationPlayground -> NavigationPlayground()

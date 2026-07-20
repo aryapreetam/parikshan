@@ -5,15 +5,21 @@ import io.github.aryapreetam.parikshan.isWasm
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.e2eTest
 import kotlin.test.Test
+import io.github.aryapreetam.parikshan.E2ETestLifecycle
 
-class TimingIntegrationTest {
+class TimingIntegrationTest : E2ETestLifecycle {
+
+    override suspend fun E2ETestScope.beforeEach() {
+        navigateToSection("nav_timing_playground")
+        assertVisible("timing_playground_screen")
+    }
+
+    override suspend fun E2ETestScope.afterEach() {
+        navigateToSection("nav_task_list")
+    }
 
   @Test
   fun testAsynchronousLoadingWithPolling() = e2eTest {
-    relaunchApp()
-    navigateToSection("nav_timing_playground")
-    assertVisible("timing_playground_screen")
-
     // Assert results not showing initially
     assertNotVisible("async_result_text")
 
@@ -27,10 +33,6 @@ class TimingIntegrationTest {
 
   @Test
   fun testDynamicLayoutResizingAndCoordinateShifts() = e2eTest {
-    relaunchApp()
-    navigateToSection("nav_timing_playground")
-    assertVisible("timing_playground_screen")
-
     // Initially details should not exist
     assertNotVisible("expandable_details_text")
 

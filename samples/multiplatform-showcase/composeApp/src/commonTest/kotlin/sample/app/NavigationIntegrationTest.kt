@@ -4,16 +4,23 @@ import io.github.aryapreetam.parikshan.E2ETestScope
 import io.github.aryapreetam.parikshan.isWasm
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.e2eTest
+import io.github.aryapreetam.parikshan.E2ETestLifecycle
 import kotlin.test.Test
 
-class NavigationIntegrationTest {
+class NavigationIntegrationTest : E2ETestLifecycle {
+
+  override suspend fun E2ETestScope.beforeEach() {
+    navigateToSection("nav_navigation_playground")
+    assertVisible("navigation_playground_screen")
+  }
+
+  override suspend fun E2ETestScope.afterEach() {
+    navigateToSection("nav_task_list")
+  }
 
   @Test
   fun testNestedNavigationAndStatePreservation() = e2eTest {
     
-    navigateToSection("nav_navigation_playground")
-    assertVisible("navigation_playground_screen")
-
     // Input text in Screen A
     input("input_screen_a", "Saved State A")
     
@@ -39,8 +46,6 @@ class NavigationIntegrationTest {
 
   @Test
   fun testBackNavigationInterceptionFlow() = e2eTest {
-    navigateToSection("nav_navigation_playground")
-    assertVisible("navigation_playground_screen")
 
     // Go to Screen B
     click("nav_to_b_button")

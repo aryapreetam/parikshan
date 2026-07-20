@@ -5,17 +5,23 @@ import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import io.github.aryapreetam.parikshan.e2eTest
 import kotlinx.coroutines.delay
+import io.github.aryapreetam.parikshan.E2ETestLifecycle
 import kotlin.test.Test
 
 
-class ScrollIntegrationTest {
+class ScrollIntegrationTest : E2ETestLifecycle {
+
+  override suspend fun E2ETestScope.beforeEach() {
+    navigateToSection("nav_scroll_playground")
+    assertVisible("scroll_playground_screen")
+  }
+
+  override suspend fun E2ETestScope.afterEach() {
+    navigateToSection("nav_task_list")
+  }
 
   @Test
   fun testLazyColumnScrollingWithStickyHeaders() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_scroll_playground")
-    assertVisible("scroll_playground_screen")
-
     // Default tab is LazyList
     assertVisible("lazy_column_list")
 
@@ -36,10 +42,6 @@ class ScrollIntegrationTest {
 
   @Test
   fun testNestedHorizontalScrolling() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_scroll_playground")
-    assertVisible("scroll_playground_screen")
-
     // Select Nested Scroll Tab
     click("tab_nested_scroll")
     assertVisible("nested_scroll_column")
@@ -61,10 +63,6 @@ class ScrollIntegrationTest {
 
   @Test
   fun testGridLayoutScrolling() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_scroll_playground")
-    assertVisible("scroll_playground_screen")
-
     // Select Grid Tab
     click("tab_grid_layout")
     assertVisible("lazy_grid_container")
@@ -79,9 +77,6 @@ class ScrollIntegrationTest {
 
   @Test
   fun testCanvasPanning() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_scroll_playground")
-    assertVisible("scroll_playground_screen")
     delay(500)
 
     // Select Panning Tab

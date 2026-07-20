@@ -10,16 +10,22 @@ import io.github.aryapreetam.parikshan.protocol.atIndex
 import io.github.aryapreetam.parikshan.protocol.first
 import io.github.aryapreetam.parikshan.protocol.last
 import io.github.aryapreetam.parikshan.resolveNode
+import io.github.aryapreetam.parikshan.E2ETestLifecycle
 import kotlin.test.Test
 
-class SelectorParityTest {
+class SelectorParityTest : E2ETestLifecycle {
+
+  override suspend fun E2ETestScope.beforeEach() {
+    navigateToSection("nav_input_form")
+    assertVisible("input_form_screen")
+  }
+
+  override suspend fun E2ETestScope.afterEach() {
+    navigateToSection("nav_task_list")
+  }
 
   @Test
   fun testExistentialAssertsSucceedWithDuplicates() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_input_form")
-    assertVisible("input_form_screen")
-    
     // Existence checks should succeed even if multiple nodes match
     scrollUntilVisible(Selector.Tag("input_form_screen"), Selector.Auto("Duplicate Action"))
     assertVisible(Selector.Auto("Duplicate Action"))
@@ -30,10 +36,6 @@ class SelectorParityTest {
 
   @Test
   fun testActionsFailOnAmbiguityWithoutIndex() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_input_form")
-    assertVisible("input_form_screen")
-
     scrollUntilVisible(Selector.Tag("input_form_screen"), Selector.Auto("Duplicate Action"))
 
     // Clicking should fail because text is ambiguous
@@ -48,10 +50,6 @@ class SelectorParityTest {
 
   @Test
   fun testActionsSucceedWithExplicitIndices() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_input_form")
-    assertVisible("input_form_screen")
-
     // Just scroll a bit to ensure both are in viewport
     scrollUntilVisible(Selector.Tag("input_form_screen"), Selector.Auto("Duplicate Action"))
 
@@ -70,10 +68,6 @@ class SelectorParityTest {
 
   @Test
   fun testLongFormSubmission() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_input_form")
-    assertVisible("input_form_screen")
-    
     // Fill out the long form organically scrolling as needed
     scrollUntilVisible(Selector.Tag("input_form_screen"), Selector.Auto("Email Address"))
     input("Email Address", "test@example.com")

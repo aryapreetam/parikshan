@@ -206,7 +206,7 @@ fun FormPlayground(
     Button(
       onClick = {
         if (formIsValid) {
-          onFormSubmitted("Successfully Submitted: $name ($email)")
+          onFormSubmitted("Successfully Submitted: $name")
         }
       },
       enabled = formIsValid,

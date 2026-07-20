@@ -3,18 +3,29 @@ package sample.app
 import io.github.aryapreetam.parikshan.E2ETestScope
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.e2eTest
+import io.github.aryapreetam.parikshan.isWasm
+import io.github.aryapreetam.parikshan.isAndroid
+import io.github.aryapreetam.parikshan.isIos
+import sample.app.setup.dragSliderPhysically
+import io.github.aryapreetam.parikshan.E2ETestLifecycle
 import kotlin.test.Test
 
-class FormIntegrationTest {
+class FormIntegrationTest : E2ETestLifecycle {
+
+  override suspend fun E2ETestScope.beforeEach() {
+    navigateToSection("nav_form_playground")
+    assertVisible("form_playground_screen")
+  }
+
+  override suspend fun E2ETestScope.afterEach() {
+    navigateToSection("nav_task_list")
+  }
 
   @Test
   fun testStatefulFormValidationAndSubmission() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_form_playground")
-    assertVisible("form_playground_screen")
-
+    val name = "Alex Smith"
     // Input Name
-    input("form_name_input", "Alex Smith")
+    input("form_name_input", name)
 
     // Input Invalid Email & Assert Error
     input("form_email_input", "alexsmith")
@@ -61,6 +72,25 @@ class FormIntegrationTest {
     scrollUntilVisible(Selector.Tag("form_playground_screen"), Selector.Tag("form_submit_button"))
 
     // Submit the Form
-    click("form_submit_button")
+    click("Submit Registration")
+    assertVisible("Successfully Submitted: $name")
+  }
+
+  @Test
+  fun testSliderPhysicalDrag() = e2eTest {
+    assertVisible("form_slider")
+    
+    // Drag slider physically to 80%
+    dragSliderPhysically("form_slider", 0.8f)
+    
+    // Verify value is updated to a reasonable range (75% to 85%) due to physical gesture Jitter across platforms
+    waitFor(Selector.Text("Range Selector:"))
+    val labelNode = resolveVisibleNode(Selector.Text("Range Selector:"))
+    val labelText = labelNode.text ?: ""
+    val match = Regex("Range Selector: (\\d+)%").find(labelText)
+    val percentage = match?.groupValues?.get(1)?.toIntOrNull() ?: 0
+    assert(percentage in 75..85) {
+      "Expected slider percentage to be between 75% and 85%, but got $percentage% (full text: '$labelText')"
+    }
   }
 }

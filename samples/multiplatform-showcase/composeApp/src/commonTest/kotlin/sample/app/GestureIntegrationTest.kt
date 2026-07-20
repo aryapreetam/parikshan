@@ -5,15 +5,21 @@ import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import io.github.aryapreetam.parikshan.e2eTest
 import sample.app.setup.dragSliderPhysically
+import io.github.aryapreetam.parikshan.E2ETestLifecycle
 import kotlin.test.Test
 
-class GestureIntegrationTest {
+class GestureIntegrationTest : E2ETestLifecycle {
+    override suspend fun E2ETestScope.beforeEach() {
+      navigateToSection("nav_gesture_playground")
+      assertVisible("gesture_playground_screen")
+    }
+
+    override suspend fun E2ETestScope.afterEach() {
+      navigateToSection("nav_task_list")
+    }
 
   @Test
   fun testTapAndMultiTapGestures() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_gesture_playground")
-    assertVisible("gesture_playground_screen")
 
     // Test Single Click / Tap via Robot/Playwright fallback on the yellow surface
     scrollUntilVisible(Selector.Tag("gesture_playground_screen"), Selector.Tag("multi_tap_surface"))
@@ -35,10 +41,6 @@ class GestureIntegrationTest {
 
   @Test
   fun testDragAndDropUsingCoordinateDrag() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_gesture_playground")
-    assertVisible("gesture_playground_screen")
-
     // Verify source card and drop boxes are visible
     assertVisible("draggable_red_card")
     assertVisible("drag_source_box_a")
@@ -58,20 +60,6 @@ class GestureIntegrationTest {
 
     // The red card is now dropped, turning into a green card
     assertVisible("dropped_green_card")
-  }
-
-  @Test
-  fun testSliderPhysicalDrag() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_form_playground")
-    assertVisible("form_playground_screen")
-
-    assertVisible("form_slider")
-    
-    // Drag slider physically to 80%
-    dragSliderPhysically("form_slider", 0.8f)
-    
-    assertVisible("form_slider")
   }
 
   @Test

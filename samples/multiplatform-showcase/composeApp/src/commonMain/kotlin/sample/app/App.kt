@@ -22,9 +22,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontLoadingStrategy
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextAlign
 import io.github.aryapreetam.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.Font
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
 
 // Import playgrounds
 import sample.app.playgrounds.FormPlayground
@@ -36,7 +39,7 @@ import sample.app.playgrounds.TimingPlayground
 import sample.app.playgrounds.AccessibilityPlayground
 
 enum class SampleScreen {
-  TaskList,
+  Home,
   InputForm,
   ScrollDemo,
   SubtextDemo,
@@ -51,7 +54,7 @@ enum class SampleScreen {
   AccessibilityPlayground
 }
 
-val isDemo = true // this will be manually changed by the developer when recording demo
+val isDemo = false // this will be manually changed by the developer when recording demo
 
 @Composable
 fun App() {
@@ -158,10 +161,10 @@ fun SimpleGreetDemo() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MultiplatformShowcaseApp() {
-  val activeScreen = remember { mutableStateOf(SampleScreen.TaskList) }
+  val activeScreen = remember { mutableStateOf(SampleScreen.Home) }
 
-  PlatformBackHandler(enabled = activeScreen.value != SampleScreen.TaskList) {
-    activeScreen.value = SampleScreen.TaskList
+  PlatformBackHandler(enabled = activeScreen.value != SampleScreen.Home) {
+    activeScreen.value = SampleScreen.Home
   }
 
   val formValue = remember { mutableStateOf("") }
@@ -194,13 +197,17 @@ fun MultiplatformShowcaseApp() {
         ModalNavigationDrawer(
           drawerState = drawerState,
           drawerContent = {
-            ModalDrawerSheet(modifier = Modifier.width(280.dp).testTag("navigation_drawer")) {
+            ModalDrawerSheet(
+              drawerContainerColor = Color.White,
+              modifier = Modifier.width(280.dp).testTag("navigation_drawer")
+            ) {
               SidebarNavigation(
                 activeScreen = activeScreenVal,
                 onScreenSelected = { 
                   onScreenSelectedVal(it)
                   coroutineScope.launch { drawerState.close() }
-                }
+                },
+                modifier = Modifier.fillMaxWidth()
               )
             }
           }
@@ -212,7 +219,10 @@ fun MultiplatformShowcaseApp() {
                 title = { Text("Parikshan Sample") },
                 navigationIcon = {
                   IconButton(onClick = { coroutineScope.launch { drawerState.open() } }, modifier = Modifier.testTag("hamburger_button")) {
-                    Text("☰") 
+                    Icon(
+                      imageVector = Icons.Default.Menu,
+                      contentDescription = "Menu"
+                    )
                   }
                 }
               )
@@ -245,7 +255,8 @@ fun MultiplatformShowcaseApp() {
           Row(modifier = Modifier.fillMaxSize().padding(paddingValues).padding(12.dp)) {
             SidebarNavigation(
               activeScreen = activeScreenVal,
-              onScreenSelected = onScreenSelectedVal
+              onScreenSelected = onScreenSelectedVal,
+              modifier = Modifier.width(240.dp)
             )
             Spacer(modifier = Modifier.width(12.dp))
             ContentSurface(
@@ -276,12 +287,12 @@ fun MultiplatformShowcaseApp() {
 @Composable
 private fun SidebarNavigation(
   activeScreen: SampleScreen,
-  onScreenSelected: (SampleScreen) -> Unit
+  onScreenSelected: (SampleScreen) -> Unit,
+  modifier: Modifier = Modifier
 ) {
   val scrollState = rememberScrollState()
   Column(
-   modifier = Modifier
-     .width(240.dp)
+   modifier = modifier
      .fillMaxHeight()
      .background(Color.White)
      .testTag("nav_rail")
@@ -292,7 +303,7 @@ private fun SidebarNavigation(
     Text("Parikshan Sample", style = MaterialTheme.typography.titleMedium)
     
     Text("Legacy Scenarios", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-    NavigationItemButton("Task List", SampleScreen.TaskList, activeScreen, onScreenSelected, "nav_task_list")
+    NavigationItemButton("Home", SampleScreen.Home, activeScreen, onScreenSelected, "nav_home_screen")
     NavigationItemButton("Input Form", SampleScreen.InputForm, activeScreen, onScreenSelected, "nav_input_form")
     NavigationItemButton("Scroll Demo", SampleScreen.ScrollDemo, activeScreen, onScreenSelected, "nav_scroll_demo")
     NavigationItemButton("Subtext Demo", SampleScreen.SubtextDemo, activeScreen, onScreenSelected, "nav_subtext_demo")
@@ -327,7 +338,7 @@ private fun CompactNavigation(
       verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
       Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Box(modifier = Modifier.weight(1f)) { NavigationItemButton("Task List", SampleScreen.TaskList, activeScreen, onScreenSelected, "nav_task_list") }
+        Box(modifier = Modifier.weight(1f)) { NavigationItemButton("Home", SampleScreen.Home, activeScreen, onScreenSelected, "nav_home_screen") }
         Box(modifier = Modifier.weight(1f)) { NavigationItemButton("Input Form", SampleScreen.InputForm, activeScreen, onScreenSelected, "nav_input_form") }
         Box(modifier = Modifier.weight(1f)) { NavigationItemButton("Scroll Demo", SampleScreen.ScrollDemo, activeScreen, onScreenSelected, "nav_scroll_demo") }
       }
@@ -391,7 +402,7 @@ private fun ContentSurface(
       .background(Color.White)
   ) {
     when (activeScreen) {
-      SampleScreen.TaskList -> TaskListScreen()
+      SampleScreen.Home -> HomeScreen()
       SampleScreen.InputForm -> InputFormScreen(
         value = formValue,
         onValueChange = onFormValueChange,
@@ -423,14 +434,48 @@ private fun ContentSurface(
 }
 
 @Composable
-private fun TaskListScreen() {
+private fun HomeScreen() {
   Column(
-    modifier = Modifier.fillMaxSize().testTag("task_list_screen"),
-    verticalArrangement = Arrangement.spacedBy(8.dp)
+    modifier = Modifier
+      .fillMaxSize()
+      .background(Color(0xFFFAFAFC))
+      .padding(24.dp)
+      .testTag("home_screen"),
+    verticalArrangement = Arrangement.Center,
+    horizontalAlignment = Alignment.CenterHorizontally
   ) {
-    Text("Task List", style = MaterialTheme.typography.headlineSmall)
-    Text("Task 1", modifier = Modifier.fillMaxWidth().testTag("task_item_1"))
-    Text("Task 2", modifier = Modifier.fillMaxWidth().testTag("task_item_2"))
+    Image(
+      painter = painterResource(Res.drawable.parikshan_logo),
+      contentDescription = "Parikshan Logo",
+      modifier = Modifier
+        .size(120.dp)
+        .testTag("parikshan_logo_image")
+    )
+    Spacer(modifier = Modifier.height(24.dp))
+    Text(
+      text = "Parikshan",
+      style = MaterialTheme.typography.headlineLarge,
+      fontWeight = FontWeight.Bold,
+      color = Color(0xFF7F52FF),
+      textAlign = TextAlign.Center,
+      modifier = Modifier.testTag("parikshan_title")
+    )
+    Spacer(modifier = Modifier.height(12.dp))
+    Text(
+      text = "A Compose Multiplatform End-to-End Testing Framework",
+      style = MaterialTheme.typography.bodyLarge,
+      color = Color.Gray,
+      textAlign = TextAlign.Center,
+      modifier = Modifier.testTag("parikshan_description").padding(horizontal = 16.dp)
+    )
+    Spacer(modifier = Modifier.height(12.dp))
+    Text(                                                                                                                                                                           
+      text = "Running on: ${getPlatformName()}",                                                                                                                                    
+      style = MaterialTheme.typography.labelMedium,                                                                                                                                  
+      color = Color.Gray,                                                                                                                                                           
+      modifier = Modifier.testTag("platform_badge").fillMaxWidth(),
+      textAlign = TextAlign.Center                                                                                                                                  
+    )
   }
 }
 

@@ -6,3 +6,5 @@ import androidx.compose.runtime.Composable
 actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
   // No-op on Wasm
 }
+
+actual fun getPlatformName(): String = "Web (WasmJS)"

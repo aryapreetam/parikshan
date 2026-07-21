@@ -10,14 +10,14 @@ import kotlinx.coroutines.delay
  */
 suspend fun E2ETestScope.openAppNavigation() {
     // If the persistent sidebar or drawer items are already visible, no need to open a drawer                                                                       
-    if (hasVisibleNode("nav_rail") || hasVisibleNode("nav_task_list")) {                                                                                             
+    if (hasVisibleNode("nav_rail") || hasVisibleNode("nav_home_screen")) {                                                                                             
         return                                                                                                                                                       
     }  
 
     // 2. Wait for hamburger button to appear, click it, and wait for navigation menu
     waitFor("hamburger_button")
     click("hamburger_button")
-    waitFor("nav_task_list")
+    waitFor("nav_home_screen")
 }
 
 /**
@@ -36,7 +36,7 @@ suspend fun E2ETestScope.navigateToSection(navTag: String) {
                                                                                                                                                                         
     if (navContainer != null) {                                                                                                                                      
         val sectionOrder = listOf(                                                                                                                                   
-            "nav_task_list",                                                                                                                                         
+            "nav_home_screen",                                                                                                                                         
             "nav_input_form",                                                                                                                                        
             "nav_scroll_demo",                                                                                                                                       
             "nav_subtext_demo",                                                                                                                                      

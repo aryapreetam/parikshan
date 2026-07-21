@@ -10,19 +10,22 @@ import io.github.aryapreetam.parikshan.resolveNode
 import io.github.aryapreetam.parikshan.E2ETestLifecycle
 import kotlin.test.Test
 
-class HomePageTest : E2ETestLifecycle {
+class HomeScreenTest : E2ETestLifecycle {
 
   override suspend fun E2ETestScope.beforeEach() {
-    openAppNavigation(); click("nav_task_list")
+    openAppNavigation(); click("nav_home_screen")
   }
 
   override suspend fun E2ETestScope.afterEach() {
-    navigateToSection("nav_task_list")
+    navigateToSection("nav_home_screen")
   }
  
   @Test
-  fun testTaskList() = e2eTest {
-    assertVisible("task_item_1")
-    screenshot(screenshotPath("task-list"))
+  fun testHomeScreen() = e2eTest {
+    assertVisible("home_screen")
+    assertVisible("parikshan_logo_image")
+    assertText("parikshan_title", "Parikshan")
+    assertContains("parikshan_description", "End-to-End Testing")
+    screenshot(screenshotPath("home-screen"))
   }
 }

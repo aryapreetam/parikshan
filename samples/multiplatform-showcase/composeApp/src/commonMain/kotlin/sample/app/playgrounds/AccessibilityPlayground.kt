@@ -13,6 +13,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 
 @Composable
 fun AccessibilityPlayground() {
@@ -50,12 +52,10 @@ fun AccessibilityPlayground() {
             .semantics { contentDescription = "Settings Control Button" }
             .testTag("a11y_icon_button")
         ) {
-          Box(
-            modifier = Modifier.size(24.dp),
-            contentAlignment = Alignment.Center
-          ) {
-            Text("⚙", style = MaterialTheme.typography.titleLarge)
-          }
+          Icon(
+            imageVector = Icons.Default.Settings,
+            contentDescription = null
+          )
         }
       }
     }

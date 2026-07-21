@@ -21,7 +21,7 @@ class SelectorParityTest : E2ETestLifecycle {
   }
 
   override suspend fun E2ETestScope.afterEach() {
-    navigateToSection("nav_task_list")
+    navigateToSection("nav_home_screen")
   }
 
   @Test

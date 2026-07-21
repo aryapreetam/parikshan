@@ -20,12 +20,20 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import io.github.aryapreetam.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.Font
 
 @Composable
 fun FormPlayground(
   onFormSubmitted: (String) -> Unit
 ) {
   val scrollState = rememberScrollState()
+  val fontFamily = FontFamily(
+    Font(Res.font.NotoSansDevanagari, FontWeight.Normal),
+    Font(Res.font.NotoSansDevanagari, FontWeight.Bold)
+  )
   var name by remember { mutableStateOf("") }
   var email by remember { mutableStateOf("") }
   var password by remember { mutableStateOf("") }
@@ -169,13 +177,15 @@ fun FormPlayground(
     OutlinedTextField(
       value = indicText,
       onValueChange = { indicText = it },
-      label = { Text("Indic / Multilingual Input") },
-      placeholder = { Text("उदा. नमस्ते / தமிழ்") },
+      label = { Text("Indic / Multilingual Input", fontFamily = fontFamily) },
+      placeholder = { Text("उदा. नमस्ते", fontFamily = fontFamily) },
+      textStyle = LocalTextStyle.current.copy(fontFamily = fontFamily),
       modifier = Modifier.fillMaxWidth().testTag("form_indic_input")
     )
     if (indicText.isNotEmpty()) {
       Text(
-        "Indic Value: $indicText",
+        text = "Indic Value: $indicText",
+        fontFamily = fontFamily,
         modifier = Modifier.testTag("indic_preview_text")
       )
     }

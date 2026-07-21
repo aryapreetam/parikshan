@@ -14,7 +14,7 @@ class SystemActionIntegrationTest : E2ETestLifecycle {
   }
 
   override suspend fun E2ETestScope.afterEach() {
-    navigateToSection("nav_task_list")
+    navigateToSection("nav_home_screen")
   }
 
   @Test
@@ -31,7 +31,7 @@ class SystemActionIntegrationTest : E2ETestLifecycle {
 
       // Press system back again - should pop out of Navigation Playground to TaskList home screen
       pressBack()
-      assertVisible("task_list_screen")
+      assertVisible("home_screen")
 
       // Navigate back to playground to test home gesture
       navigateToSection("nav_navigation_playground")
@@ -42,7 +42,7 @@ class SystemActionIntegrationTest : E2ETestLifecycle {
 
       // Restore foreground state
       relaunchApp()
-      assertVisible("task_list_screen")
+      assertVisible("home_screen")
     }
   }
 }

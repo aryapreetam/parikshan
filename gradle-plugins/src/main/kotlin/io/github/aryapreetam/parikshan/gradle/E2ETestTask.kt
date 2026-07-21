@@ -985,7 +985,6 @@ abstract class E2ETestTask : DefaultTask() {
     }
 
     pbArgs.add("-Djunit.jupiter.extensions.autodetection.enabled=true")
-    pbArgs.add("-Djunit.jupiter.testmethod.order.default=io.github.aryapreetam.parikshan.client.ParikshanMethodOrderer")
 
     val propsToForward = listOf(
       "parikshan.video.enabled",

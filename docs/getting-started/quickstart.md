@@ -102,17 +102,15 @@ Open this file in a browser to inspect the consolidated pass/fail statuses, stac
 
 ## 4. Test Lifecycle and State Resets
 
-Parikshan supports test execution ordering and lifecycle hooks in the common test source set.
+Parikshan supports class-level lifecycle hooks in the common test source set.
 
-### Lifecycle Hooks and Ordering
-Use custom annotations to structure execution order and run class-level setups:
-* **`@BeforeAll` / `@AfterAll`**: Class-level initialization and teardown logic.
-* **`@Order(N)`**: Define explicit execution sequence (lower numbers execute first).
+### Lifecycle Hooks
+Use custom annotations to run class-level initialization and teardown logic:
+* **`@BeforeAll` / `@AfterAll`**: Class-level initialization and teardown logic (run synchronously on startup and completion).
 
 ```kotlin
 import io.github.aryapreetam.parikshan.BeforeAll
 import io.github.aryapreetam.parikshan.AfterAll
-import io.github.aryapreetam.parikshan.Order
 import io.github.aryapreetam.parikshan.e2eTest
 import kotlin.test.Test
 
@@ -120,17 +118,16 @@ class FormTest {
   companion object {
     @BeforeAll
     fun setupClass() {
-      // Class-level setup
+      // Class-level setup (synchronous)
     }
 
     @AfterAll
     fun teardownClass() {
-      // Class-level cleanup
+      // Class-level cleanup (synchronous)
     }
   }
 
   @Test
-  @Order(1)
   fun testFirstMethod() = e2eTest {
     // ...
   }

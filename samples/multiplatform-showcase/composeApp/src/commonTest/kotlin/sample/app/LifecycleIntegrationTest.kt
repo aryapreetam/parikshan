@@ -2,11 +2,10 @@ package sample.app
 
 import io.github.aryapreetam.parikshan.BeforeAll
 import io.github.aryapreetam.parikshan.AfterAll
-import io.github.aryapreetam.parikshan.Order
 import io.github.aryapreetam.parikshan.e2eTest
 import io.github.aryapreetam.parikshan.isAndroid
 import kotlin.test.Test
-import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class LifecycleIntegrationTest {
 
@@ -26,20 +25,10 @@ class LifecycleIntegrationTest {
   }
 
   @Test
-  @Order(1)
-  fun testFirst() = e2eTest {
-    executionLog.add("firstTest")
+  fun testLifecycleBeforeAll() = e2eTest {
+    executionLog.add("testBody")
     if (!isAndroid()) {
-      assertEquals(listOf("beforeAll", "firstTest"), executionLog)
-    }
-  }
-
-  @Test
-  @Order(2)
-  fun testSecond() = e2eTest {
-    executionLog.add("secondTest")
-    if (!isAndroid()) {
-      assertEquals(listOf("beforeAll", "firstTest", "secondTest"), executionLog)
+      assertTrue(executionLog.contains("beforeAll"), "Expected beforeAll hook to have executed")
     }
   }
 }

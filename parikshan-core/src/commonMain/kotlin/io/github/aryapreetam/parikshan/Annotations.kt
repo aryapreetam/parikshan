@@ -8,9 +8,6 @@ annotation class BeforeAll
 @Retention(AnnotationRetention.RUNTIME)
 annotation class AfterAll
 
-@Target(AnnotationTarget.FUNCTION)
-@Retention(AnnotationRetention.RUNTIME)
-annotation class Order(val value: Int)
 
 /**
  * Interface to provide per-test E2E lifecycle hooks.

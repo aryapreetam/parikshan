@@ -57,7 +57,7 @@ fun MultiplatformShowcaseApp(
   val onScreenSelectedVal = onScreenSelected ?: { internalActiveScreen = it }
 
   BoxWithConstraints(
-    modifier = Modifier.fillMaxSize().background(Color(0xFFF5F1E8))
+    modifier = Modifier.fillMaxSize().background(Color.White)
   ) {
     val isCompact = maxWidth < 700.dp
 
@@ -102,6 +102,7 @@ fun MultiplatformShowcaseApp(
           ContentSurface(
             modifier = Modifier.fillMaxSize().padding(paddingValues),
             activeScreen = activeScreenVal,
+            onScreenSelected = onScreenSelectedVal,
             snackbarHostState = snackbarHostState
           )
         }
@@ -116,10 +117,10 @@ fun MultiplatformShowcaseApp(
             onScreenSelected = onScreenSelectedVal,
             modifier = Modifier.width(240.dp)
           )
-          Spacer(modifier = Modifier.width(12.dp))
           ContentSurface(
             modifier = Modifier.weight(1f).fillMaxHeight(),
             activeScreen = activeScreenVal,
+            onScreenSelected = onScreenSelectedVal,
             snackbarHostState = snackbarHostState
           )
         }
@@ -132,12 +133,12 @@ fun MultiplatformShowcaseApp(
 private fun ContentSurface(
   modifier: Modifier,
   activeScreen: SampleScreen,
+  onScreenSelected: (SampleScreen) -> Unit,
   snackbarHostState: SnackbarHostState
 ) {
   Surface(
     modifier = modifier.testTag("content_surface"),
-    shape = MaterialTheme.shapes.medium,
-    tonalElevation = 2.dp
+    color = Color.White
   ) {
     Box(
       modifier = Modifier

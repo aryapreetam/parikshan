@@ -1,54 +1,78 @@
-This is a Kotlin Multiplatform project targeting Android, iOS, Web, Desktop (JVM), Server.
+# Parikshan Full-Stack E2E Showcase Sample (`cmp-latest`)
 
-* [/app/iosApp](./app/iosApp/iosApp) contains an iOS application. Even if you’re sharing your UI with Compose Multiplatform,
-  you need this entry point for your iOS app. This is also where you should add SwiftUI code for your project.
-
-* [/app/shared](./app/shared/src) is for code that will be shared across your Compose Multiplatform applications.
-  It contains several subfolders:
-  - [commonMain](./app/shared/src/commonMain/kotlin) is for code that’s common for all targets.
-  - Other folders are for Kotlin code that will be compiled for only the platform indicated in the folder name.
-    For example, if you want to use Apple’s CoreCrypto for the iOS part of your Kotlin app,
-    the [iosMain](./app/shared/src/iosMain/kotlin) folder would be the right place for such calls.
-    Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./app/shared/src/jvmMain/kotlin)
-    folder is the appropriate location.
-
-* [/core](./core/src) is for the code that will be shared between all targets in the project.
-  The most important subfolder is [commonMain](./core/src/commonMain/kotlin). If preferred, you
-  can add code to the platform-specific folders here too.
-
-* [/server](./server/src/main/kotlin) is for the Ktor server application.
-
-### Running the apps
-
-Use the run configurations provided by the run widget in your IDE's toolbar. You can also use these commands and options:
-
-- Android app: `./gradlew :app:androidApp:assembleDebug`
-- Desktop app:
-  - Hot reload: `./gradlew :app:desktopApp:hotRun --auto`
-  - Standard run: `./gradlew :app:desktopApp:run`
-- Server: `./gradlew :server:run`
-- Web app:
-  - Wasm target (faster, modern browsers): `./gradlew :app:webApp:wasmJsBrowserDevelopmentRun`
-  - JS target (slower, supports older browsers): `./gradlew :app:webApp:jsBrowserDevelopmentRun`
-- iOS app: open the [/app/iosApp](./app/iosApp) directory in Xcode and run it from there.
-
-### Running tests
-
-Use the run button in your IDE's editor gutter, or run tests using Gradle tasks:
-
-- Android tests: `./gradlew :app:shared:testAndroidHostTest`
-- Desktop tests: `./gradlew :app:shared:jvmTest`
-- Server tests: `./gradlew :server:test`
-- Web tests:
-  - Wasm target: `./gradlew :app:shared:wasmJsTest`
-  - JS target: `./gradlew :app:shared:jsTest`
-- iOS tests: `./gradlew :app:shared:iosSimulatorArm64Test`
+This sample demonstrates end-to-end (E2E) testing for a full-stack Compose Multiplatform application (**StorefrontApp**) communicating with an embedded Ktor backend server.
 
 ---
 
-Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html),
-[Compose Multiplatform](https://github.com/JetBrains/compose-multiplatform/#compose-multiplatform),
-[Kotlin/Wasm](https://kotl.in/wasm/)…
+## What This Sample Demonstrates
 
-We would appreciate your feedback on Compose/Web and Kotlin/Wasm in the public Slack channel [#compose-web](https://slack-chats.kotlinlang.org/c/compose-web).
-If you face any issues, please report them on [YouTrack](https://youtrack.jetbrains.com/newIssue?project=CMP).
+* **MVVM + MVI Storefront Application**: Email authentication, asynchronous product catalog loading, modal details sheets with option toggles, delivery signature canvas, and checkout success confirmation.
+* **Full-Stack Ktor Backend (`:server`)**: Local HTTP REST endpoints (`GET /api/products`, `POST /api/login`, `POST /api/orders`) providing dynamic JSON payloads over port 8080.
+* **Hermetic & Live E2E Testing**: Tests run against Ktor `MockEngine` in automated CI pipelines without external server dependencies, while local runtime app builds connect live to the Ktor server with offline fallback.
+
+---
+
+## Running E2E Tests
+
+### 1. Concurrent E2E Test Suite (`e2eTest`)
+Execute test suites across target environments. You can specify exact target platforms using `--targets=jvm,android,ios` or `-Pparikshan.targets=jvm,wasmJs`:
+
+```bash
+# Run tests across all default configured targets
+./gradlew -p samples/cmp-latest :app:shared:e2eTest
+
+# Run tests for specific target platforms (e.g. JVM and WasmJs)
+./gradlew -p samples/cmp-latest :app:shared:e2eTest --targets=jvm,wasmJs
+
+# Run tests for JVM, Android, and iOS targets
+./gradlew -p samples/cmp-latest :app:shared:e2eTest --targets=jvm,android,ios
+```
+
+### 2. Single Target E2E Test Tasks
+* **Desktop (JVM)**:
+  ```bash
+  ./gradlew -p samples/cmp-latest :app:shared:e2eJvmTest
+  ```
+* **Web (WasmJs)**:
+  ```bash
+  ./gradlew -p samples/cmp-latest :app:shared:e2eWasmTest
+  ```
+* **Target Specific Test Class**:
+  ```bash
+  ./gradlew -p samples/cmp-latest :app:shared:e2eJvmTest --tests "org.example.project.StorefrontFlowTest"
+  ```
+
+---
+
+## Running the Application
+
+### 1. Ktor Backend Server (Port 8080)
+```bash
+./gradlew -p samples/cmp-latest :server:run
+```
+
+### 2. Desktop Application (JVM)
+```bash
+./gradlew -p samples/cmp-latest :app:desktopApp:run
+```
+
+### 3. Web Application (WasmJs)
+```bash
+./gradlew -p samples/cmp-latest :app:webApp:wasmJsBrowserDevelopmentRun
+```
+
+### 4. Android Application
+```bash
+./gradlew -p samples/cmp-latest :app:androidApp:assembleDebug
+```
+
+### 5. iOS Application
+Open `samples/cmp-latest/app/iosApp` in Xcode and execute on simulator or device.
+
+---
+
+## TBD / Future Enhancements
+
+* **Dynamic Server CRUD Persistence**: Extend `:server` with a persistent database store and real-time WebSocket event broadcasting.
+* **Live Connection Status Badge**: Render a visual status badge (`Connected to Ktor Server` vs `Offline Seed Mode`) on the Storefront TopAppBar.
+* **Real-time Server Mutation Tests**: Add E2E tests validating live `POST /api/products` updates reflected instantly in client view models.

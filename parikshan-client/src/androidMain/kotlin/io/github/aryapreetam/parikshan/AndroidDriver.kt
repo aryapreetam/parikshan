@@ -73,12 +73,19 @@ internal class AndroidDriver private constructor(
     val candidates = selectorCandidates(selector)
     if (candidates.isEmpty()) return null
     
+    val filtered = when (command) {
+      is Command.Input -> candidates.filter { inputTargetFor(it.node) != null }
+      is Command.Click -> candidates.filter { clickTargetFor(it.node) != null }
+      else -> candidates
+    }
+    if (filtered.isEmpty()) return null
+
     val targetIndex = when {
       selector.index != null && selector.index!! >= 0 -> selector.index!!
-      selector.index != null && selector.index!! < 0 -> candidates.size + selector.index!!
+      selector.index != null && selector.index!! < 0 -> filtered.size + selector.index!!
       else -> 0
     }
-    return candidates.getOrNull(targetIndex)?.node
+    return filtered.getOrNull(targetIndex)?.node
   }
 
   private fun selectorCandidates(selector: Selector): List<SelectorCandidate> {

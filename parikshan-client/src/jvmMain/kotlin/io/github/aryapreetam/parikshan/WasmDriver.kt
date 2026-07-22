@@ -228,12 +228,19 @@ internal class WasmDriver private constructor(
           page.mouse().move(node.bounds.centerX, node.bounds.centerY)
           val (deltaX, deltaY) =
             when (command.direction) {
-              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Up -> 0.0 to -400.0
-              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Down -> 0.0 to 400.0
-              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Left -> -400.0 to 0.0
-              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Right -> 400.0 to 0.0
+              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Up -> 0.0 to -200.0
+              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Down -> 0.0 to 200.0
+              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Left -> -200.0 to 0.0
+              io.github.aryapreetam.parikshan.protocol.ScrollDirection.Right -> 200.0 to 0.0
             }
-          page.mouse().wheel(deltaX, deltaY)
+          val steps = 10
+          val stepX = deltaX / steps
+          val stepY = deltaY / steps
+          val delayPerStep = 50L
+          repeat(steps) {
+            page.mouse().wheel(stepX, stepY)
+            delay(delayPerStep)
+          }
         }
         delay(300) // Increased settling delay for Wasm
         Response.Ok(command.id)

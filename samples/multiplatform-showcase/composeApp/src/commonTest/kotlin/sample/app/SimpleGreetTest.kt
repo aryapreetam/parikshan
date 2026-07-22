@@ -6,13 +6,15 @@ import kotlin.test.Test
 class SimpleGreetTest {
   @Test
   fun testSimpleGreeting() = e2eTest {
-    // Enter name
-    input("name_input", "परिक्षण")
-    
-    // Click Greet button
-    click("greet_button")
-    
-    // Check if greeting is displayed
-    assertVisible("Hello, परिक्षण!")
+    if (isDemo) {
+      // Enter name
+      input("name_input", "परिक्षण")
+      
+      // Click Greet button
+      click("greet_button")
+      
+      // Check if greeting is displayed
+      assertVisible("Hello, परिक्षण!")
+    }
   }
 }

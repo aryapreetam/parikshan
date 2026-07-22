@@ -6,21 +6,15 @@ import io.github.aryapreetam.parikshan.E2ETestScope
 import io.github.aryapreetam.parikshan.E2ETestLifecycle
 import kotlin.test.Test
 
-class SystemActionIntegrationTest : E2ETestLifecycle {
-
-  override suspend fun E2ETestScope.beforeEach() {
-    navigateToSection("nav_navigation_playground")
-    assertVisible("navigation_playground_screen")
-  }
-
-  override suspend fun E2ETestScope.afterEach() {
-    navigateToSection("nav_home_screen")
-  }
+class SystemActionIntegrationTest {
 
   @Test
   fun testSystemBackAndHomeActions() = e2eTest {
     // System-level gestures are only verified on Android target
     if (isAndroid()) {
+      navigateToSection("nav_navigation_playground")                                                                                                                                                                  
+      assertVisible("navigation_playground_screen")
+
       // Navigate to Screen B
       click("nav_to_b_button")
       assertVisible("screen_b_title")
@@ -29,8 +23,9 @@ class SystemActionIntegrationTest : E2ETestLifecycle {
       pressBack()
       assertVisible("screen_a_title")
 
-      // Press system back again - should pop out of Navigation Playground to TaskList home screen
+      // Press system back again - pops out of activity
       pressBack()
+      relaunchApp()
       assertVisible("home_screen")
 
       // Navigate back to playground to test home gesture

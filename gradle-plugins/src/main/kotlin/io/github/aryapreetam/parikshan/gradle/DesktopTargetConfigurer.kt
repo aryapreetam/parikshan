@@ -222,10 +222,10 @@ internal object DesktopProcess {
       conn.outputStream.use { it.write(json.toByteArray()) }
       conn.responseCode
     }
-    Thread.sleep(3000)
     process?.let { active ->
       if (active.isAlive) {
         active.destroy()
+        try { active.waitFor(500, java.util.concurrent.TimeUnit.MILLISECONDS) } catch (_: Exception) {}
       }
     }
     manifestFile?.let { destroyManifestProcess(it) }

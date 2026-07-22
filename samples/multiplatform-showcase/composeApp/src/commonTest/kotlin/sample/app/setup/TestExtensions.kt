@@ -171,7 +171,7 @@ private suspend fun E2ETestScope.selectDateViaInputNative(day: Int, month: Int, 
 
 private suspend fun E2ETestScope.selectDateViaInputWasm(day: Int, month: Int, year: Int) {
     click(Selector.Auto("Switch to text input mode"))
-    delay(2000)
+    delay(1000)
 
     val tree = getTree()
     val inputSelector = when {
@@ -226,7 +226,7 @@ private suspend fun E2ETestScope.selectDateViaInputNative(dateText: String) {
 
 private suspend fun E2ETestScope.selectDateViaInputWasm(dateText: String) {
     click(Selector.Auto("Switch to text input mode"))
-    delay(2000)
+    delay(1000)
 
     val tree = getTree()
     val inputSelector = when {
@@ -450,7 +450,7 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
     }
 
     // 4. Final Day Selection
-    delay(2000)
+    delay(1000)
     val finalTree = getTree()
     
     // Attempt semantic match first (e.g. "Monday, 15 June 2026")
@@ -567,7 +567,7 @@ suspend fun E2ETestScope.selectTimeFromDialGeometrically(hour: Int, minute: Int,
     }
     if (!hourFound) throw AssertionError("Failed select hour $hour")
     clickAtFast(hourBtn.bounds.right + 75.0, hourBtn.bounds.centerY)
-    delay(2000)
+    delay(1000)
     clickAtStill(centerX + (maxRadius * 0.85) * cos((minute - 15) * (PI / 30.0)), centerY + (maxRadius * 0.85) * sin((minute - 15) * (PI / 30.0)))
     try { click(Selector.Tag("time_picker_ok_button")) } catch (e: Throwable) { clickAtFast(840.0, 500.0) }
 }

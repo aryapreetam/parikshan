@@ -1,6 +1,8 @@
 package sample.app.playgrounds
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -48,8 +50,8 @@ fun NavigationPlayground() {
 
   Column(
     modifier = Modifier
-      .fillMaxSize()
-      .padding(16.dp)
+      .fillMaxWidth()
+      .verticalScroll(rememberScrollState())
       .testTag("navigation_playground_screen"),
     verticalArrangement = Arrangement.spacedBy(16.dp)
   ) {
@@ -90,7 +92,7 @@ fun NavigationPlayground() {
       }
     }
 
-    Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+    Box(modifier = Modifier.fillMaxWidth()) {
       when (currentSubScreen) {
         SubScreen.ScreenA -> {
           Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

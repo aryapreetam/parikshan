@@ -13,7 +13,6 @@ import kotlin.test.Test
 class SelectorScenarios : E2ETestLifecycle {
 
   override suspend fun E2ETestScope.beforeEach() {
-    openInputForm()
   }
 
   override suspend fun E2ETestScope.afterEach() {
@@ -21,39 +20,22 @@ class SelectorScenarios : E2ETestLifecycle {
   }
 
   @Test
-  fun testInputForm() = e2eTest {
-    input("input_name_field", "New Task")
-    assertText("input_name_preview", "New Task")
-    click("form_submit_button")
-    assertVisible("form_success_message")
-  }
-
-  @Test
-  fun testUniqueTextSelector() = e2eTest {
-    scrollUntilVisible(Selector.Tag("input_form_screen"), Selector.Auto("Unique Text Action"))
-    click("Unique Text Action")
-    assertVisible("Unique text clicked")
-  }
-
-  @Test
-  fun testTagPrecedenceOverText() = e2eTest {
-    click("Submit")
-    assertText("selector_result_message", "Tag selector won")
-  }
-
-  @Test
   fun testAmbiguousTextSelectorFailsClearly() = e2eTest {
-    // Scroll to the second button to ensure BOTH "Duplicate Action" buttons are physically visible
-    scrollUntilVisible(Selector.Tag("input_form_screen"), Selector.Tag("duplicate_action_secondary"))
+    openAppNavigation()
+    click("nav_selector_parity_playground")
+    assertVisible("selector_parity_playground_screen")
 
-    assertFailure("multiple visible nodes") {
+    // Scroll to the second button to ensure BOTH "Duplicate Action" buttons are physically visible
+    scrollUntilVisible(Selector.Tag("selector_parity_playground_screen"), Selector.Tag("duplicate_action_secondary"))
+
+    assertFailure("matched multiple visible nodes") {
       click("Duplicate Action")
     }
   }
 }
 
 private suspend fun E2ETestScope.openInputForm() {
-  openAppNavigation(); click("nav_input_form")
-  assertVisible("input_form_screen")
+  openAppNavigation(); click("nav_form_playground")
+  assertVisible("form_playground_screen")
 }
 

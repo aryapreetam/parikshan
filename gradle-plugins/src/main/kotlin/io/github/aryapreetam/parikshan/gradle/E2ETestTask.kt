@@ -368,6 +368,7 @@ abstract class E2ETestTask : DefaultTask() {
 
           val activeToken = if (canReuse && session != null) session.token else token.get()
 
+          val failedClasses = mutableListOf<String>()
           classes.forEach { testClass ->
             logger.lifecycle("Parikshan [$target]: Running $testClass...")
             val exitCode = spawnTestJvm(
@@ -383,17 +384,8 @@ abstract class E2ETestTask : DefaultTask() {
               activeProcesses = activeProcesses
             )
             if (exitCode != 0) {
+              failedClasses.add(testClass)
               printTestFailures(target, testClass)
-              if (jarFile != null) {
-                DesktopProcess.stop(
-                  host = host.get(),
-                  port = resolvedPort,
-                  token = activeToken,
-                  manifestFile = desktopLaunchManifestFile.get().asFile
-                )
-                clearSession(target)
-              }
-              return@withTargetLock createTargetResult(target, false, classes, "Test class $testClass failed (exit code $exitCode). Check logs at build/parikshan/logs/${target}-${testClass.substringAfterLast('.')}.log")
             }
           }
 
@@ -419,7 +411,7 @@ abstract class E2ETestTask : DefaultTask() {
               clearSession(target)
             }
           }
-          return@withTargetLock createTargetResult(target, true, classes)
+          return@withTargetLock createTargetResult(target, failedClasses.isEmpty(), classes)
         }
 
         target == "wasm" -> {
@@ -454,23 +446,20 @@ abstract class E2ETestTask : DefaultTask() {
 
         val activeToken = if (canReuse && session != null) session.token else token.get()
 
-        classes.forEach { testClass ->
-          logger.lifecycle("Parikshan [wasm]: Running $testClass...")
-          val exitCode = spawnTestJvm(
-            target = "wasm",
-            testClass = testClass,
-            systemProperties = mapOf(
-              "parikshan.target" to "wasm",
-              "parikshan.token" to activeToken,
-              "parikshan.wasm.url" to "http://127.0.0.1:$resolvedPort"
-            ),
-            activeProcesses = activeProcesses
-          )
-          if (exitCode != 0) {
+        logger.lifecycle("Parikshan [wasm]: Running test suite across ${classes.size} classes in single browser window...")
+        val exitCode = spawnTestJvmForClasses(
+          target = "wasm",
+          testClasses = classes,
+          systemProperties = mapOf(
+            "parikshan.target" to "wasm",
+            "parikshan.token" to activeToken,
+            "parikshan.wasm.url" to "http://127.0.0.1:$resolvedPort"
+          ),
+          activeProcesses = activeProcesses
+        )
+        if (exitCode != 0) {
+          classes.forEach { testClass ->
             printTestFailures("wasm", testClass)
-            WasmServer.stop()
-            clearSession("wasm")
-            return createTargetResult("wasm", false, classes, "Test class $testClass failed (exit code $exitCode). Check logs at build/parikshan/logs/wasm-${testClass.substringAfterLast('.')}.log")
           }
         }
 
@@ -478,7 +467,7 @@ abstract class E2ETestTask : DefaultTask() {
           WasmServer.stop()
           clearSession("wasm")
         }
-        return createTargetResult("wasm", true, classes)
+        return createTargetResult("wasm", exitCode == 0, classes)
       }
 
         target == "android" -> {
@@ -1050,6 +1039,127 @@ abstract class E2ETestTask : DefaultTask() {
     return exitCode
   }
 
+  private fun spawnTestJvmForClasses(
+    target: String,
+    testClasses: List<String>,
+    systemProperties: Map<String, String>,
+    activeProcesses: MutableList<Process>
+  ): Int {
+    if (testClasses.isEmpty()) return 0
+    if (testClasses.size == 1) return spawnTestJvm(target, testClasses.first(), systemProperties, activeProcesses)
+
+    val isWindows = System.getProperty("os.name").lowercase().contains("win")
+    val javaBin = File(System.getProperty("java.home"), "bin/java" + (if (isWindows) ".exe" else "")).absolutePath
+
+    val classpathFiles = hostTestClasspath.files + hostTestClassesDirs.files + junitConsoleJars.files + File(this.javaClass.protectionDomain.codeSource.location.toURI())
+    val cpString = classpathFiles.map { it.absolutePath }.joinToString(File.pathSeparator)
+
+    val pbArgs = mutableListOf<String>()
+    pbArgs.add(javaBin)
+    pbArgs.add("-cp")
+    pbArgs.add(cpString)
+
+    systemProperties.forEach { (k, v) ->
+      pbArgs.add("-D$k=$v")
+    }
+
+    pbArgs.add("-Djunit.jupiter.extensions.autodetection.enabled=true")
+
+    val propsToForward = listOf(
+      "parikshan.video.enabled",
+      "parikshan.video.fps",
+      "parikshan.video.showCursor",
+      "parikshan.video.stepDelayMs",
+      "parikshan.video.postRollMs",
+      "parikshan.video.granularity",
+      "parikshan.video.width",
+      "parikshan.video.height",
+      "parikshan.wasm.headless",
+      "parikshan.wasm.viewportWidth",
+      "parikshan.wasm.viewportHeight",
+      "parikshan.wasm.bridgeReadyTimeoutMs"
+    )
+    propsToForward.forEach { prop ->
+      val v = System.getProperty(prop) ?: providers.gradleProperty(prop).orNull
+      if (!v.isNullOrEmpty()) {
+        pbArgs.add("-D$prop=$v")
+      }
+    }
+    if (keepAlive) {
+      pbArgs.add("-Dparikshan.keepAlive=true")
+    }
+
+    val reportsDir = File(buildDir.get().asFile, "test-results/e2eTest/$target").absolutePath
+    pbArgs.add("-Dparikshan.video.outputDir=" + File(buildDir.get().asFile, "parikshan/videos/$target").absolutePath)
+    pbArgs.add("org.junit.platform.console.ConsoleLauncher")
+    pbArgs.add("--reports-dir")
+    pbArgs.add(reportsDir)
+
+    testClasses.forEach { clazz ->
+      pbArgs.add("--select-class")
+      pbArgs.add(clazz)
+    }
+
+    val logsDir = File(buildDir.get().asFile, "parikshan/logs")
+    logsDir.mkdirs()
+    logsDir.listFiles { f -> f.name.startsWith("${target}-") }?.forEach { it.delete() }
+
+    val classWriters = testClasses.associateWith { testClass ->
+      java.io.PrintWriter(File(logsDir, "${target}-${testClass}.log").bufferedWriter())
+    }
+
+    val pb = ProcessBuilder(pbArgs)
+    pb.environment()["NSAppSleepDisabled"] = "YES"
+    pb.redirectErrorStream(true)
+    val process = pb.start()
+
+    synchronized(activeProcesses) {
+      activeProcesses.add(process)
+    }
+
+    var currentClass: String? = testClasses.firstOrNull()
+    val headerLines = mutableListOf<String>()
+    val summaryLines = mutableListOf<String>()
+    var inSummary = false
+
+    try {
+      process.inputStream.bufferedReader().forEachLine { line ->
+        var matchedClass: String? = null
+        for (clazz in testClasses) {
+          val simple = clazz.substringAfterLast('.')
+          if (line.contains("└─  $simple") || line.contains("├─  $simple") || line.contains("Test Failures for $clazz") || line.contains("Test Failures for $simple")) {
+            matchedClass = clazz
+            break
+          }
+        }
+        if (matchedClass != null) {
+          currentClass = matchedClass
+        }
+
+        if (currentClass != null) {
+          classWriters[currentClass]?.println(line)
+        } else {
+          headerLines.add(line)
+        }
+      }
+    } catch (_: Exception) {
+    } finally {
+      classWriters.forEach { (_, writer) ->
+        headerLines.forEach { h -> writer.println(h) }
+        writer.flush()
+        writer.close()
+      }
+    }
+
+    val exitCode = process.waitFor()
+
+    synchronized(activeProcesses) {
+      activeProcesses.remove(process)
+    }
+
+    return exitCode
+  }
+
   private fun printTestFailures(target: String, testClass: String) {
     val logFile = File(buildDir.get().asFile, "parikshan/logs/${target}-${testClass}.log")
     val logger = logger
@@ -1071,8 +1181,34 @@ abstract class E2ETestTask : DefaultTask() {
   private data class TargetMetrics(val found: Int, val started: Int, val successful: Int, val failed: Int)
 
   private fun parseTestMetrics(target: String, testClass: String): TargetMetrics? {
-    val logFile = File(buildDir.get().asFile, "parikshan/logs/${target}-${testClass}.log")
-    if (!logFile.exists()) return null
+    val simpleName = testClass.substringAfterLast('.')
+
+    val xmlReport = File(buildDir.get().asFile, "test-results/e2eTest/$target/TEST-junit-jupiter.xml")
+    if (xmlReport.exists()) {
+      val xmlContent = xmlReport.readText()
+      val testCaseRegex = Regex("<testcase [^>]*classname=\"([^\"]+)\"[^>]*>(.*?)</testcase>", RegexOption.DOT_MATCHES_ALL)
+      var found = 0
+      var failed = 0
+      testCaseRegex.findAll(xmlContent).forEach { match ->
+        val clazz = match.groupValues[1]
+        if (clazz == testClass || clazz.endsWith(".$simpleName")) {
+          found++
+          val body = match.groupValues[2]
+          if (body.contains("<failure") || body.contains("<error")) {
+            failed++
+          }
+        }
+      }
+      if (found > 0) {
+        return TargetMetrics(found, found, found - failed, failed)
+      }
+    }
+
+    val logFile = listOf(
+      File(buildDir.get().asFile, "parikshan/logs/${target}-${simpleName}.log"),
+      File(buildDir.get().asFile, "parikshan/logs/${target}-${testClass}.log")
+    ).firstOrNull { it.exists() } ?: return null
+
     var found = 0
     var started = 0
     var successful = 0

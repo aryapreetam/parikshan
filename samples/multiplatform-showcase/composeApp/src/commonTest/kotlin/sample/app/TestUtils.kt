@@ -37,9 +37,6 @@ suspend fun E2ETestScope.navigateToSection(navTag: String) {
     if (navContainer != null) {                                                                                                                                      
         val sectionOrder = listOf(                                                                                                                                   
             "nav_home_screen",                                                                                                                                         
-            "nav_input_form",                                                                                                                                        
-            "nav_scroll_demo",                                                                                                                                       
-            "nav_subtext_demo",                                                                                                                                      
             "nav_form_playground",                                                                                                                                   
             "nav_overlay_playground",                                                                                                                                
             "nav_navigation_playground",                                                                                                                             

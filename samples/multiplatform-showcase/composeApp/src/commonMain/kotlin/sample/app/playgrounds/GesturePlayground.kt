@@ -43,9 +43,8 @@ fun GesturePlayground() {
 
   Column(
     modifier = Modifier
-      .fillMaxSize()
+      .fillMaxWidth()
       .verticalScroll(scrollState)
-      .padding(16.dp)
       .testTag("gesture_playground_screen"),
     verticalArrangement = Arrangement.spacedBy(20.dp)
   ) {
@@ -190,52 +189,6 @@ fun GesturePlayground() {
       }
     }
 
-    // 3. Pull-To-Refresh Scenario
-    Card(modifier = Modifier.fillMaxWidth().testTag("pull_refresh_container")) {
-      Column(
-        modifier = Modifier
-          .fillMaxWidth()
-          .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-      ) {
-        Text("3. Pull to Refresh", style = MaterialTheme.typography.titleMedium)
-        
-        Box(
-          modifier = Modifier
-            .fillMaxWidth()
-            .height(100.dp)
-            .background(Color.DarkGray)
-            .pointerInput(Unit) {
-              detectDragGestures(
-                onDragEnd = {
-                  if (pullDistance > 80f) {
-                    pullToRefreshLoading = true
-                    gestureResultMsg = "Refreshing Content..."
-                    coroutineScope.launch {
-                      delay(1500)
-                      pullToRefreshLoading = false
-                      gestureResultMsg = "Refresh Completed"
-                    }
-                  }
-                  pullDistance = 0f
-                },
-                onDrag = { change, dragAmount ->
-                  change.consume()
-                  pullDistance = (pullDistance + dragAmount.y).coerceIn(0f, 120f)
-                }
-              )
-            }
-            .testTag("pull_target_surface"),
-          contentAlignment = Alignment.Center
-        ) {
-          if (pullToRefreshLoading) {
-            CircularProgressIndicator(color = Color.White, modifier = Modifier.testTag("pull_loading_indicator"))
-          } else {
-            Text("Pull Down to Refresh (Pull: ${pullDistance.toInt()})", color = Color.White)
-          }
-        }
-      }
-    }
 
     // 4. Multi-tap Gestures (Long Press & Double Tap)
     Card(modifier = Modifier.fillMaxWidth().testTag("taps_container_card")) {

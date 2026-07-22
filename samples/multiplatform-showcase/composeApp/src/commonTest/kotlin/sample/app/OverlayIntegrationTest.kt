@@ -58,7 +58,7 @@ class OverlayIntegrationTest : E2ETestLifecycle {
   fun testAlertDialogConfirmation() = e2eTest {
     click("dialog_trigger_button")
     
-    click(Selector.Text("Confirm"))
+    click("dialog_confirm_button")
     
     assertVisible("Dialog Confirmed")
   }

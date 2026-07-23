@@ -13,10 +13,6 @@ import kotlin.math.abs
 
 import io.github.aryapreetam.parikshan.isWasm
 
-/**
- * Checks if the current E2E test is running against the Wasm target.
- */
-fun E2ETestScope.isWasmTarget(): Boolean = isWasm()
 
 /**
  * Interacts with a Material 3 ExposedDropdownMenuBox.
@@ -110,7 +106,7 @@ fun resolveDateTextForLocale(dateText: String, tree: List<io.github.aryapreetam.
  * Interacts with a Material 3 DatePickerDialog via text input mode.
  */
 suspend fun E2ETestScope.selectDateViaInput(day: Int, month: Int, year: Int) {
-    if (isWasmTarget()) {
+    if (isWasm()) {
         selectDateViaInputWasm(day, month, year)
     } else {
         selectDateViaInputNative(day, month, year)
@@ -120,7 +116,7 @@ suspend fun E2ETestScope.selectDateViaInput(day: Int, month: Int, year: Int) {
 suspend fun E2ETestScope.selectDateViaInput(dateText: String) {
     val parts = dateText.split('/', '.', '-')
     if (parts.size != 3) {
-        if (isWasmTarget()) selectDateViaInputWasm(dateText)
+        if (isWasm()) selectDateViaInputWasm(dateText)
         else selectDateViaInputNative(dateText)
         return
     }
@@ -128,7 +124,7 @@ suspend fun E2ETestScope.selectDateViaInput(dateText: String) {
     val p1 = parts[1].toIntOrNull()
     val p2 = parts[2].toIntOrNull()
     if (p0 == null || p1 == null || p2 == null) {
-        if (isWasmTarget()) selectDateViaInputWasm(dateText)
+        if (isWasm()) selectDateViaInputWasm(dateText)
         else selectDateViaInputNative(dateText)
         return
     }
@@ -260,7 +256,7 @@ private suspend fun E2ETestScope.selectDateViaInputWasm(dateText: String) {
  * Interacts with a Material 3 DatePickerDialog via calendar mode selection.
  */
 suspend fun E2ETestScope.selectDateFromCalendar(day: Int, month: Int, year: Int) {
-    if (isWasmTarget()) {
+    if (isWasm()) {
         selectDateFromCalendarWasm(day, month, year)
     } else {
         selectDateFromCalendarNative(day, month, year)
@@ -299,7 +295,7 @@ private suspend fun E2ETestScope.selectDateFromCalendarNative(day: Int, month: I
         click(target.atIndex(-1))
         delay(1500)
         
-        clickAtStill(dialog.bounds.left + 20.0, dialog.bounds.top + 20.0)
+        clickAt(dialog.bounds.left + 20.0, dialog.bounds.top + 20.0)
         delay(500)
     }
 
@@ -374,7 +370,7 @@ private suspend fun E2ETestScope.selectDateFromCalendarNative(day: Int, month: I
         val colW = (dayList.bounds.right - dayList.bounds.left) / 7.0
         val absIdx = startOffset + (day - 1)
         
-        clickAtStill(dayList.bounds.left + (absIdx % 7 + 0.5) * colW, gridTop + (absIdx / 7 + 0.5) * 48.0)
+        clickAt(dayList.bounds.left + (absIdx % 7 + 0.5) * colW, gridTop + (absIdx / 7 + 0.5) * 48.0)
     }
     
     delay(500)
@@ -415,7 +411,7 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
         delay(1500)
         
         // Wake up ping
-        clickAtStill(dialog.bounds.left + 20.0, dialog.bounds.top + 20.0)
+        clickAt(dialog.bounds.left + 20.0, dialog.bounds.top + 20.0)
         delay(500)
     }
 
@@ -475,35 +471,30 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
         val colW = (dayList.bounds.right - dayList.bounds.left) / 7.0
         val absIdx = startOffset + (day - 1)
         
-        clickAtStill(dayList.bounds.left + (absIdx % 7 + 0.5) * colW, gridTop + (absIdx / 7 + 0.5) * 48.0)
+        clickAt(dayList.bounds.left + (absIdx % 7 + 0.5) * colW, gridTop + (absIdx / 7 + 0.5) * 48.0)
     }
     
     delay(500)
     click(Selector.Tag("date_picker_ok_button").atIndex(0))
 }
 
-suspend fun E2ETestScope.dragSliderPhysically(selector: Selector, percent: Float) {
+suspend fun E2ETestScope.dragSlider(selector: Selector, percent: Float) {
     val node = resolveNode(selector)
     val bounds = node.bounds
     drag(fromX = bounds.centerX, fromY = bounds.centerY, toX = bounds.left + ((bounds.right - bounds.left) * percent), toY = bounds.centerY, durationMs = 500L)
 }
 
-suspend fun E2ETestScope.dragSliderPhysically(tag: String, percent: Float) {
-    dragSliderPhysically(Selector.Auto(tag), percent)
+suspend fun E2ETestScope.dragSlider(tag: String, percent: Float) {
+    dragSlider(Selector.Auto(tag), percent)
 }
 
-suspend fun E2ETestScope.clickAtFast(x: Double, y: Double) {
-    drag(fromX = x, fromY = y, toX = x + 20.0, toY = y, durationMs = 300L)
-    delay(1200L) 
-}
-
-suspend fun E2ETestScope.clickAtStill(x: Double, y: Double) {
+suspend fun E2ETestScope.clickAt(x: Double, y: Double) {
     drag(fromX = x, fromY = y, toX = x + 5.0, toY = y + 5.0, durationMs = 300L)
     delay(1000L)
 }
 
 suspend fun E2ETestScope.selectTimeFromDial(hour: String, minute: String, is24Hour: Boolean = true) {
-    if (isWasmTarget()) selectTimeFromDialGeometrically(hour.toInt(), minute.toInt(), is24Hour)
+    if (isWasm()) selectTimeFromDialByCoordinates(hour.toInt(), minute.toInt(), is24Hour)
     else selectTimeFromDialNative(hour, minute, is24Hour)
 }
 
@@ -535,7 +526,7 @@ suspend fun E2ETestScope.selectTimeViaInput(hour: String, minute: String) {
     click(Selector.Tag("time_picker_ok_button").atIndex(0))
 }
 
-suspend fun E2ETestScope.selectTimeFromDialGeometrically(hour: Int, minute: Int, is24Hour: Boolean = true) {
+private suspend fun E2ETestScope.selectTimeFromDialByCoordinates(hour: Int, minute: Int, is24Hour: Boolean = true) {
     val dialNode = resolveNode(Selector.Tag("time_picker_dial"))
     val initialTree = getTree()
     val hourBtn = initialTree.firstOrNull { it.text?.contains("Select hour", ignoreCase = true) == true } ?: throw AssertionError("Hour button missing")
@@ -548,26 +539,26 @@ suspend fun E2ETestScope.selectTimeFromDialGeometrically(hour: Int, minute: Int,
     val maxRadius = (dialSize / 2.0) - 12.0
     if (!is24Hour) {
         val amPmNode = getTree().firstOrNull { it.text?.contains("a.m.", ignoreCase = true) == true || it.text?.contains("p.m.", ignoreCase = true) == true }
-        if (amPmNode != null) clickAtFast(if (hour >= 12) amPmNode.bounds.right - 25.0 else amPmNode.bounds.left + 25.0, amPmNode.bounds.centerY)
+        if (amPmNode != null) clickAt(if (hour >= 12) amPmNode.bounds.right - 25.0 else amPmNode.bounds.left + 25.0, amPmNode.bounds.centerY)
         delay(1000)
     }
     val displayHour = if (!is24Hour) (if (hour == 0) 12 else if (hour > 12) hour - 12 else hour) else hour
     val hourAngle = (displayHour - 3) * (PI / 6.0)
     val rScales = if (is24Hour && (hour == 0 || hour >= 13)) listOf(0.55, 0.85) else listOf(0.85, 0.55)
     var hourFound = false
-    clickAtFast(hourBtn.bounds.centerX, hourBtn.bounds.centerY)
+    clickAt(hourBtn.bounds.centerX, hourBtn.bounds.centerY)
     for (rScale in rScales) {
         for (aNudge in listOf(0.0, -0.06, 0.06, -0.12, 0.12)) {
-            clickAtStill(centerX + (maxRadius * rScale) * cos(hourAngle + aNudge), centerY + (maxRadius * rScale) * sin(hourAngle + aNudge))
+            clickAt(centerX + (maxRadius * rScale) * cos(hourAngle + aNudge), centerY + (maxRadius * rScale) * sin(hourAngle + aNudge))
             repeat(8) { if (getTree().find { it.text?.contains("Select hour", ignoreCase = true) == true }?.text?.filter { it.isDigit() } == displayHour.toString()) { hourFound = true; return@repeat }; delay(500) }
             if (hourFound) break
-            clickAtFast(hourBtn.bounds.centerX, hourBtn.bounds.centerY)
+            clickAt(hourBtn.bounds.centerX, hourBtn.bounds.centerY)
         }
         if (hourFound) break
     }
     if (!hourFound) throw AssertionError("Failed select hour $hour")
-    clickAtFast(hourBtn.bounds.right + 75.0, hourBtn.bounds.centerY)
+    clickAt(hourBtn.bounds.right + 75.0, hourBtn.bounds.centerY)
     delay(1000)
-    clickAtStill(centerX + (maxRadius * 0.85) * cos((minute - 15) * (PI / 30.0)), centerY + (maxRadius * 0.85) * sin((minute - 15) * (PI / 30.0)))
-    try { click(Selector.Tag("time_picker_ok_button")) } catch (e: Throwable) { clickAtFast(840.0, 500.0) }
+    clickAt(centerX + (maxRadius * 0.85) * cos((minute - 15) * (PI / 30.0)), centerY + (maxRadius * 0.85) * sin((minute - 15) * (PI / 30.0)))
+    try { click(Selector.Tag("time_picker_ok_button")) } catch (e: Throwable) { clickAt(840.0, 500.0) }
 }

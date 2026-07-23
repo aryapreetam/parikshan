@@ -64,8 +64,8 @@ You can reference our slider integration test implementation in [FormIntegration
 Locate the slider's bounding box, execute a coordinate-based horizontal drag gesture along the track, and verify the resulting value using a tolerance range (e.g. ±5%) to absorb layout, padding, and gesture velocity shifts.
 
 ```kotlin
-// Drag slider physically to 80% of its track width
-dragSliderPhysically("form_slider", 0.8f)
+// Drag slider to 80% of its track width
+dragSlider("form_slider", 0.8f)
 
 // Verify the value falls within a stable range (75% to 85%) to absorb gesture jitter
 waitFor(Selector.Text("Range Selector:"))

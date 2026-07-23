@@ -4,7 +4,6 @@ import io.github.aryapreetam.parikshan.E2ETestScope
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import io.github.aryapreetam.parikshan.e2eTest
-import sample.app.setup.dragSliderPhysically
 import io.github.aryapreetam.parikshan.E2ETestLifecycle
 import kotlin.test.Test
 

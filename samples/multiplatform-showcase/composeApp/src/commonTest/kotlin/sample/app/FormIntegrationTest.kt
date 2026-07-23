@@ -6,7 +6,7 @@ import io.github.aryapreetam.parikshan.e2eTest
 import io.github.aryapreetam.parikshan.isWasm
 import io.github.aryapreetam.parikshan.isAndroid
 import io.github.aryapreetam.parikshan.isIos
-import sample.app.setup.dragSliderPhysically
+import sample.app.setup.dragSlider
 import io.github.aryapreetam.parikshan.E2ETestLifecycle
 import kotlin.test.Test
 
@@ -90,12 +90,12 @@ class FormIntegrationTest : E2ETestLifecycle {
   }
 
   @Test
-  fun testSliderPhysicalDrag() = e2eTest {
+  fun testSliderDrag() = e2eTest {
     scrollUntilVisible(Selector.Tag("form_playground_screen"), Selector.Tag("form_slider"))
     assertVisible("form_slider")
     
-    // Drag slider physically to 80%
-    dragSliderPhysically("form_slider", 0.8f)
+    // Drag slider to 80%
+    dragSlider("form_slider", 0.8f)
     
     // Verify value is updated to a reasonable range (75% to 85%) due to physical gesture Jitter across platforms
     waitFor(Selector.Text("Range Selector:"))

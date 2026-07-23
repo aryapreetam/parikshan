@@ -17,6 +17,10 @@ import java.util.concurrent.Future
 
 abstract class E2ETestTask : DefaultTask() {
 
+  init {
+    outputs.upToDateWhen { false }
+  }
+
   @get:Inject
   abstract val providers: ProviderFactory
 
@@ -249,10 +253,13 @@ abstract class E2ETestTask : DefaultTask() {
     val shutdownHook = Thread {
       synchronized(activeProcesses) {
         activeProcesses.forEach {
-          try { it.destroy() } catch (_: Exception) {}
+          try { it.destroyForcibly() } catch (_: Exception) {}
         }
       }
       try { WasmServer.stop() } catch (_: Exception) {}
+      try {
+        ProcessBuilder("adb", "forward", "--remove", "tcp:9879").start().waitFor()
+      } catch (_: Exception) {}
     }
     Runtime.getRuntime().addShutdownHook(shutdownHook)
 
@@ -546,7 +553,9 @@ abstract class E2ETestTask : DefaultTask() {
             logger.lifecycle("Parikshan [android]: Device detected. Starting E2E execution on port $activePort...")
             // 1. Start App
             val startArgs = mutableListOf(
-              gradlew, "$projectPathPrefix:startParikshanAndroidApp",
+              gradlew,
+              "-p", projectRootDir.get(),
+              "$projectPathPrefix:startParikshanAndroidApp",
               "-Pparikshan.token=${token.get()}",
               "-Pparikshan.port=$activePort",
               "-Pparikshan.e2e.active=true"
@@ -564,7 +573,12 @@ abstract class E2ETestTask : DefaultTask() {
               logF.parentFile.mkdirs()
               redirectOutput(logF)
             }.start()
-            val startExit = startProcess.waitFor()
+            synchronized(activeProcesses) { activeProcesses.add(startProcess) }
+            val startExit = try {
+              startProcess.waitFor()
+            } finally {
+              synchronized(activeProcesses) { activeProcesses.remove(startProcess) }
+            }
             if (startExit != 0) {
               return TargetResult("android", false, "Failed to start Android app (exit code $startExit). Check build/parikshan/logs/android-start.log")
             }
@@ -602,7 +616,11 @@ abstract class E2ETestTask : DefaultTask() {
         if (!keepAlive || !runSuccess) {
           // 3. Stop App
           synchronized(getLockFor("android")) {
-            val stopArgs = mutableListOf(gradlew, "$projectPathPrefix:stopParikshanAndroidApp")
+            val stopArgs = mutableListOf(
+              gradlew,
+              "-p", projectRootDir.get(),
+              "$projectPathPrefix:stopParikshanAndroidApp"
+            )
             if (!configurationCacheEnabled.get()) {
               stopArgs.add("--no-configuration-cache")
             }
@@ -694,7 +712,8 @@ abstract class E2ETestTask : DefaultTask() {
             if (session != null) {
               logger.lifecycle("Parikshan [ios]: Active instance is stale or unhealthy. Relaunching...")
               val stopArgs = mutableListOf(
-                gradlew, 
+                gradlew,
+                "-p", projectRootDir.get(),
                 "$projectPathPrefix:stopIosApp",
                 "-Pparikshan.ios.device=$finalIosDevice",
                 "-Pparikshan.ios.port=${session.port}"
@@ -711,6 +730,7 @@ abstract class E2ETestTask : DefaultTask() {
             // 1. Start App
             val startArgs = mutableListOf(
               gradlew, 
+              "-p", projectRootDir.get(),
               "$projectPathPrefix:startIosApp", 
               "-Pparikshan.token=${token.get()}", 
               "-Pparikshan.ios.port=$activePort",
@@ -727,7 +747,12 @@ abstract class E2ETestTask : DefaultTask() {
               logF.parentFile.mkdirs()
               redirectOutput(logF)
             }.start()
-            val startExit = startProcess.waitFor()
+            synchronized(activeProcesses) { activeProcesses.add(startProcess) }
+            val startExit = try {
+              startProcess.waitFor()
+            } finally {
+              synchronized(activeProcesses) { activeProcesses.remove(startProcess) }
+            }
             if (startExit != 0) {
               return TargetResult("ios", false, "Failed to start iOS app (exit code $startExit). Check build/parikshan/logs/ios-start.log")
             }
@@ -766,6 +791,7 @@ abstract class E2ETestTask : DefaultTask() {
           synchronized(getLockFor("ios")) {
             val stopArgs = mutableListOf(
               gradlew, 
+              "-p", projectRootDir.get(),
               "$projectPathPrefix:stopIosApp",
               "-Pparikshan.ios.device=$finalIosDevice",
               "-Pparikshan.ios.port=$activePort"
@@ -937,7 +963,7 @@ abstract class E2ETestTask : DefaultTask() {
     return File(rootDir, gradlewName).absolutePath
   }
 
-  private fun cleanXcodeEnv(pb: ProcessBuilder) {
+  internal fun cleanXcodeEnv(pb: ProcessBuilder) {
     val env = pb.environment()
     val keysToRemove = listOf(
       "PLATFORM_NAME",
@@ -947,9 +973,20 @@ abstract class E2ETestTask : DefaultTask() {
       "ONLY_ACTIVE_ARCH",
       "TARGET_DEVICE_IDENTIFIER",
       "CONFIGURATION",
-      "BUILT_PRODUCTS_DIR"
+      "BUILT_PRODUCTS_DIR",
+      "DERIVED_DATA_DIR",
+      "BUILD_DIR",
+      "TARGET_BUILD_DIR"
     )
     keysToRemove.forEach { env.remove(it) }
+
+    val essentialKeys = listOf("JAVA_HOME", "ANDROID_HOME", "PATH")
+    essentialKeys.forEach { key ->
+      val sysVal = System.getenv(key)
+      if (!sysVal.isNullOrBlank() && !env.containsKey(key)) {
+        env[key] = sysVal
+      }
+    }
   }
 
   private fun spawnTestJvm(
@@ -1020,6 +1057,7 @@ abstract class E2ETestTask : DefaultTask() {
     logFile.parentFile.mkdirs()
 
     val pb = ProcessBuilder(pbArgs)
+    cleanXcodeEnv(pb)
     pb.environment()["NSAppSleepDisabled"] = "YES"
     val process = pb
       .redirectOutput(ProcessBuilder.Redirect.to(logFile))
@@ -1109,6 +1147,7 @@ abstract class E2ETestTask : DefaultTask() {
     }
 
     val pb = ProcessBuilder(pbArgs)
+    cleanXcodeEnv(pb)
     pb.environment()["NSAppSleepDisabled"] = "YES"
     pb.redirectErrorStream(true)
     val process = pb.start()

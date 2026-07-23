@@ -347,10 +347,12 @@ class ParikshanPlugin : Plugin<Project> {
         hostTestClasspath.setFrom(hostTestTask.get().classpath)
         junitConsoleJars.setFrom(junitConsoleConfig)
         this.e2eTestClasses.set(project.provider { e2eTestClasses })
-        projectPath.set(project.path)
-        host.set(extension.host)
-        originalDesktopPort.set(extension.port)
-        originalWasmPort.set(extension.wasmServerPort)
+        this.projectPath.set(project.path)
+        this.host.set(extension.host)
+        this.originalDesktopPort.set(extension.port)
+        this.originalWasmPort.set(extension.wasmServerPort)
+        this.androidPort.set(extension.androidPort)
+        this.iosPort.set(extension.iosPort)
         
         val defaultTargets = buildList {
           if (hasKmp) {

@@ -50,4 +50,10 @@ abstract class ParikshanExtension @Inject constructor(
 
   @get:Input
   val androidLaunchActivityClassName: Property<String> = objects.property(String::class.java)
+
+  @get:Input
+  val androidPort: Property<Int> = objects.property(Int::class.java).convention(9879)
+
+  @get:Input
+  val iosPort: Property<Int> = objects.property(Int::class.java).convention(9878)
 }

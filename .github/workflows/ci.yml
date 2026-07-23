@@ -202,7 +202,7 @@ jobs:
           ./gradlew :samples:multiplatform-showcase:composeApp:linkDebugFrameworkIosSimulatorArm64 -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
       - name: Run Showcase iOS E2E tests
         run: |
-          ./gradlew :samples:multiplatform-showcase:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios" -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Dparikshan.xcodebuild.timeout=1800
+          ./gradlew :samples:multiplatform-showcase:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching" -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Dparikshan.xcodebuild.timeout=1800
       - name: Upload iOS E2E Results
         if: always()
         uses: actions/upload-artifact@v4
@@ -243,7 +243,7 @@ jobs:
       - name: Run cmp-latest iOS E2E tests
         working-directory: samples/cmp-latest
         run: |
-          ./gradlew :app:shared:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="org.example.project.SimpleE2ETest" -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Dparikshan.xcodebuild.timeout=1800
+          ./gradlew :app:shared:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="org.example.project.StorefrontFlowTest" -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Dparikshan.xcodebuild.timeout=1800
       - name: Upload iOS E2E Results
         if: always()
         uses: actions/upload-artifact@v4

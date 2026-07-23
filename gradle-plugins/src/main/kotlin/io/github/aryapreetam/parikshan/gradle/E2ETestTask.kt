@@ -82,6 +82,10 @@ abstract class E2ETestTask : DefaultTask() {
 
   @get:Input
   @get:Optional
+  abstract val androidPort: Property<Int>
+
+  @get:Input
+  @get:Optional
   abstract val iosPort: Property<Int>
 
   @get:Internal
@@ -236,11 +240,15 @@ abstract class E2ETestTask : DefaultTask() {
       ?: gradleAndroidSerial.orNull?.takeIf { it.isNotBlank() }
       ?: System.getenv("PARIKSHAN_ANDROID_SERIAL")?.takeIf { it.isNotBlank() }
 
+    val resolvedHost = host.getOrElse("127.0.0.1")
+
     val finalIosDevice = resolvedIosDevice
       ?: gradleDevice.orNull?.takeIf { it.isNotBlank() }
       ?: gradleSerial.orNull?.takeIf { it.isNotBlank() }
       ?: gradleIosDevice.orNull?.takeIf { it.isNotBlank() }
       ?: System.getenv("PARIKSHAN_IOS_DEVICE")?.takeIf { it.isNotBlank() }
+      ?: getAvailableIosSimulators().firstOrNull { it.isBooted }?.name
+      ?: getAvailableIosSimulators().firstOrNull()?.name
       ?: "iPhone 16"
 
     val logDir = File(buildDir.get().asFile, "parikshan/logs")
@@ -250,6 +258,7 @@ abstract class E2ETestTask : DefaultTask() {
     logger.lifecycle("Parikshan: Target test classes: ${filteredClasses.joinToString()}")
 
     val activeProcesses = mutableListOf<Process>()
+    val activeForwardedPorts = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
     val shutdownHook = Thread {
       synchronized(activeProcesses) {
         activeProcesses.forEach {
@@ -257,9 +266,13 @@ abstract class E2ETestTask : DefaultTask() {
         }
       }
       try { WasmServer.stop() } catch (_: Exception) {}
-      try {
-        ProcessBuilder("adb", "forward", "--remove", "tcp:9879").start().waitFor()
-      } catch (_: Exception) {}
+      synchronized(activeForwardedPorts) {
+        activeForwardedPorts.forEach { port ->
+          try {
+            ProcessBuilder("adb", "forward", "--remove", "tcp:$port").start().waitFor()
+          } catch (_: Exception) {}
+        }
+      }
     }
     Runtime.getRuntime().addShutdownHook(shutdownHook)
 
@@ -270,7 +283,7 @@ abstract class E2ETestTask : DefaultTask() {
       val future = executor.submit<TargetResult> {
         val targetStartTime = System.currentTimeMillis()
         try {
-          val result = executeTarget(target, filteredClasses, activeProcesses, finalAndroidSerial, finalIosDevice)
+          val result = executeTarget(target, filteredClasses, activeProcesses, activeForwardedPorts, resolvedHost, finalAndroidSerial, finalIosDevice)
           val duration = System.currentTimeMillis() - targetStartTime
           result.copy(durationMs = duration)
         } catch (e: Exception) {
@@ -315,6 +328,8 @@ abstract class E2ETestTask : DefaultTask() {
     target: String,
     classes: List<String>,
     activeProcesses: MutableList<Process>,
+    activeForwardedPorts: MutableSet<Int>,
+    resolvedHost: String,
     finalAndroidSerial: String?,
     finalIosDevice: String
   ): TargetResult {
@@ -489,15 +504,16 @@ abstract class E2ETestTask : DefaultTask() {
         }
 
         val session = if (keepAlive) readSession("android") else null
-        val resolvedAndroidPort = session?.port ?: 9879
+        val defaultAndroidPort = androidPort.orNull ?: 9879
+        val resolvedAndroidPort = session?.port ?: defaultAndroidPort
         val resolvedToken = session?.token ?: token.get()
-        val isHealthy = session != null && checkTargetHealth("127.0.0.1", resolvedAndroidPort, resolvedToken)
+        val isHealthy = session != null && checkTargetHealth(resolvedHost, resolvedAndroidPort, resolvedToken)
         val isFresh = isTargetFresh("android")
         val minBinaryTimestamp = getTargetOutputTimestamp("android")
         val canReuse = isHealthy && isFresh && session!!.timestamp >= minBinaryTimestamp
 
         val activeToken = if (canReuse && session != null) session.token else token.get()
-        var activePort = if (canReuse && session != null) session.port else 9879
+        var activePort = if (canReuse && session != null) session.port else defaultAndroidPort
 
         val gradlew = getGradlewExecutable(File(projectRootDir.get()))
 
@@ -508,39 +524,41 @@ abstract class E2ETestTask : DefaultTask() {
             val serial = AndroidTargetConfigurer.AndroidRecorder.resolveDeviceSerial(logger, File(projectRootDir.get()), finalAndroidSerial)
             val reclaim = reclaimPorts || providers.gradleProperty("parikshan.reclaimPorts").orNull?.toBoolean() ?: false
 
-            val devicePortState = checkDevicePortState(serial, 9879)
-            if (devicePortState.isBusy || !PortConflictHandler.isPortAvailable("127.0.0.1", 9879)) {
+            val devicePortState = checkDevicePortState(serial, defaultAndroidPort, resolvedHost)
+            if (devicePortState.isBusy || !PortConflictHandler.isPortAvailable(resolvedHost, defaultAndroidPort)) {
               val activeAppId = devicePortState.parikshanAppId
               if (activeAppId != null) {
                 if (activeAppId == androidApplicationId.get()) {
                   ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", androidApplicationId.get()).start().waitFor()
-                  ProcessBuilder("adb", "-s", serial, "forward", "--remove", "tcp:9879").start().waitFor()
+                  ProcessBuilder("adb", "-s", serial, "forward", "--remove", "tcp:$defaultAndroidPort").start().waitFor()
+                  activeForwardedPorts.remove(defaultAndroidPort)
                   Thread.sleep(500)
                 } else if (reclaim) {
-                  logger.lifecycle("Parikshan [android]: Port 9879 was held by '${activeAppId}'. Reclaiming port via --reclaim-ports...")
+                  logger.lifecycle("Parikshan [android]: Port $defaultAndroidPort was held by '${activeAppId}'. Reclaiming port via --reclaim-ports...")
                   ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", activeAppId).start().waitFor()
-                  ProcessBuilder("adb", "-s", serial, "forward", "--remove", "tcp:9879").start().waitFor()
+                  ProcessBuilder("adb", "-s", serial, "forward", "--remove", "tcp:$defaultAndroidPort").start().waitFor()
+                  activeForwardedPorts.remove(defaultAndroidPort)
                   Thread.sleep(500)
                 } else {
-                  var fbPort = 9880
+                  var fbPort = defaultAndroidPort + 1
                   while (fbPort <= 65535) {
-                    if (PortConflictHandler.isPortAvailable("127.0.0.1", fbPort) && !checkDevicePortState(serial, fbPort).isBusy) {
+                    if (PortConflictHandler.isPortAvailable(resolvedHost, fbPort) && !checkDevicePortState(serial, fbPort, resolvedHost).isBusy) {
                       break
                     }
                     fbPort++
                   }
-                  logger.lifecycle("Parikshan [android]: Port 9879 is held by another active application '${activeAppId}'. Falling back to host port $fbPort.")
+                  logger.lifecycle("Parikshan [android]: Port $defaultAndroidPort is held by another active application '${activeAppId}'. Falling back to host port $fbPort.")
                   activePort = fbPort
                 }
               } else {
-                var fbPort = 9880
+                var fbPort = defaultAndroidPort + 1
                 while (fbPort <= 65535) {
-                  if (PortConflictHandler.isPortAvailable("127.0.0.1", fbPort) && !checkDevicePortState(serial, fbPort).isBusy) {
+                  if (PortConflictHandler.isPortAvailable(resolvedHost, fbPort) && !checkDevicePortState(serial, fbPort, resolvedHost).isBusy) {
                     break
                   }
                   fbPort++
                 }
-                logger.lifecycle("Parikshan [android]: Port 9879 is occupied by a non-Parikshan process or busy on device. Falling back to host port $fbPort.")
+                logger.lifecycle("Parikshan [android]: Port $defaultAndroidPort is occupied by a non-Parikshan process or busy on device. Falling back to host port $fbPort.")
                 activePort = fbPort
               }
             }
@@ -548,6 +566,7 @@ abstract class E2ETestTask : DefaultTask() {
             if (session != null) {
               logger.lifecycle("Parikshan [android]: Active instance is stale or unhealthy. Relaunching...")
               ProcessBuilder("adb", "-s", serial, "forward", "--remove", "tcp:${session.port}").start().waitFor()
+              activeForwardedPorts.remove(session.port)
               ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", androidApplicationId.get()).start().waitFor()
             }
             logger.lifecycle("Parikshan [android]: Device detected. Starting E2E execution on port $activePort...")
@@ -573,6 +592,7 @@ abstract class E2ETestTask : DefaultTask() {
               logF.parentFile.mkdirs()
               redirectOutput(logF)
             }.start()
+            activeForwardedPorts.add(activePort)
             synchronized(activeProcesses) { activeProcesses.add(startProcess) }
             val startExit = try {
               startProcess.waitFor()
@@ -593,7 +613,7 @@ abstract class E2ETestTask : DefaultTask() {
           logger.lifecycle("Parikshan [android]: Running $testClass...")
           val testSystemProps = mutableMapOf(
             "parikshan.target" to "android",
-            "parikshan.host" to "127.0.0.1",
+            "parikshan.host" to resolvedHost,
             "parikshan.port" to activePort.toString(),
             "parikshan.token" to activeToken
           )
@@ -656,15 +676,16 @@ abstract class E2ETestTask : DefaultTask() {
         val bundleId = iosBundleId.getOrElse("")
 
         val session = if (keepAlive) readSession("ios") else null
-        val resolvedIosPort = session?.port ?: iosPort.get()
+        val defaultIosPort = iosPort.orNull ?: 9878
+        val resolvedIosPort = session?.port ?: defaultIosPort
         val resolvedToken = session?.token ?: token.get()
-        val isHealthy = session != null && checkTargetHealth("127.0.0.1", resolvedIosPort, resolvedToken)
+        val isHealthy = session != null && checkTargetHealth(resolvedHost, resolvedIosPort, resolvedToken)
         val isFresh = isTargetFresh("ios")
         val minBinaryTimestamp = getTargetOutputTimestamp("ios")
         val canReuse = isHealthy && isFresh && session!!.timestamp >= minBinaryTimestamp
 
         val activeToken = if (canReuse && session != null) session.token else token.get()
-        var activePort = if (canReuse && session != null) session.port else iosPort.get()
+        var activePort = if (canReuse && session != null) session.port else defaultIosPort
 
         val gradlew = getGradlewExecutable(File(projectRootDir.get()))
 
@@ -673,10 +694,9 @@ abstract class E2ETestTask : DefaultTask() {
         } else {
           synchronized(getLockFor("ios")) {
             val reclaim = reclaimPorts || providers.gradleProperty("parikshan.reclaimPorts").orNull?.toBoolean() ?: false
-            val defaultIosPort = iosPort.get()
 
-            if (!PortConflictHandler.isPortAvailable("127.0.0.1", defaultIosPort)) {
-              val activeAppId = PortConflictHandler.queryApplicationId("127.0.0.1", defaultIosPort)
+            if (!PortConflictHandler.isPortAvailable(resolvedHost, defaultIosPort)) {
+              val activeAppId = PortConflictHandler.queryApplicationId(resolvedHost, defaultIosPort)
               if (activeAppId != null) {
                 if (activeAppId == bundleId) {
                   ProcessBuilder("xcrun", "simctl", "terminate", udid, bundleId).start().waitFor()
@@ -686,9 +706,9 @@ abstract class E2ETestTask : DefaultTask() {
                   ProcessBuilder("xcrun", "simctl", "terminate", udid, activeAppId).start().waitFor()
                   Thread.sleep(500)
                 } else {
-                  var fbPort = defaultIosPort + 3
+                  var fbPort = defaultIosPort + 1
                   while (fbPort <= 65535) {
-                    if (PortConflictHandler.isPortAvailable("127.0.0.1", fbPort)) {
+                    if (PortConflictHandler.isPortAvailable(resolvedHost, fbPort)) {
                       break
                     }
                     fbPort++
@@ -697,9 +717,9 @@ abstract class E2ETestTask : DefaultTask() {
                   activePort = fbPort
                 }
               } else {
-                var fbPort = defaultIosPort + 3
+                var fbPort = defaultIosPort + 1
                 while (fbPort <= 65535) {
-                  if (PortConflictHandler.isPortAvailable("127.0.0.1", fbPort)) {
+                  if (PortConflictHandler.isPortAvailable(resolvedHost, fbPort)) {
                     break
                   }
                   fbPort++
@@ -770,7 +790,7 @@ abstract class E2ETestTask : DefaultTask() {
             testClass = testClass,
             systemProperties = mapOf(
               "parikshan.target" to "ios",
-              "parikshan.host" to "127.0.0.1",
+              "parikshan.host" to resolvedHost,
               "parikshan.port" to activePort.toString(),
               "parikshan.token" to activeToken,
               "parikshan.ios.bundleId" to bundleId,
@@ -1556,10 +1576,10 @@ abstract class E2ETestTask : DefaultTask() {
 
   private data class DevicePortState(val isBusy: Boolean, val parikshanAppId: String?)
 
-  private fun checkDevicePortState(serial: String, devicePort: Int): DevicePortState {
+  private fun checkDevicePortState(serial: String, devicePort: Int, hostAddress: String = "127.0.0.1"): DevicePortState {
       var tempHostPort = 12000
       while (tempHostPort <= 20000) {
-          if (PortConflictHandler.isPortAvailable("127.0.0.1", tempHostPort)) {
+          if (PortConflictHandler.isPortAvailable(hostAddress, tempHostPort)) {
               break
           }
           tempHostPort++
@@ -1572,7 +1592,7 @@ abstract class E2ETestTask : DefaultTask() {
 
       val isBusy = try {
           java.net.Socket().use { socket ->
-              socket.connect(java.net.InetSocketAddress("127.0.0.1", tempHostPort), 250)
+              socket.connect(java.net.InetSocketAddress(hostAddress, tempHostPort), 250)
               socket.soTimeout = 250
               val readVal = socket.inputStream.read()
               readVal != -1
@@ -1582,7 +1602,7 @@ abstract class E2ETestTask : DefaultTask() {
       } catch (_: Exception) {
           false
       }
-      val appId = if (isBusy) PortConflictHandler.queryApplicationId("127.0.0.1", tempHostPort) else null
+      val appId = if (isBusy) PortConflictHandler.queryApplicationId(hostAddress, tempHostPort) else null
 
       ProcessBuilder("adb", "-s", serial, "forward", "--remove", "tcp:$tempHostPort").start().waitFor()
       return DevicePortState(isBusy, appId)

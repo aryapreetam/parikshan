@@ -390,23 +390,22 @@ abstract class E2ETestTask : DefaultTask() {
 
           val activeToken = if (canReuse && session != null) session.token else token.get()
 
-          val failedClasses = mutableListOf<String>()
-          classes.forEach { testClass ->
-            logger.lifecycle("Parikshan [$target]: Running $testClass...")
-            val exitCode = spawnTestJvm(
-              target = target,
-              testClass = testClass,
-              systemProperties = mapOf(
-                "parikshan.target" to target,
-                "parikshan.host" to host.get(),
-                "parikshan.port" to resolvedPort.toString(),
-                "parikshan.token" to activeToken,
-                "parikshan.desktop.launchManifest" to desktopLaunchManifestFile.get().asFile.absolutePath
-              ),
-              activeProcesses = activeProcesses
-            )
-            if (exitCode != 0) {
-              failedClasses.add(testClass)
+          logger.lifecycle("Parikshan [$target]: Running test suite across ${classes.size} classes...")
+          val exitCode = spawnTestJvmForClasses(
+            target = target,
+            testClasses = classes,
+            systemProperties = mapOf(
+              "parikshan.target" to target,
+              "parikshan.host" to host.get(),
+              "parikshan.port" to resolvedPort.toString(),
+              "parikshan.token" to activeToken,
+              "parikshan.desktop.launchManifest" to desktopLaunchManifestFile.get().asFile.absolutePath
+            ),
+            activeProcesses = activeProcesses
+          )
+          val failedClasses = if (exitCode != 0) classes else emptyList()
+          if (exitCode != 0) {
+            classes.forEach { testClass ->
               printTestFailures(target, testClass)
             }
           }
@@ -607,29 +606,27 @@ abstract class E2ETestTask : DefaultTask() {
         }
 
         // 2. Run Tests
-        var testFailureMessage: String? = null
-        var runSuccess = true
-        classes.forEach { testClass ->
-          logger.lifecycle("Parikshan [android]: Running $testClass...")
-          val testSystemProps = mutableMapOf(
-            "parikshan.target" to "android",
-            "parikshan.host" to resolvedHost,
-            "parikshan.port" to activePort.toString(),
-            "parikshan.token" to activeToken
-          )
-          if (!finalAndroidSerial.isNullOrBlank()) {
-            testSystemProps["parikshan.android.serial"] = finalAndroidSerial
-          }
-          val exitCode = spawnTestJvm(
-            target = "android",
-            testClass = testClass,
-            systemProperties = testSystemProps,
-            activeProcesses = activeProcesses
-          )
-          if (exitCode != 0) {
-            runSuccess = false
+        logger.lifecycle("Parikshan [android]: Running test suite across ${classes.size} classes...")
+        val testSystemProps = mutableMapOf(
+          "parikshan.target" to "android",
+          "parikshan.host" to resolvedHost,
+          "parikshan.port" to activePort.toString(),
+          "parikshan.token" to activeToken
+        )
+        if (!finalAndroidSerial.isNullOrBlank()) {
+          testSystemProps["parikshan.android.serial"] = finalAndroidSerial
+        }
+        val exitCode = spawnTestJvmForClasses(
+          target = "android",
+          testClasses = classes,
+          systemProperties = testSystemProps,
+          activeProcesses = activeProcesses
+        )
+        val runSuccess = exitCode == 0
+        var testFailureMessage: String? = if (!runSuccess) "Android test suite execution failed (exit code $exitCode)." else null
+        if (!runSuccess) {
+          classes.forEach { testClass ->
             printTestFailures("android", testClass)
-            testFailureMessage = "Test class $testClass failed (exit code $exitCode). Check logs at build/parikshan/logs/android-${testClass.substringAfterLast('.')}.log"
           }
         }
 
@@ -781,28 +778,26 @@ abstract class E2ETestTask : DefaultTask() {
         }
 
         // 2. Run Tests
-        var testFailureMessage: String? = null
-        var runSuccess = true
-        classes.forEach { testClass ->
-          logger.lifecycle("Parikshan [ios]: Running $testClass...")
-          val exitCode = spawnTestJvm(
-            target = "ios",
-            testClass = testClass,
-            systemProperties = mapOf(
-              "parikshan.target" to "ios",
-              "parikshan.host" to resolvedHost,
-              "parikshan.port" to activePort.toString(),
-              "parikshan.token" to activeToken,
-              "parikshan.ios.bundleId" to bundleId,
-              "parikshan.ios.udid" to udid,
-              "parikshan.ios.device" to finalIosDevice
-            ),
-            activeProcesses = activeProcesses
-          )
-          if (exitCode != 0) {
-            runSuccess = false
+        logger.lifecycle("Parikshan [ios]: Running test suite across ${classes.size} classes...")
+        val exitCode = spawnTestJvmForClasses(
+          target = "ios",
+          testClasses = classes,
+          systemProperties = mapOf(
+            "parikshan.target" to "ios",
+            "parikshan.host" to resolvedHost,
+            "parikshan.port" to activePort.toString(),
+            "parikshan.token" to activeToken,
+            "parikshan.ios.bundleId" to bundleId,
+            "parikshan.ios.udid" to udid,
+            "parikshan.ios.device" to finalIosDevice
+          ),
+          activeProcesses = activeProcesses
+        )
+        val runSuccess = exitCode == 0
+        var testFailureMessage: String? = if (!runSuccess) "iOS test suite execution failed (exit code $exitCode)." else null
+        if (!runSuccess) {
+          classes.forEach { testClass ->
             printTestFailures("ios", testClass)
-            testFailureMessage = "Test class $testClass failed (exit code $exitCode). Check logs at build/parikshan/logs/ios-${testClass.substringAfterLast('.')}.log"
           }
         }
 

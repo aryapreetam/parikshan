@@ -24,6 +24,37 @@ Pass options directly to the `e2eTest` orchestration task or target-specific tas
 
 ---
 
+## Device & Emulator Selection
+
+When executing tests on Android or iOS targets, Parikshan allows targeting specific physical devices, emulators, or simulator UDIDs.
+
+### Using CLI Flags (`e2eTest`)
+
+```bash
+# Target specific Android emulator by serial (adb devices)
+./gradlew e2eTest --targets=android --android-device="emulator-5554"
+
+# Target specific iOS simulator by name or UDID
+./gradlew e2eTest --targets=ios --ios-device="00008101-00123456789"
+./gradlew e2eTest --targets=ios --ios-device="iPhone 16 Pro"
+
+# Generic --device flag (matches Android serials or iOS simulator names)
+./gradlew e2eTest --targets=android,ios --device="emulator-5554"
+```
+
+### Using System Properties (Target-Specific Tasks)
+
+```bash
+# Android serial property
+./gradlew :sample:composeApp:e2eAndroidTest -Dparikshan.android.serial="emulator-5554"
+
+# iOS UDID or device name property
+./gradlew :sample:composeApp:e2eIosTest -Dparikshan.ios.udid="YOUR_SIMULATOR_UDID"
+./gradlew :sample:composeApp:e2eIosTest -Dparikshan.ios.device="iPhone 16 Pro"
+```
+
+---
+
 ## System Properties (`-Dparikshan.*`)
 
 Configure test runner behavior, target settings, and video capture via system properties:

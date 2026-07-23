@@ -108,7 +108,13 @@ Direct E2E test execution on physical iOS devices is not supported. Tests must b
 The host-side `IosRemoteDriver` uses the Apple Xcode command-line utility `xcrun simctl` to manage application lifecycle states (such as `relaunchApp()`) and capture execution video recordings (`simctl io recordVideo`). Since `simctl` is strictly a local simulator tool, these calls fail when targeting physical iOS hardware.
 
 ### Workaround
-Ensure your execution targets a booted iOS Simulator UDID by specifying the simulator property:
+Ensure your execution targets a booted iOS Simulator UDID or device name:
+
 ```bash
+# Target-specific task
 ./gradlew :sample:composeApp:e2eIosTest -Dparikshan.ios.udid="YOUR_SIMULATOR_UDID"
+
+# Unified test runner
+./gradlew e2eTest --targets=ios --ios-device="YOUR_SIMULATOR_UDID"
 ```
+

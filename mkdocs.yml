@@ -52,7 +52,11 @@ markdown_extensions:
       pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
 
@@ -73,6 +77,7 @@ nav:
       - blog/index.md
   - Reference:
       - API Overview: reference/api-overview.md
+      - Architecture & Security: reference/architecture.md
       - API Reference: https://aryapreetam.github.io/parikshan/api/
       - FAQ: getting-started/faq.md
       - Known Limitations: getting-started/known-limitations.md

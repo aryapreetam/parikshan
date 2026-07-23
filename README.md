@@ -80,7 +80,7 @@ class SimpleGreetTest {
 
 ## 📦 Examples
 
-See the [sample project tests](https://github.com/aryapreetam/parikshan/tree/main/samples/multiplatform-showcase/composeApp/src/commonTest/kotlin/sample/app) for working examples of how to write E2E tests using the Parikshan DSL.
+See the [Examples Page](examples.md) for working samples and video demonstrations of the Parikshan DSL across all target platforms.
 
 ---
 

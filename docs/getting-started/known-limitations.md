@@ -77,3 +77,38 @@ assert(percentage in 75..85)
 
 #### Method B: Calibrated Coordinate Calculation (Exact but Risky)
 Calculate exact drag coordinates by offsetting the bounding box width by the slider's internal track padding and thumb radius, then perform a precise drag gesture. While this can target exact values, it is highly sensitive to target-specific screen densities and layout dimension variances, making it prone to breakage across different targets.
+
+---
+
+## No Auto-Scrolling to Off-Screen Targets
+
+### Symptom
+Attempting to interact with (e.g. `click(...)`, `input(...)`) or assert on (e.g. `assertVisible(...)`) an element that is rendered off-screen (inside a `LazyColumn`, `LazyRow`, or scrollable `Column`) fails with a target visibility or resolution timeout error.
+
+### Root Cause
+Unlike testing frameworks that automatically attempt to scroll container viewports when an element is off-screen, Parikshan does not auto-scroll. This design keeps execution latencies under 10ms by avoiding repeated remote semantics tree traversal and layout calculations.
+
+### Workaround
+Use `scrollUntilVisible` to programmatically scroll the container layout and bring the target element into view before performing actions or assertions:
+
+```kotlin
+// Scroll container "product_feed" until target "purchase_button" is visible
+scrollUntilVisible(containerTag = "product_feed", targetTag = "purchase_button")
+click("purchase_button")
+```
+
+---
+
+## Physical iOS Device Support
+
+### Limitation
+Direct E2E test execution on physical iOS devices is not supported. Tests must be executed on local macOS iOS Simulators.
+
+### Cause
+The host-side `IosRemoteDriver` uses the Apple Xcode command-line utility `xcrun simctl` to manage application lifecycle states (such as `relaunchApp()`) and capture execution video recordings (`simctl io recordVideo`). Since `simctl` is strictly a local simulator tool, these calls fail when targeting physical iOS hardware.
+
+### Workaround
+Ensure your execution targets a booted iOS Simulator UDID by specifying the simulator property:
+```bash
+./gradlew :sample:composeApp:e2eIosTest -Dparikshan.ios.udid="YOUR_SIMULATOR_UDID"
+```

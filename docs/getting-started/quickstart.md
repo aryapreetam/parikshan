@@ -4,9 +4,9 @@ This guide shows how to write and run your first end-to-end test using Parikshan
 
 ## 1. Create an E2E Test
 
-Create a test class inside your shared library's `commonTest` directory (e.g. `composeApp/src/commonTest/kotlin/sample/app/LoginTest.kt`).
+Create a test class inside your shared library's `commonTest` directory (e.g., `composeApp/src/commonTest/kotlin/sample/app/LoginTest.kt`).
 
-Wrap your test body inside the `e2eTest` block. The DSL provides simple, synchronous-looking methods to write your tests:
+Wrap your test body inside the `e2eTest` block:
 
 ```kotlin
 package sample.app
@@ -17,18 +17,18 @@ import kotlin.test.Test
 class LoginTest {
   @Test
   fun testSuccessfulLogin() = e2eTest {
-    // Input text into fields by their Modifier.testTag
+    // Input text into fields matching Modifier.testTag
     input("username_field", "admin")
     input("password_field", "password123")
-        
+
     // Click on the login button
     click("login_button")
-        
+
     // Assertions
     assertVisible("dashboard_screen")
     assertText("welcome_header", "Welcome back, admin!")
-        
-    // Capture a verification screenshot
+
+    // Capture screenshot
     screenshot("dashboard-success")
   }
 }
@@ -38,10 +38,8 @@ class LoginTest {
 
 ## 2. Execute Tests
 
-Parikshan supports executing tests on individual targets, or running the entire suite concurrently.
-
-### Run on a Specific Platform
-To target a single platform, run its dedicated test task:
+### Specific Target Execution
+Run dedicated tasks for individual targets:
 
 ```bash
 # Run on Desktop JVM
@@ -57,19 +55,20 @@ To target a single platform, run its dedicated test task:
 ./gradlew :composeApp:e2eIosTest
 ```
 
-### Run the Orchestrated Suite
-To run tests concurrently on all available local targets, use the unified `e2eTest` task:
+### Orchestrated Suite Execution
+Run tests concurrently across targets using `e2eTest`:
 
 ```bash
 ./gradlew :composeApp:e2eTest
 ```
 
-You can customize the orchestration run using command-line parameters:
+Filter by specific target platforms or test class names:
+
 ```bash
 # Target specific platforms only
 ./gradlew :composeApp:e2eTest --targets=desktop,wasm
 
-# Filter by test name or pattern
+# Filter by test class
 ./gradlew :composeApp:e2eTest --tests "sample.app.LoginTest"
 ```
 
@@ -77,76 +76,102 @@ You can customize the orchestration run using command-line parameters:
 
 ## 3. View Execution Reports
 
-When you run the unified `e2eTest` task, individual target test results are aggregated. When the run finishes, the `e2eTestReport` task runs automatically and generates an aggregated HTML report under:
+When you run the unified `e2eTest` task, individual target test results are aggregated into an HTML report under:
 
-```
-build/reports/e2e/index.html
-```
-
-At the end of test run, you'll get:
-```
-========================================
-      Parikshan E2E Test Results        
-========================================
-[IOS] SUCCESS - All 43 tests passed. (8m 56s)
-========================================
-
-
-> Task :samples:multiplatform-showcase:composeApp:e2eTestReport
-Parikshan: Unified E2E HTML Report generated at file:///Users/preetam/workspace/parikshan/samples/multiplatform-showcase/composeApp/build/reports/tests/e2eTest/index.html
+```text
+build/reports/tests/e2eTest/index.html
 ```
 
-Open this file in a browser to inspect the consolidated pass/fail statuses, stack traces, and failure screenshots across all targets.
+Open this file in a browser to inspect pass/fail statuses, failure stack traces, and failure screenshots across targets.
 
 ---
 
 ## 4. Test Lifecycle and State Resets
 
-Parikshan supports class-level lifecycle hooks in the common test source set.
+Parikshan distinguishes between **Synchronous Infrastructure Hooks** and **UI State Resets**.
 
-### Lifecycle Hooks
-Use custom annotations to run class-level initialization and teardown logic:
-* **`@BeforeAll` / `@AfterAll`**: Class-level initialization and teardown logic (run synchronously on startup and completion).
+### Synchronous Infrastructure Hooks (`@BeforeAll`, `@AfterAll`, `@BeforeTest`, `@AfterTest`)
+
+Standard Kotlin/JUnit test annotations (`@BeforeAll`, `@AfterAll`, `@BeforeTest`, `@AfterTest`) execute synchronous Kotlin code outside of `e2eTest`. Use these for non-UI setup:
+* Database seeding and cleanup
+* Mock server initialization (e.g. configuring Ktor `MockEngine` or local HTTP endpoints)
+* Resetting mock registries (e.g. `ServiceRegistry.resetForTesting()`)
 
 ```kotlin
 import io.github.aryapreetam.parikshan.BeforeAll
 import io.github.aryapreetam.parikshan.AfterAll
-import io.github.aryapreetam.parikshan.e2eTest
+import kotlin.test.BeforeTest
+import kotlin.test.AfterTest
 import kotlin.test.Test
+import io.github.aryapreetam.parikshan.e2eTest
 
-class FormTest {
+class UserRegistrationTest {
   companion object {
     @BeforeAll
-    fun setupClass() {
-      // Class-level setup (synchronous)
+    fun seedDatabaseAndStartMockServer() {
+      MockDatabase.seedTestUsers()
+      MockKtorServer.start(port = 8080)
     }
 
     @AfterAll
-    fun teardownClass() {
-      // Class-level cleanup (synchronous)
+    fun teardownServer() {
+      MockKtorServer.stop()
+      MockDatabase.clear()
     }
   }
 
+  @BeforeTest
+  fun setupMockEngine() {
+    MockKtorServer.resetEndpoints()
+  }
+
+  @AfterTest
+  fun cleanupRegistry() {
+    ServiceRegistry.resetForTesting()
+  }
+
   @Test
-  fun testFirstMethod() = e2eTest {
-    // ...
+  fun testRegistration() = e2eTest {
+    input("email_field", "newuser@example.com")
+    click("register_button")
+    assertVisible("confirmation_screen")
   }
 }
 ```
 
-### Application State Resets
-To optimize execution speed, configure **lightweight state resets** (e.g. navigating back to the home screen route in a `@BeforeTest` hook) to keep transition delays under 100ms:
+### UI Lifecycle Hooks (`E2ETestLifecycle`)
+
+To perform UI resets before or after each test using Parikshan DSL commands, implement the `E2ETestLifecycle` interface on your test class.
+
+Override `beforeEach()` and `afterEach()` to execute UI navigation commands inside the active `E2ETestScope` receiver context:
 
 ```kotlin
-import kotlin.test.BeforeTest
+import io.github.aryapreetam.parikshan.E2ETestLifecycle
+import io.github.aryapreetam.parikshan.E2ETestScope
+import io.github.aryapreetam.parikshan.e2eTest
+import kotlin.test.Test
 
-class NavigationTest {
-  @BeforeTest
-  fun resetState() = e2eTest {
-    // Navigate back to the home screen to clean up UI state
-    navigateToSection("home_route")
+class SettingsFlowTest : E2ETestLifecycle {
+
+  override suspend fun E2ETestScope.beforeEach() {
+    // Executes inside E2ETestScope before each test
+    click("nav_settings_tab")
+    assertVisible("settings_screen")
+  }
+
+  override suspend fun E2ETestScope.afterEach() {
+    // Executes inside E2ETestScope after each test
+    click("nav_home_tab")
+    assertVisible("home_screen")
+  }
+
+  @Test
+  fun testToggleDarkMode() = e2eTest {
+    click("dark_mode_switch")
+    assertVisible("dark_theme_active")
   }
 }
 ```
 
-Use process-level **`relaunchApp()`** sparingly, restricting it to scenarios requiring complete memory/process isolation. Relaunching the application process introduces a 5 to 10-second boot latency per test execution.
+!!! warning "Use `relaunchApp()` sparingly on Desktop JVM"
+    `relaunchApp()` destroys and re-launches the application process or Desktop window, introducing a 1 to 2-second boot latency per test execution on Desktop JVM targets (on WasmJs it is a fast browser reload). Avoid running it sequentially across many tests; use in-app UI navigation resets (`E2ETestLifecycle`) for fast test teardown under 100ms.

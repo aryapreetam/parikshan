@@ -17,7 +17,8 @@ import kotlin.test.Test
 
 class StorefrontFlowTest : E2ETestLifecycle {
 
-  override suspend fun E2ETestScope.afterEach() {
+  @kotlin.test.AfterTest
+  fun cleanupState() {
     // Reset test environment state after each execution
     ServiceRegistry.resetForTesting()
   }

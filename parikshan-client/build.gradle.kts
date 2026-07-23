@@ -16,6 +16,10 @@ dokka {
   dokkaSourceSets.configureEach {
     includes.from("src/commonMain/kotlin/Module.md")
     includes.from("src/commonMain/kotlin/io/github/aryapreetam/parikshan/package.md")
+    perPackageOption {
+      matchingRegex.set("io\\.github\\.aryapreetam\\.parikshan\\.(client|server).*")
+      suppress.set(true)
+    }
   }
 }
 

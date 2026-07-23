@@ -257,6 +257,9 @@ internal class IosRemoteDriver private constructor(
   }
 }
 
+/**
+ * @suppress
+ */
 data class IosDriverConfig(
   val host: String = "127.0.0.1",
   val port: Int = 9878

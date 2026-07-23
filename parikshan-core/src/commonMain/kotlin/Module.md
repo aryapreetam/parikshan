@@ -1,10 +1,12 @@
 # Module parikshan-core
 
-The core module contains the shared logic that powers the Parikshan ecosystem. It is a Kotlin Multiplatform module with no external platform dependencies.
+Contains the test DSL scope, selector types, and protocol schemas used by Parikshan.
 
-## Key Components
+Developers interact with this module through:
 
-- **E2E DSL**: Defines the primary developer-facing test DSL scope (`E2ETestScope`) and the main test execution entrypoint (`e2eTest`).
-- **Protocol**: Defines the JSON-based communication schema between the test runner and the application.
-- **Selector Engine**: Resolves high-level intent queries (like "Login Button") to specific UI nodes using tags, text, or substrings.
-- **Models**: Defines the `NodeSnapshot` and `Bounds` structures that represent the UI state.
+- `E2ETestScope` — The receiver scope for all test actions (`click`, `input`, `scroll`, `assertVisible`, `waitFor`).
+- `E2ETestConfig` — Configuration holder for test timeouts and failure screenshot behavior.
+- `E2ETestLifecycle` — Interface for shared `beforeEach`/`afterEach` hooks across test classes.
+- `Selector` — Intent-based query types (`auto`, `tag`, `text`) for locating UI elements.
+- `ScrollDirection` — Enum specifying scroll gesture orientation (Up, Down, Left, Right).
+- `BeforeAll` / `AfterAll` — Annotations for one-time setup and teardown on companion object functions.

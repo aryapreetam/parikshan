@@ -1,3 +1,3 @@
 # Package io.github.aryapreetam.parikshan
 
-Multiplatform test drivers and session management for Android, iOS, Desktop, and Wasm.
+Public entrypoint (`e2eTest`) for executing Compose Multiplatform E2E test scenarios across Android, iOS, Desktop, and WasmJs targets.

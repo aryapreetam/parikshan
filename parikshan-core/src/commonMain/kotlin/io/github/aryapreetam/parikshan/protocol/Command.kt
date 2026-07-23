@@ -3,21 +3,40 @@ package io.github.aryapreetam.parikshan.protocol
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+/**
+ * Specifies the directional orientation for UI scroll gestures (e.g. scrolling lists or lazy layouts).
+ *
+ * ### Example Usage
+ * ```kotlin
+ * // Scroll down a container to reveal lower elements
+ * scroll("feed_container", ScrollDirection.Down)
+ *
+ * // Scroll right in a horizontal row
+ * scroll("carousel_container", ScrollDirection.Right)
+ * ```
+ */
 @Serializable
 enum class ScrollDirection {
+  /** Scrolls towards the top of the container. */
   @SerialName("up")
   Up,
 
+  /** Scrolls towards the bottom of the container. */
   @SerialName("down")
   Down,
 
+  /** Scrolls towards the left edge of the container. */
   @SerialName("left")
   Left,
 
+  /** Scrolls towards the right edge of the container. */
   @SerialName("right")
   Right
 }
 
+/**
+ * @suppress
+ */
 @Serializable
 sealed class Command {
   abstract val id: String

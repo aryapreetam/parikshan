@@ -33,6 +33,9 @@ internal object IosSemanticsRegistry {
     fun getActiveOwners(): Set<SemanticsOwner> = activeOwners.toSet()
 }
 
+/**
+ * @suppress
+ */
 @Suppress("FunctionName")
 fun ParikshanUIViewController(content: @Composable () -> Unit): UIViewController {
     IosServer.startIfNeeded()

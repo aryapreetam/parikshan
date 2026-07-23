@@ -3,6 +3,9 @@ package io.github.aryapreetam.parikshan
 import org.junit.runner.Description
 import org.junit.runner.notification.RunListener
 
+/**
+ * @suppress
+ */
 class ParikshanRunListener : RunListener() {
   private var lastClass: Class<*>? = null
 

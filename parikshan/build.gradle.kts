@@ -39,7 +39,6 @@ dependencies {
   dokkaPlugin(libs.android.documentation.plugin)
   dokka(project(":parikshan-core"))
   dokka(project(":parikshan-client"))
-  dokka(project(":parikshan-server"))
 }
 
 dokka {

@@ -27,7 +27,7 @@ abstract class ParikshanPreflightTask : DefaultTask() {
   @get:Optional
   abstract val deviceOverride: Property<String>
 
-  @get:InputDirectory
+  @get:Internal
   abstract val projectDir: DirectoryProperty
 
   @TaskAction
@@ -87,10 +87,10 @@ abstract class ParikshanStartIosTask : DefaultTask() {
   @get:Input
   abstract val xcodeTimeout: Property<Long>
 
-  @get:InputDirectory
+  @get:Internal
   abstract val projectDir: DirectoryProperty
 
-  @get:InputDirectory
+  @get:Internal
   abstract val rootDir: DirectoryProperty
 
   @get:OutputDirectory
@@ -302,7 +302,7 @@ abstract class ParikshanStopAndroidTask : DefaultTask() {
   @get:Input
   abstract val applicationId: Property<String>
 
-  @get:InputDirectory
+  @get:Internal
   abstract val projectDir: DirectoryProperty
 
   @TaskAction
@@ -334,7 +334,7 @@ abstract class ParikshanStartAndroidTask : DefaultTask() {
   @get:Optional
   abstract val launcherActivity: Property<String>
 
-  @get:InputDirectory
+  @get:Internal
   abstract val projectDir: DirectoryProperty
 
   @TaskAction
@@ -372,7 +372,7 @@ abstract class ParikshanStartAndroidTask : DefaultTask() {
 }
 
 abstract class ParikshanPrepareIosSourceTask : DefaultTask() {
-  @get:InputDirectory
+  @get:Internal
   abstract val iosProjectDir: DirectoryProperty
 
   @get:OutputDirectory
@@ -429,7 +429,7 @@ abstract class ParikshanPrepareIosSourceTask : DefaultTask() {
 }
 
 abstract class ParikshanPrepareWasmSourceTask : DefaultTask() {
-  @get:InputDirectory
+  @get:Internal
   abstract val projectDir: DirectoryProperty
 
   @get:OutputDirectory

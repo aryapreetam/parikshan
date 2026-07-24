@@ -165,10 +165,12 @@ abstract class ParikshanStartIosTask : DefaultTask() {
     originalIosAppDir.copyRecursively(generatedIosAppDir)
 
     val absoluteGradlew = File(rootDirFile, "gradlew").absolutePath
+    val javaHomeVal = System.getProperty("java.home") ?: System.getenv("JAVA_HOME") ?: ""
+    val javaHomeExport = if (javaHomeVal.isNotBlank()) "export JAVA_HOME=\"$javaHomeVal\"\nexport PATH=\"$javaHomeVal/bin:\$PATH\"\n" else ""
     val gradlewShim = File(generatedIosAppDir, "gradlew")
     val shimContent = """
         #!/bin/sh
-        exec "$absoluteGradlew" -p "${rootDirFile.absolutePath}" --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.token=$tokenVal "${'$'}@"
+        $javaHomeExport exec "$absoluteGradlew" -p "${rootDirFile.absolutePath}" --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.token=$tokenVal "${'$'}@"
         """.trimIndent()
     gradlewShim.writeText(shimContent)
     gradlewShim.setExecutable(true)
@@ -200,6 +202,10 @@ abstract class ParikshanStartIosTask : DefaultTask() {
       "ENABLE_BITCODE=NO"
     ).apply {
       environment()["PARIKSHAN_TOKEN"] = tokenVal
+      if (javaHomeVal.isNotBlank()) {
+        environment()["JAVA_HOME"] = javaHomeVal
+        environment()["PATH"] = "$javaHomeVal/bin:" + (environment()["PATH"] ?: System.getenv("PATH") ?: "")
+      }
       redirectErrorStream(true)
       redirectOutput(logFile)
     }.start()
@@ -210,9 +216,11 @@ abstract class ParikshanStartIosTask : DefaultTask() {
     }
     val buildResult = buildProcess.exitValue()
     if (buildResult != 0) {
-      val lines = logFile.readLines()
-      lines.takeLast(50).forEach { logger.error(it) }
-      throw GradleException("xcodebuild failed with exit code $buildResult")
+      val lines = if (logFile.exists()) logFile.readLines() else emptyList()
+      val errorLines = lines.filter { it.contains("error:", ignoreCase = true) || it.contains("FAILURE:", ignoreCase = true) }
+      val detailOutput = if (errorLines.isNotEmpty()) errorLines.takeLast(20).joinToString("\n") else lines.takeLast(50).joinToString("\n")
+      logger.error("Parikshan iOS: xcodebuild log tail:\n$detailOutput")
+      throw GradleException("xcodebuild failed with exit code $buildResult:\n$detailOutput")
     }
 
     val appBundle = appBuildProducts.listFiles()?.firstOrNull { it.name.endsWith(".app") }
@@ -393,8 +401,13 @@ abstract class ParikshanPrepareIosSourceTask : DefaultTask() {
       .forEach { file ->
         val original = file.readText()
         if (original.contains("ComposeUIViewController")) {
-          val withoutComposeImport = original.replace(Regex("""import\s+androidx\.compose\.ui\.window\.ComposeUIViewController\s*\R"""), "")
-          val instrumented = "import io.github.aryapreetam.parikshan.ParikshanUIViewController\n" + withoutComposeImport.replace("ComposeUIViewController", "ParikshanUIViewController")
+          val withoutComposeImport = original.replace(Regex("""import\s+androidx\.compose\.ui\.window\.ComposeUIViewController\s*\R?"""), "")
+          val importLine = "import io.github.aryapreetam.parikshan.ParikshanUIViewController\n"
+          val instrumented = if (withoutComposeImport.contains(Regex("""package\s+[\w.]+\s*\R"""))) {
+            withoutComposeImport.replace(Regex("""(package\s+[\w.]+\s*\R)"""), "$1$importLine")
+          } else {
+            importLine + withoutComposeImport
+          }.replace("ComposeUIViewController", "ParikshanUIViewController")
           file.writeText(instrumented)
           logger.lifecycle("Parikshan iOS: Instrumented generated source ${file.name}")
         }

@@ -24,6 +24,7 @@ import kotlin.math.roundToInt
 
 enum class ScrollSubTab {
   LazyList,
+  PullToRefresh,
   NestedScroll,
   GridLayout,
   Panning
@@ -40,7 +41,11 @@ fun ScrollPlayground() {
       .testTag("scroll_playground_screen"),
     verticalArrangement = Arrangement.spacedBy(8.dp)
   ) {
-    Text("Scrolling, Virtualization & Grids", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+    Text(
+      "Scrolling, Virtualization & Grids",
+      style = MaterialTheme.typography.headlineMedium,
+      modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+    )
     
     // Tab Selectors
     ScrollPlaygroundTabs(activeTab = activeTab, onTabSelected = { activeTab = it })
@@ -58,7 +63,6 @@ fun ScrollPlayground() {
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
           ) {
-            // Create 10 sections of 10 items each with sticky headers
             repeat(10) { section ->
               stickyHeader {
                 Text(
@@ -80,6 +84,60 @@ fun ScrollPlayground() {
                     "Virtual Item #$overallIndex",
                     modifier = Modifier.padding(16.dp)
                   )
+                }
+              }
+            }
+          }
+        }
+        
+        ScrollSubTab.PullToRefresh -> {
+          var pullLoading by remember { mutableStateOf(false) }
+          var pullMessage by remember { mutableStateOf("Pull down list to refresh") }
+
+          Column(modifier = Modifier.fillMaxSize().testTag("pull_refresh_container")) {
+            Surface(
+              color = MaterialTheme.colorScheme.secondaryContainer,
+              modifier = Modifier.fillMaxWidth().padding(8.dp)
+            ) {
+              Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.fillMaxWidth().padding(8.dp).testTag("pull_target_surface")
+              ) {
+                if (pullLoading) {
+                  CircularProgressIndicator(modifier = Modifier.size(24.dp).testTag("pull_loading_indicator"))
+                } else {
+                  Text(pullMessage, style = MaterialTheme.typography.labelMedium)
+                }
+              }
+            }
+
+            var isLoadingMore by remember { mutableStateOf(false) }
+            LazyColumn(
+              modifier = Modifier.fillMaxSize().testTag("pull_to_refresh_list"),
+              contentPadding = PaddingValues(16.dp),
+              verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+              items(20) { index ->
+                Card(modifier = Modifier.fillMaxWidth().testTag("pull_item_$index")) {
+                  Text("List Item #${index + 1}", modifier = Modifier.padding(16.dp))
+                }
+              }
+              item {
+                Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                  Button(
+                    onClick = { isLoadingMore = true },
+                    modifier = Modifier.fillMaxWidth().testTag("load_more_button")
+                  ) {
+                    Text("Load More")
+                  }
+                  if (isLoadingMore) {
+                    Text(
+                      text = "Loading items...",
+                      style = MaterialTheme.typography.titleMedium,
+                      color = MaterialTheme.colorScheme.primary,
+                      modifier = Modifier.padding(top = 8.dp).testTag("load_more_status")
+                    )
+                  }
                 }
               }
             }
@@ -174,6 +232,12 @@ private fun ScrollPlaygroundTabs(
       modifier = Modifier.testTag("tab_lazy_list")
     )
     Tab(
+      selected = activeTab == ScrollSubTab.PullToRefresh,
+      onClick = { onTabSelected(ScrollSubTab.PullToRefresh) },
+      text = { Text("Pull to Refresh") },
+      modifier = Modifier.testTag("tab_pull_to_refresh")
+    )
+    Tab(
       selected = activeTab == ScrollSubTab.NestedScroll,
       onClick = { onTabSelected(ScrollSubTab.NestedScroll) },
       text = { Text("Nested Carousels") },
@@ -196,43 +260,34 @@ private fun ScrollPlaygroundTabs(
 
 @Composable
 private fun PanningCanvas() {
-  var dragOffset by remember { mutableStateOf(Offset(0f, 0f)) }
-  val density = androidx.compose.ui.platform.LocalDensity.current
+  var offset by remember { mutableStateOf(Offset.Zero) }
 
   Box(
     modifier = Modifier
       .fillMaxSize()
+      .background(Color(0xFFEFEFEF))
       .pointerInput(Unit) {
         detectDragGestures { change, dragAmount ->
           change.consume()
-          dragOffset += dragAmount
+          offset += dragAmount
         }
       }
-      .testTag("panning_drag_surface"),
-    contentAlignment = Alignment.Center
+      .testTag("panning_drag_surface")
   ) {
-    // Background Grid Pattern
-    Text(
-      text = "Drag Anywhere to Move Target",
-      style = MaterialTheme.typography.bodyLarge,
-      modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp)
-    )
-
-    // Target Box that moves
-    Box(
+    Card(
       modifier = Modifier
-        .offset { IntOffset(dragOffset.x.roundToInt(), dragOffset.y.roundToInt()) }
-        .size(100.dp)
-        .background(Color.Red)
+        .offset { IntOffset(offset.x.roundToInt(), offset.y.roundToInt()) }
+        .align(Alignment.Center)
+        .size(140.dp)
         .testTag("panning_target_node"),
-      contentAlignment = Alignment.Center
+      colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
     ) {
-      Text(
-        text = "X: ${with(density) { dragOffset.x.toDp().value.toInt() }}\nY: ${with(density) { dragOffset.y.toDp().value.toInt() }}",
-        color = Color.White,
-        style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.testTag("panning_coords_text")
-      )
+      Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier.fillMaxSize()
+      ) {
+        Text("Drag Me Around", style = MaterialTheme.typography.bodyMedium)
+      }
     }
   }
 }

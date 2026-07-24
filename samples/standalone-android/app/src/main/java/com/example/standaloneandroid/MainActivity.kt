@@ -44,10 +44,15 @@ fun SumCalculatorScreen() {
   Column(
     modifier = Modifier
       .fillMaxSize()
-      .padding(24.dp),
+      .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
     verticalArrangement = Arrangement.Center
   ) {
+    Text(
+      text = "Sum Calculator",
+      style = MaterialTheme.typography.headlineSmall,
+    )
+    Spacer(modifier = Modifier.height(16.dp))
     // First Input Box
     TextField(
       value = firstNumber,

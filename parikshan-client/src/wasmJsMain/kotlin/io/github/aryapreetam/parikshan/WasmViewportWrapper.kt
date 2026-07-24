@@ -15,6 +15,8 @@ import org.w3c.dom.HTMLElement
 
 /**
  * Initializes the Parikshan bridge for Wasm.
+ *
+ * @suppress
  */
 fun initializeParikshanWasm() {
     ParikshanTagBridgeHooks.ensureBridgeInstalled()
@@ -24,11 +26,39 @@ fun initializeParikshanWasm() {
  * Replaces ComposeViewport to automatically grab the SemanticsOwner for E2E testing in Wasm.
  * Since the Gradle plugin swaps all ComposeViewports with this, we automatically capture
  * the Main App and every Popup/Dialog root.
+ *
+ * @suppress
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Suppress("FunctionName")
 fun ParikshanComposeViewport(viewportContainer: HTMLElement, content: @Composable () -> Unit) {
     ComposeViewport(viewportContainer) {
+        Box(modifier = Modifier.fillMaxSize().then(ParikshanSemanticsGrabberElement)) {
+            content()
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Suppress("FunctionName")
+fun ParikshanComposeViewport(viewportContainerId: String, content: @Composable () -> Unit) {
+    ComposeViewport(viewportContainerId) {
+        Box(modifier = Modifier.fillMaxSize().then(ParikshanSemanticsGrabberElement)) {
+            content()
+        }
+    }
+}
+
+/**
+ * @suppress
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Suppress("FunctionName")
+fun ParikshanComposeViewport(content: @Composable () -> Unit) {
+    ComposeViewport {
         Box(modifier = Modifier.fillMaxSize().then(ParikshanSemanticsGrabberElement)) {
             content()
         }

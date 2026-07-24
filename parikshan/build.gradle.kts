@@ -9,6 +9,9 @@ plugins {
 kotlin {
   jvmToolchain(17)
   jvm()
+  js {
+    browser()
+  }
   wasmJs {
     browser()
   }
@@ -36,7 +39,6 @@ dependencies {
   dokkaPlugin(libs.android.documentation.plugin)
   dokka(project(":parikshan-core"))
   dokka(project(":parikshan-client"))
-  dokka(project(":parikshan-server"))
 }
 
 dokka {

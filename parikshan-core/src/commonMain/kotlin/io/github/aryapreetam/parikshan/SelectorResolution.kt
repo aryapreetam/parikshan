@@ -4,6 +4,9 @@ import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.protocol.Bounds
 
+/**
+ * @suppress
+ */
 data class ResolvedSelector(
   val selector: Selector,
   val matchType: MatchType,
@@ -28,6 +31,9 @@ fun Selector.resolveNode(nodes: List<NodeSnapshot>, requireVisible: Boolean = tr
 
 internal fun String.asAutoSelector(): Selector = Selector.Auto(this)
 
+/**
+ * @suppress
+ */
 fun Selector.ambiguousTextMessage(matches: List<NodeSnapshot>): String {
   val matchSummary = matches.joinToString(separator = "\n") { node ->
       "  - node[tag='${node.tag}', text='${node.text}', visible=${node.visible}, bounds=${node.bounds}]"
@@ -135,4 +141,7 @@ private fun Selector.describe(): String = when (this) {
 }
 private fun Selector.normalizedRaw(): String = raw.trim()
 private fun NodeSnapshot.normalizedText(): String? = text?.trim()
+/**
+ * @suppress
+ */
 class SelectorResolutionException(message: String) : IllegalArgumentException(message)

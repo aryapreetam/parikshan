@@ -5,6 +5,9 @@ import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.Response
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import io.github.aryapreetam.parikshan.protocol.Selector
+import io.github.aryapreetam.parikshan.protocol.auto
+import io.github.aryapreetam.parikshan.protocol.tag
+import io.github.aryapreetam.parikshan.protocol.text
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
@@ -40,6 +43,28 @@ interface TestDriver {
     "build/parikshan/${relativePath.trimStart('/', '\\')}"
 }
 
+/**
+ * Configuration options for an end-to-end test execution.
+ *
+ * It is recommended to use [e2eTest] with its default configuration (`defaultWaitTimeoutMs = 10_000L`).
+ * Overriding `E2ETestConfig` parameters should only be done when custom timeout scaling is strictly required
+ * (such as for slow CI environments or prolonged animations).
+ *
+ * ### Example Usage
+ * ```kotlin
+ * // Standard usage: stick to default e2eTest { } invocation
+ * @Test
+ * fun testLoginFlow() = e2eTest {
+ *   click("Sign In")
+ * }
+ * ```
+ *
+ * @param defaultWaitTimeoutMs Default timeout in milliseconds for element resolution and assertion polling (default 10,000ms).
+ * @param commandDelayMs Optional stabilization delay in milliseconds applied after each UI command (default 0ms).
+ * @param failureScreenshotPath File path where failure screenshots will be saved if [captureScreenshotOnFailure] is true.
+ * @param captureScreenshotOnFailure Automatically captures a screenshot of the app if a test block throws an error (default true).
+ * @see E2ETestScope
+ */
 data class E2ETestConfig(
   val defaultWaitTimeoutMs: Long = 10_000L,
   val commandDelayMs: Long = 0L,
@@ -48,31 +73,72 @@ data class E2ETestConfig(
 )
 
 /**
- * The primary execution scope for a Parikshan end-to-end test.
+ * Primary execution scope for a Parikshan end-to-end test scenario.
  *
- * This scope provides an intent-based DSL for interacting with your Compose Multiplatform
- * application across all supported platforms.
+ * `E2ETestScope` provides an intent-based DSL for driving Compose Multiplatform user interfaces
+ * across Android, iOS, Desktop, and Wasm. Inside this scope, you perform actions (`click`, `input`, `scroll`),
+ * assert UI state (`assertVisible`, `assertText`), and handle platform-conditional logic.
+ *
+ * All methods automatically handle element polling, visibility verification, and virtual cursor updates.
+ *
+ * @see Selector
  */
 class E2ETestScope internal constructor(
   private val driver: TestDriver,
   private val config: E2ETestConfig
 ) {
+  /** The target execution platform string (e.g. "android", "ios", "desktop", "wasm"). */
   val targetPlatform: String get() = driver.targetPlatform
 
   /**
-   * Executes a physical tap or click on the UI element matching the provided [tag].
+   * Executes a physical tap or click on the UI element matching the provided string [tag] or text.
    *
-   * This method automatically waits for the element to become visible before attempting the click.
-   * If the [tag] matches multiple visible nodes, it will pick the most specific one or the first match.
+   * This is the primary and simplest method for interacting with UI elements. It automatically attempts to match
+   * by explicit Compose `testTag` first, and falls back to matching by visible text substring.
+   *
+   * Automatically waits for the element to become visible before attempting the click.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * click("Submit")
+   * click("login_button")
+   * ```
+   *
+   * @param tag The `testTag` string or visible text of the UI element to click.
+   * @throws AssertionError If no visible element matching [tag] appears within the timeout.
+   * @see click(Selector)
+   * @see waitFor
    */
   suspend fun click(tag: String) {
     click(selector = tag.asAutoSelector())
   }
 
   /**
-   * Executes a physical tap or click on the UI element matching the [selector].
+   * Executes a physical tap or click on the UI element matching the specified [selector].
    *
-   * Automatically waits for visibility.
+   * Use this variant when precise element targeting is required—such as matching an exact tag only (`tag()`),
+   * exact text only (`text()`), or picking a specific index when multiple elements match (`atIndex()`, `first()`, `last()`).
+   *
+   * Automatically waits for the element to become visible before attempting the click.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * // Click strictly by testTag (ignores text matching)
+   * click(tag("submit_btn"))
+   *
+   * // Click strictly by visible text substring
+   * click(text("Sign In"))
+   *
+   * // Click the 2nd matching element when multiple items exist
+   * click(auto("Delete").atIndex(1))
+   * ```
+   *
+   * @param selector The explicit [Selector] rule used to locate the target UI element.
+   * @throws AssertionError If no visible node matches [selector] within the timeout.
+   * @see Selector
+   * @see auto
+   * @see tag
+   * @see text
    */
   suspend fun click(selector: Selector) {
     waitFor(selector = selector)
@@ -87,9 +153,22 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Clears any existing text and inputs the provided [text] into the element matching the [tag].
+   * Clears any existing text and inputs [text] into the UI element matching the string [tag].
    *
-   * Automatically waits for visibility.
+   * Primary method for entering text into form fields. Matches by explicit `testTag` first, then visible text substring.
+   *
+   * Automatically waits for the field to become visible before typing.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * input("Username", "john.doe")
+   * input("Email Address", "alex.smith@example.com")
+   * ```
+   *
+   * @param tag The `testTag` string or visible placeholder text of the input field.
+   * @param text The text value to input into the field.
+   * @throws AssertionError If no visible input element matching [tag] appears within the timeout.
+   * @see input(Selector, String)
    */
   suspend fun input(
     tag: String,
@@ -99,9 +178,22 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Clears any existing text and inputs the provided [text] into the element matching the [selector].
+   * Clears any existing text and inputs [text] into the UI element matching the specified [selector].
    *
-   * Automatically waits for visibility.
+   * Advanced variant using explicit selectors for input field targeting.
+   *
+   * Automatically waits for the field to become visible before typing.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * input(tag("password_input"), "SecretPass123!")
+   * input(text("Search").first(), "Kotlin Multiplatform")
+   * ```
+   *
+   * @param selector The explicit [Selector] rule used to locate the input field.
+   * @param text The text value to input into the field.
+   * @throws AssertionError If no visible input element matches [selector] within the timeout.
+   * @see Selector
    */
   suspend fun input(
     selector: Selector,
@@ -119,9 +211,25 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Performs a scroll action on the element matching the [tag] in the specified [direction].
+   * Performs a single scroll gesture on the container element matching string [tag] in the specified [direction].
    *
-   * Useful for scrolling Lists or LazyColumns.
+   * Primary method for scrolling scrollable containers like `LazyColumn`, `LazyRow`, or scrollable `Column`s.
+   * Applies a **200px displacement step** per invocation:
+   * - **Desktop JVM, Android, iOS:** Dispatches a 200px Compose `ScrollBy` action to the scrollable container.
+   * - **WasmJs:** Dispatches 10 incremental `mouse.wheel()` steps totaling 200px over 500ms to simulate smooth web scrolling.
+   *
+   * > **Tip:** To reveal off-screen items in a `LazyColumn` or `LazyRow` without calculating pixel distances, prefer using [scrollUntilVisible].
+   *
+   * ### Example Usage
+   * ```kotlin
+   * scroll("item_list", ScrollDirection.Down)
+   * scroll("image_gallery", ScrollDirection.Right)
+   * ```
+   *
+   * @param tag The `testTag` string or visible text of the scrollable container.
+   * @param direction The [ScrollDirection] (Up, Down, Left, Right).
+   * @see ScrollDirection
+   * @see scrollUntilVisible
    */
   suspend fun scroll(
     tag: String,
@@ -131,7 +239,20 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Performs a scroll action on the element matching the [selector] in the specified [direction].
+   * Performs a single scroll gesture on the container element matching [selector] in the specified [direction].
+   *
+   * Advanced variant using explicit selectors for scrollable container targeting.
+   * Applies a **200px displacement step** per invocation.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * scroll(tag("main_scroll_view"), ScrollDirection.Down)
+   * ```
+   *
+   * @param selector The explicit [Selector] rule targeting the scrollable container.
+   * @param direction The [ScrollDirection] (Up, Down, Left, Right).
+   * @see ScrollDirection
+   * @see scrollUntilVisible
    */
   suspend fun scroll(
     selector: Selector,
@@ -149,18 +270,112 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Asserts that an element matching the [tag] is present and visible in the UI.
+   * Repeatedly scrolls the container matching string [containerTag] in [direction] until [targetTag] becomes visible.
    *
-   * This method has built-in waiting and will poll until the element appears or the timeout is reached.
+   * Primary method for revealing off-screen elements inside long lists or lazy layouts.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * // Scroll down list until "Settings Item" becomes visible
+   * scrollUntilVisible("settings_list", "Notification Settings")
+   * ```
+   *
+   * @param containerTag The `testTag` or visible text of the scrollable container.
+   * @param targetTag The `testTag` or visible text of the element to reveal.
+   * @param direction The scroll direction (defaults to [ScrollDirection.Down]).
+   * @param maxScrolls Maximum number of scroll attempts before failing (default 30).
+   * @param stabilizationDelayMs Stabilization pause in milliseconds between scrolls (default 300ms).
+   * @throws AssertionError If [targetTag] is not revealed within [maxScrolls] scroll attempts.
+   */
+  suspend fun scrollUntilVisible(
+    containerTag: String,
+    targetTag: String,
+    direction: ScrollDirection = ScrollDirection.Down,
+    maxScrolls: Int = 30,
+    stabilizationDelayMs: Long = 300
+  ) {
+    scrollUntilVisible(
+      containerSelector = containerTag.asAutoSelector(),
+      targetSelector = targetTag.asAutoSelector(),
+      direction = direction,
+      maxScrolls = maxScrolls,
+      stabilizationDelayMs = stabilizationDelayMs
+    )
+  }
+
+  /**
+   * Repeatedly scrolls the container matching [containerSelector] in [direction] until [targetSelector] becomes visible.
+   *
+   * Advanced variant using explicit selectors for container and target element lookup.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * scrollUntilVisible(
+   *   containerSelector = tag("feed_list"),
+   *   targetSelector = text("Load More").first(),
+   *   direction = ScrollDirection.Down
+   * )
+   * ```
+   *
+   * @param containerSelector Explicit selector targeting the scrollable container.
+   * @param targetSelector Explicit selector targeting the element to reveal.
+   * @param direction The scroll direction (defaults to [ScrollDirection.Down]).
+   * @param maxScrolls Maximum number of scroll attempts before failing (default 30).
+   * @param stabilizationDelayMs Stabilization pause in milliseconds between scrolls (default 300ms).
+   * @throws AssertionError If [targetSelector] is not revealed within [maxScrolls] scroll attempts.
+   */
+  suspend fun scrollUntilVisible(
+    containerSelector: Selector,
+    targetSelector: Selector,
+    direction: ScrollDirection = ScrollDirection.Down,
+    maxScrolls: Int = 30,
+    stabilizationDelayMs: Long = 300
+  ) {
+    for (i in 0 until maxScrolls) {
+      if (hasVisibleNode(targetSelector)) {
+        return
+      }
+      scroll(selector = containerSelector, direction = direction)
+      delay(stabilizationDelayMs)
+    }
+    throw AssertionError(
+      "Timed out scrolling container '${containerSelector.raw}' to locate target element: '${targetSelector.raw}' after $maxScrolls scrolls."
+    )
+  }
+
+  /**
+   * Asserts that a UI element matching string [tag] is present and visible on screen.
+   *
+   * Automatically polls the UI tree until the element appears or the timeout is reached.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * assertVisible("welcome_header")
+   * assertVisible("Logout")
+   * ```
+   *
+   * @param tag The `testTag` string or visible text of the element.
+   * @throws AssertionError If the element is not visible within the timeout.
+   * @see assertNotVisible
+   * @see waitFor
    */
   suspend fun assertVisible(tag: String) {
     assertVisible(selector = tag.asAutoSelector())
   }
 
   /**
-   * Asserts that an element matching the [selector] is present and visible in the UI.
+   * Asserts that a UI element matching [selector] is present and visible on screen.
    *
-   * Polling is built-in.
+   * Advanced variant using explicit selectors. Automatically polls until visible.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * assertVisible(tag("dashboard_card"))
+   * assertVisible(text("Total Items").first())
+   * ```
+   *
+   * @param selector Explicit selector targeting the UI element.
+   * @throws AssertionError If no matching visible node appears within the timeout.
    */
   suspend fun assertVisible(selector: Selector) {
     waitFor(selector = selector)
@@ -177,16 +392,37 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Asserts that an element matching the [tag] is NOT visible in the UI.
+   * Asserts that a UI element matching string [tag] is NOT visible on screen.
    *
-   * This is a polling assertion that waits for the element to disappear if it is currently present.
+   * Automatically polls and waits for the element to disappear if it is currently visible.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * assertNotVisible("loading_spinner")
+   * ```
+   *
+   * @param tag The `testTag` string or visible text of the element.
+   * @param message Optional custom assertion error message on failure.
+   * @throws AssertionError If the element remains visible after the timeout.
    */
   suspend fun assertNotVisible(tag: String, message: String? = null) {
     assertNotVisible(selector = tag.asAutoSelector(), message = message)
   }
 
   /**
-   * Asserts that an element matching the [selector] is NOT visible in the UI.
+   * Asserts that a UI element matching [selector] is NOT visible on screen.
+   *
+   * Advanced variant using explicit selectors. Automatically polls until the element disappears.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * assertNotVisible(tag("modal_dialog"))
+   * ```
+   *
+   * @param selector Explicit selector targeting the UI element.
+   * @param message Optional custom assertion error message.
+   * @param timeoutMs Maximum polling duration in milliseconds before failing.
+   * @throws AssertionError If the element remains visible after the timeout.
    */
   suspend fun assertNotVisible(
     selector: Selector,
@@ -209,9 +445,19 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Asserts that the element matching the [tag] contains the [expected] text.
+   * Asserts that the UI element matching string [tag] displays exact text [expected].
    *
-   * This assertion includes built-in waiting for the text to appear or match.
+   * Includes built-in waiting until the text updates to match the expected value.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * assertText("user_name_display", "Alice")
+   * ```
+   *
+   * @param tag The `testTag` string or visible text of the element.
+   * @param expected The exact expected text string.
+   * @throws AssertionError If the element text does not match [expected] within the timeout.
+   * @see assertContains
    */
   suspend fun assertText(
     tag: String,
@@ -221,7 +467,18 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Asserts that the element matching the [selector] contains the [expected] text.
+   * Asserts that the UI element matching [selector] displays exact text [expected].
+   *
+   * Advanced variant using explicit selectors. Includes built-in waiting.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * assertText(tag("status_label"), "Connected")
+   * ```
+   *
+   * @param selector Explicit selector targeting the UI element.
+   * @param expected The exact expected text string.
+   * @throws AssertionError If the element text does not match [expected] within the timeout.
    */
   suspend fun assertText(
     selector: Selector,
@@ -233,7 +490,19 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Asserts that the element matching the [tag] contains the provided [substring].
+   * Asserts that the UI element matching string [tag] contains the [substring].
+   *
+   * Includes built-in waiting for the text substring to appear.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * assertContains("result_summary", "3 items found")
+   * ```
+   *
+   * @param tag The `testTag` string or visible text of the element.
+   * @param substring The expected substring contained within the element's text.
+   * @throws AssertionError If the element text does not contain [substring] within the timeout.
+   * @see assertText
    */
   suspend fun assertContains(
     tag: String,
@@ -243,7 +512,18 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Asserts that the element matching the [selector] contains the provided [substring].
+   * Asserts that the UI element matching [selector] contains the [substring].
+   *
+   * Advanced variant using explicit selectors. Includes built-in waiting.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * assertContains(tag("description_box"), "Compose Multiplatform")
+   * ```
+   *
+   * @param selector Explicit selector targeting the UI element.
+   * @param substring The expected substring contained within the element's text.
+   * @throws AssertionError If the element text does not contain [substring] within the timeout.
    */
   suspend fun assertContains(
     selector: Selector,
@@ -254,9 +534,17 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Asserts that the input element matching the [tag] has the [expected] value.
+   * Asserts that an input element matching string [tag] has text value [expected].
    *
-   * This is a semantic alias for [assertText] that improves intent when verifying form fields.
+   * Semantic alias for [assertText] intended for form field validation.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * assertValue("email_input", "alice@example.com")
+   * ```
+   *
+   * @param tag The `testTag` string or visible text of the input field.
+   * @param expected The expected input value.
    */
   suspend fun assertValue(
     tag: String,
@@ -266,7 +554,17 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Asserts that the input element matching the [selector] has the [expected] value.
+   * Asserts that an input element matching [selector] has text value [expected].
+   *
+   * Semantic alias for [assertText] using explicit selectors.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * assertValue(tag("phone_input"), "+15550199")
+   * ```
+   *
+   * @param selector Explicit selector targeting the input element.
+   * @param expected The expected input value.
    */
   suspend fun assertValue(
     selector: Selector,
@@ -276,9 +574,19 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Asserts that the provided [block] fails with an [AssertionError] containing the [messageContains] substring.
+   * Asserts that executing [block] fails with an [AssertionError] containing [messageContains].
    *
-   * Useful for verifying negative scenarios and framework behavior.
+   * Useful for testing negative scenarios or verifying custom validation errors.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * assertFailure("Expected 'Submit' to be visible") {
+   *   click("Submit")
+   * }
+   * ```
+   *
+   * @param messageContains Substring expected in the thrown error message.
+   * @param block Test code block expected to fail.
    */
   suspend fun assertFailure(
     messageContains: String,
@@ -298,9 +606,16 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Blocks execution until an element matching the [tag] becomes visible.
+   * Blocks execution until an element matching string [tag] becomes visible.
    *
-   * Fails with an [AssertionError] if the [timeoutMs] is reached.
+   * ### Example Usage
+   * ```kotlin
+   * waitFor("dashboard_screen", timeoutMs = 5000)
+   * ```
+   *
+   * @param tag The `testTag` string or visible text of the element.
+   * @param timeoutMs Maximum duration in milliseconds to wait (defaults to [E2ETestConfig.defaultWaitTimeoutMs]).
+   * @throws AssertionError If the element is not visible within [timeoutMs].
    */
   suspend fun waitFor(
     tag: String,
@@ -310,7 +625,18 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Blocks execution until an element matching the [selector] becomes visible.
+   * Blocks execution until an element matching [selector] becomes visible.
+   *
+   * Advanced variant using explicit selectors.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * waitFor(tag("checkout_button"), timeoutMs = 12_000L)
+   * ```
+   *
+   * @param selector Explicit selector targeting the element.
+   * @param timeoutMs Maximum duration in milliseconds to wait.
+   * @throws AssertionError If no matching element is visible within [timeoutMs].
    */
   suspend fun waitFor(
     selector: Selector,
@@ -511,14 +837,24 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Captures a screenshot of the current application screen and saves it to the specified [path].
+   * Captures a screenshot of the current application screen and saves it as a PNG to [path].
    *
-   * Depending on the target platform:
-   * - On Desktop/JVM: Captures the active window frame bounds.
-   * - On Web/WasmJs: Playwright captures the viewport canvas.
-   * - On Android/iOS: Triggers a device screenshot via ADB or Simctl.
+   * Primary canonical method for taking screenshots.
    *
-   * @param path the target file path where the screenshot PNG will be stored.
+   * ### Platform Screen Capture Mechanics
+   * - **Desktop JVM:** Captures the active window frame bounds.
+   * - **WasmJs:** Playwright captures the viewport canvas.
+   * - **Android:** Triggers a device screenshot via UiAutomator / ADB screencap.
+   * - **iOS:** Triggers a simulator screenshot via `xcrun simctl`.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * screenshot("build/reports/login-success.png")
+   * ```
+   *
+   * @param path File path where the screenshot PNG will be stored.
+   * @see takeScreenshot
+   * @see screenshotPath
    */
   suspend fun screenshot(path: String) {
     expectOk(
@@ -536,11 +872,12 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Captures a screenshot of the current application screen and saves it to the specified [hostPath].
+   * Captures a screenshot of the current application screen and saves it as a PNG to [hostPath].
    *
-   * This is a semantic alias for [screenshot].
+   * Convenience alias for [screenshot]. New code should prefer using [screenshot].
    *
-   * @param hostPath the target file path on the host machine.
+   * @param hostPath File path on the host machine where the screenshot PNG will be stored.
+   * @see screenshot
    */
   suspend fun takeScreenshot(hostPath: String) {
     screenshot(hostPath)
@@ -565,7 +902,18 @@ class E2ETestScope internal constructor(
     artifactPath("screenshots/${name.trim().ifEmpty { "unnamed" }}.png")
 
   /**
-   * Performs a physical mouse or touch drag/swipe gesture from (fromX, fromY) to (toX, toY) over the specified duration.
+   * Performs a physical touch or mouse drag gesture from ([fromX], [fromY]) to ([toX], [toY]) over [durationMs].
+   *
+   * ### Example Usage
+   * ```kotlin
+   * drag(fromX = 100.0, fromY = 500.0, toX = 100.0, toY = 100.0, durationMs = 400L)
+   * ```
+   *
+   * @param fromX Starting X pixel coordinate.
+   * @param fromY Starting Y pixel coordinate.
+   * @param toX Ending X pixel coordinate.
+   * @param toY Ending Y pixel coordinate.
+   * @param durationMs Gesture movement duration in milliseconds (default 300ms).
    */
   suspend fun drag(
     fromX: Double,
@@ -584,7 +932,17 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Drags the UI element matching [tag] by moving it by (offsetX, offsetY) pixels.
+   * Drags the UI element matching string [tag] by moving it by ([offsetX], [offsetY]) pixels.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * drag("volume_slider", offsetX = 50.0, offsetY = 0.0)
+   * ```
+   *
+   * @param tag The `testTag` string or visible text of the element to drag.
+   * @param offsetX Horizontal pixel movement offset.
+   * @param offsetY Vertical pixel movement offset.
+   * @param durationMs Gesture duration in milliseconds (default 300ms).
    */
   suspend fun drag(
     tag: String,
@@ -596,7 +954,19 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Drags the UI element matching [selector] by moving it by (offsetX, offsetY) pixels.
+   * Drags the UI element matching [selector] by moving it by ([offsetX], [offsetY]) pixels.
+   *
+   * Advanced variant using explicit selectors.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * drag(tag("thumb_handle"), offsetX = 100.0, offsetY = 0.0)
+   * ```
+   *
+   * @param selector Explicit selector targeting the element to drag.
+   * @param offsetX Horizontal pixel movement offset.
+   * @param offsetY Vertical pixel movement offset.
+   * @param durationMs Gesture duration in milliseconds (default 300ms).
    */
   suspend fun drag(
     selector: Selector,
@@ -615,6 +985,22 @@ class E2ETestScope internal constructor(
     drag(fromX = fromX, fromY = fromY, toX = toX, toY = toY, durationMs = durationMs)
   }
 
+  /**
+   * Triggers a system back navigation press.
+   *
+   * ### Platform Support
+   * - **Android:** Triggers the system hardware back button.
+   * - **WasmJs:** Triggers browser history back navigation (`window.history.back()`).
+   * - **iOS:** Triggers top-level navigation bar back action.
+   * - **Desktop JVM:** Triggers top-level back navigation if handled by the window event listener.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * click("Open Details")
+   * pressBack()
+   * assertVisible("main_list")
+   * ```
+   */
   suspend fun pressBack() {
     expectOk(
       action = "pressBack()",
@@ -623,6 +1009,18 @@ class E2ETestScope internal constructor(
     settleAfterCommand()
   }
 
+  /**
+   * Triggers a system home button press to send the application to the background.
+   *
+   * ### Platform Support
+   * - **Android & iOS:** Supported (sends the application process to the background).
+   * - **Desktop JVM & WasmJs:** **No-op (ignored)**, as desktop windows and browser tabs do not possess a device home button.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * pressHome()
+   * ```
+   */
   suspend fun pressHome() {
     expectOk(
       action = "pressHome()",
@@ -631,11 +1029,34 @@ class E2ETestScope internal constructor(
     settleAfterCommand()
   }
 
+  /**
+   * Force-terminates and relaunches the application process under test while maintaining the active test connection session.
+   *
+   * ### Execution & Performance Notes
+   * - **Desktop JVM:** Destroys and re-launches the application window/process, introducing a **1 to 2-second boot latency**.
+   * - **Android & iOS:** Force-terminates and restarts the native app process via driver hooks.
+   * - **WasmJs:** Performs a full browser tab reload.
+   *
+   * > **Warning:** Use `relaunchApp()` sparingly due to the 1-2s process boot latency on Desktop JVM.
+   * > For fast test teardowns under 100ms across multiple tests, prefer using [E2ETestLifecycle] (`beforeEach`/`afterEach`) with in-app UI navigation resets.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * relaunchApp()
+   * assertVisible("splash_screen")
+   * ```
+   *
+   * @see E2ETestLifecycle
+   * @see resetApp
+   */
   suspend fun relaunchApp() {
     driver.relaunchApp()
     settleAfterCommand()
   }
 
+  /**
+   * Resets application state and clears test session caches.
+   */
   suspend fun resetApp() {
     driver.reset()
     settleAfterCommand()
@@ -695,9 +1116,20 @@ class E2ETestScope internal constructor(
   }
 
   /**
-   * Retries the provided [block] up to [maxAttempts] times with a [delayMs] between attempts.
+   * Retries executing [block] up to [maxAttempts] times with a [delayMs] pause between attempts.
    *
-   * Useful for waiting for asynchronous UI state changes that aren't covered by built-in waits.
+   * Useful for wrapping flaky assertions or waiting for asynchronous network operations.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * retry(maxAttempts = 5, delayMs = 1000L) {
+   *   assertVisible("async_data_card")
+   * }
+   * ```
+   *
+   * @param maxAttempts Maximum number of execution attempts (default 3).
+   * @param delayMs Pause duration in milliseconds between attempts (default 500ms).
+   * @param block Test code block to execute and retry on failure.
    */
   suspend fun <T> retry(
     maxAttempts: Int = 3,
@@ -760,6 +1192,9 @@ private enum class MatchPolicy {
   CONTAINS
 }
 
+/**
+ * @suppress
+ */
 @Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.SOURCE)
 annotation class ParikshanScenario(
@@ -768,20 +1203,48 @@ annotation class ParikshanScenario(
 
 /**
  * Returns true if the current test execution target is Web (WasmJs).
+ *
+ * ### Example Usage
+ * ```kotlin
+ * if (isWasm()) {
+ *   // Perform Wasm-specific assertion or skip unsupported action
+ * }
+ * ```
  */
 fun E2ETestScope.isWasm(): Boolean = targetPlatform == "wasm"
 
 /**
  * Returns true if the current test execution target is JVM Desktop.
+ *
+ * ### Example Usage
+ * ```kotlin
+ * if (isDesktop()) {
+ *   // Perform Desktop-specific window management assertion
+ * }
+ * ```
  */
 fun E2ETestScope.isDesktop(): Boolean = targetPlatform == "desktop"
 
 /**
  * Returns true if the current test execution target is an Android device or emulator.
+ *
+ * ### Example Usage
+ * ```kotlin
+ * if (isAndroid()) {
+ *   pressBack()
+ * }
+ * ```
  */
 fun E2ETestScope.isAndroid(): Boolean = targetPlatform == "android"
 
 /**
  * Returns true if the current test execution target is an iOS simulator or device.
+ *
+ * ### Example Usage
+ * ```kotlin
+ * if (isIos()) {
+ *   assertVisible("ios_nav_bar")
+ * }
+ * ```
  */
 fun E2ETestScope.isIos(): Boolean = targetPlatform == "ios"

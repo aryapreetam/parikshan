@@ -13,6 +13,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 
 @Composable
 fun AccessibilityPlayground() {
@@ -20,9 +22,8 @@ fun AccessibilityPlayground() {
 
   Column(
     modifier = Modifier
-      .fillMaxSize()
+      .fillMaxWidth()
       .verticalScroll(rememberScrollState())
-      .padding(16.dp)
       .testTag("accessibility_playground_screen"),
     verticalArrangement = Arrangement.spacedBy(16.dp)
   ) {
@@ -44,17 +45,25 @@ fun AccessibilityPlayground() {
         Text("1. Icon Button with Accessibility Label", style = MaterialTheme.typography.titleMedium)
         Text("The button below has no text, only a content description (accessibility label):")
         
-        IconButton(
-          onClick = { a11yMessage = "Clicked Settings Option" },
-          modifier = Modifier
-            .semantics { contentDescription = "Settings Control Button" }
-            .testTag("a11y_icon_button")
-        ) {
-          Box(
-            modifier = Modifier.size(24.dp),
-            contentAlignment = Alignment.Center
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+          IconButton(
+            onClick = { a11yMessage = "Clicked Settings Option" },
+            modifier = Modifier
+              .semantics { contentDescription = "Settings Control Button" }
+              .testTag("a11y_icon_button")
           ) {
-            Text("⚙", style = MaterialTheme.typography.titleLarge)
+            Icon(
+              imageVector = Icons.Default.Settings,
+              contentDescription = null
+            )
+          }
+          if (a11yMessage.isNotEmpty()) {
+            Text(
+              text = a11yMessage,
+              style = MaterialTheme.typography.titleMedium,
+              color = MaterialTheme.colorScheme.primary,
+              modifier = Modifier.testTag("a11y_result_message")
+            )
           }
         }
       }
@@ -71,7 +80,7 @@ fun AccessibilityPlayground() {
            Box(modifier = Modifier.size(40.dp).testTag("ambiguity_trap"))
         }
 
-        Text("Buttons with same tag/text for index resolution:")
+        Text("Buttons with same text for index resolution:")
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
           Button(
             onClick = { a11yMessage = "Clicked Index 0" },
@@ -79,19 +88,25 @@ fun AccessibilityPlayground() {
           ) {
             Text("Duplicate Action Item")
           }
-          
           Button(
             onClick = { a11yMessage = "Clicked Index 1" },
             modifier = Modifier.fillMaxWidth().testTag("duplicate_action_item_1")
           ) {
             Text("Duplicate Action Item")
           }
-          
           Button(
             onClick = { a11yMessage = "Clicked Index 2" },
             modifier = Modifier.fillMaxWidth().testTag("duplicate_action_item_2")
           ) {
             Text("Duplicate Action Item")
+          }
+          if (a11yMessage.isNotEmpty()) {
+            Text(
+              text = a11yMessage,
+              style = MaterialTheme.typography.titleMedium,
+              color = MaterialTheme.colorScheme.primary,
+              modifier = Modifier.testTag("a11y_result_message")
+            )
           }
         }
       }
@@ -112,6 +127,14 @@ fun AccessibilityPlayground() {
             Text("Hidden Click Target")
           }
         }
+      }
+    }
+
+    // 4. Subtext Partial Text Matching
+    Card(modifier = Modifier.fillMaxWidth().testTag("a11y_card_4")) {
+      Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("4. Subtext Matching", style = MaterialTheme.typography.titleMedium)
+        Text("This is a sample text for testing purpose", modifier = Modifier.testTag("subtext_sample_target"))
       }
     }
   }

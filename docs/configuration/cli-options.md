@@ -1,112 +1,79 @@
-# CLI Options & System Overrides
+# CLI Options & Configuration
 
-You can control test execution, target platforms, and override defaults at runtime using system properties passed via command line flags (`-D<property>=<value>`).
-
-## System Properties
-
-The following system properties can be passed when running Parikshan test tasks:
-
-### General Options
-* **`parikshan.target`**: The target test driver execution target.
-  * Supported values: `desktop`, `wasm` (or `web`), `android`, `ios`
-* **`parikshan.host`**: Overrides the host IP used to connect to the target application's server.
-* **`parikshan.port`**: Overrides the port used to connect to the target application's server.
-* **`parikshan.token`**: Security session token applied to commands sent to target application servers.
-
-### Android Target Options
-* **`parikshan.android.serial`**: Specifies the ADB serial identifier of the target Android emulator or physical device.
-
-### iOS Target Options
-* **`parikshan.ios.udid`**: Specifies the simulator UDID to boot and deploy to. Defaults to `"booted"`.
-* **`parikshan.ios.bundleId`**: Specifies the Bundle ID of the iOS application to launch.
-
-### Desktop Target Options
-* **`parikshan.desktop.launchManifest`**: The path to a custom desktop app launcher manifest configuration file.
-
-### Wasm (Web) Target Options
-* **`parikshan.wasm.url`**: Overrides the local or remote URL of the WasmJs application.
-* **`parikshan.wasm.headless`**: Controls whether the Playwright browser is launched headless. Defaults to `true`.
-* **`parikshan.wasm.viewportWidth`**: Width of the browser viewport.
-* **`parikshan.wasm.viewportHeight`**: Height of the browser viewport.
-* **`parikshan.wasm.bridgeReadyTimeoutMs`**: Time to wait for the page JS bridge to register.
+Parikshan supports execution configuration via Gradle task command-line flags (`--<option>`) and system properties (`-Dparikshan.*`).
 
 ---
 
-## Task Options
+## Task Command-Line Flags
 
-The main `e2eTest` task supports task-specific CLI options:
+Pass options directly to the `e2eTest` orchestration task or target-specific tasks:
 
-* **`--keep-alive`**: Keeps the target application and browser instances running after the test run finishes. Subsequent test executions will perform health checks and skip recompilation and re-launching if the source code and assets are unchanged.
-* **`--reclaim-ports`**: Force terminates any conflicting background applications holding default test ports (`9879` for Android, `9878` for iOS) instead of shifting to fallback ports.
+```bash
+./gradlew :shared:e2eTest --targets=desktop,wasm --tests "sample.app.LoginTest" --keep-alive
+```
 
-### The Port Shift and Reclaim Strategy
-
-When executing tests, Parikshan checks if the target port is occupied. If a conflict is detected:
-* **Default Behavior (Port Shifting):** Parikshan automatically allocates the next available port (e.g. `9880`, `9881`) on both host and device. This allows multiple different applications to run tests concurrently on the same emulator or simulator.
-* **Reclaim Behavior (with `--reclaim-ports`):** Parikshan issues a termination command (`am force-stop` on Android or `simctl terminate` on iOS) to the conflicting application's bundle identifier, frees the port, and executes the tests on the default port.
-
-#### When to use `--reclaim-ports`
-* **CI/CD Pipelines:** Use it in non-interactive builds to ensure a hermetic, clean test run on standard ports.
-* **Process Cleanup:** Use it when you want to quickly kill stale background instances from previous debugging sessions without manual command-line intervention.
-
-#### Cautions & Tradeoffs
-* **Interrupts Concurrent Runs:** If you are actively running test suites for different applications concurrently on the same emulator, using `--reclaim-ports` will immediately terminate the other application, causing its tests to fail.
-* **Process Termination:** It performs a hard process termination. Any unsaved diagnostic state in the conflicting application will be lost.
+| Flag | Type | Description | Example |
+| :--- | :--- | :--- | :--- |
+| `--targets` | String | Comma-separated list of targets to execute | `--targets=desktop,wasm` |
+| `--tests` | String | Class or method filter pattern | `--tests "sample.app.LoginTest"` |
+| `--keep-alive` | Boolean | Keeps application processes and browser instances running across test runs | `--keep-alive` |
+| `--reclaim-ports` | Boolean | Force terminates conflicting active app sessions holding default ports | `--reclaim-ports` |
+| `--device` | String | Target device/emulator name or serial fallback | `--device "iPhone 16"` |
+| `--android-device` | String | Explicit Android device serial override | `--android-device "emulator-5554"` |
+| `--ios-device` | String | Explicit iOS simulator name or UDID override | `--ios-device "iPhone 16"` |
 
 ---
 
-## Project Properties
+## Device & Emulator Selection
 
-You can also set the reclaim ports behavior globally in your `gradle.properties` file or pass it as a project property:
+When executing tests on Android or iOS targets, Parikshan allows targeting specific physical devices, emulators, or simulator UDIDs.
 
-* **`parikshan.reclaimPorts`**: Set to `true` to enable reclaim behavior by default for all test runs.
+### Using CLI Flags (`e2eTest`)
 
-Example in `gradle.properties`:
-```properties
-parikshan.reclaimPorts=true
+```bash
+# Target specific Android emulator by serial (adb devices)
+./gradlew e2eTest --targets=android --android-device="emulator-5554"
+
+# Target specific iOS simulator by name or UDID
+./gradlew e2eTest --targets=ios --ios-device="00008101-00123456789"
+./gradlew e2eTest --targets=ios --ios-device="iPhone 16 Pro"
+
+# Generic --device flag (matches Android serials or iOS simulator names)
+./gradlew e2eTest --targets=android,ios --device="emulator-5554"
+```
+
+### Using System Properties (Target-Specific Tasks)
+
+```bash
+# Android serial property
+./gradlew :sample:composeApp:e2eAndroidTest -Dparikshan.android.serial="emulator-5554"
+
+# iOS UDID or device name property
+./gradlew :sample:composeApp:e2eIosTest -Dparikshan.ios.udid="YOUR_SIMULATOR_UDID"
+./gradlew :sample:composeApp:e2eIosTest -Dparikshan.ios.device="iPhone 16 Pro"
 ```
 
 ---
 
-## Command Line Examples
+## System Properties (`-Dparikshan.*`)
 
-### Run Tests with Keep-Alive Enabled
-To keep application and browser instances running for subsequent fast iterations:
-
-```bash
-./gradlew :composeApp:e2eTest --targets=desktop --keep-alive
-```
-
-### Run a Specific Test
-Use the standard Gradle `--tests` flag to run a specific test class or method:
+Configure test runner behavior, target settings, and video capture via system properties:
 
 ```bash
-./gradlew :composeApp:e2eDesktopTest --tests "sample.app.LoginTest"
+./gradlew :shared:e2eTest -Dparikshan.target=desktop -Dparikshan.video.enabled=true
 ```
 
-### Run Tests Headless on Wasm
-Force headless mode off on the Web Wasm target:
+### Video Recording Options
 
-```bash
-./gradlew :composeApp:e2eWasmTest -Dparikshan.wasm.headless=false
-```
-
-### Target a Specific Android Emulator
-Specify the serial of the target device when multiple emulators are running:
-
-```bash
-./gradlew :composeApp:e2eAndroidTest -Dparikshan.android.serial="emulator-5556"
-```
-
-### Reclaim Default Ports during Conflict
-Force terminate any conflicting processes holding standard ports and run E2E tests:
-
-```bash
-./gradlew :composeApp:e2eTest --reclaim-ports
-```
-
-Or via project property:
-
-```bash
-./gradlew :composeApp:e2eTest -Pparikshan.reclaimPorts=true
-```
+| System Property | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `parikshan.video.enabled` | Boolean | `false` | Enables MP4 video recording per test execution |
+| `parikshan.video.outputDir` | String | `build/parikshan/videos` | Target directory where generated MP4 videos are saved |
+| `parikshan.video.fps` | Int | `10` | Frame rate for encoded video capture (coerced in `1..30`) |
+| `parikshan.video.showCursor` | Boolean | `true` | Renders a virtual cursor overlay in recorded videos |
+| `parikshan.video.granularity` | String | `class` | Recording lifecycle scope: `session`/`run` (one video for the entire run), `class` (one video per test class), or `test` (one video per test method) |
+| `parikshan.video.stepDelayMs` | Long | `0` | Artificial delay inserted between test actions for video visual clarity (coerced in `0..5000` ms) |
+| `parikshan.video.postRollMs` | Long | `1000` | Post-roll pause duration in ms before closing video capture (coerced in `0..10000` ms) |
+| `parikshan.video.width` | Int | Auto | Target video frame width in pixels (coerced in `100..3840`) |
+| `parikshan.video.height` | Int | Auto | Target video frame height in pixels (coerced in `100..2160`) |
+| `parikshan.video.deviceScaleFactor` | Double | Auto | Optional device scale factor/DPR (coerced in `0.0..4.0`) |

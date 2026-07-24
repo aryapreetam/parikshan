@@ -9,6 +9,7 @@ plugins {
   alias(libs.plugins.serialization).apply(false)
   alias(libs.plugins.android.application).apply(false)
   alias(libs.plugins.binary.compatibility.validator).apply(false)
+  alias(libs.plugins.kover).apply(false)
 }
 
 // Apply template setup check
@@ -21,6 +22,14 @@ allprojects {
   plugins.withId("maven-publish") {
     tasks.named("publishToMavenLocal") {
       dependsOn(gradle.includedBuild("gradle-plugins").task(":publishToMavenLocal"))
+    }
+  }
+}
+
+subprojects {
+  configurations.all {
+    resolutionStrategy.capabilitiesResolution.withCapability("org.jetbrains.kotlin:kotlin-test-framework-impl") {
+      select("org.jetbrains.kotlin:kotlin-test-junit5:${libs.versions.kotlin.get()}")
     }
   }
 }

@@ -1,8 +1,15 @@
 # Module parikshan-client
 
-The client module contains the host-side platform-specific drivers and test runner orchestration logic that executes the E2E tests.
+Contains the public test entrypoint and platform driver resolution for Parikshan.
 
-## Key Components
+The primary API is `e2eTest`:
 
-- **Drivers**: Platform-specific implementations (Android, iOS, Wasm, Desktop) that establish communication channels with the application under test and send protocol commands.
-- **Session Management**: Manages video recording streams, screenshot captures, and application process keep-alive states during test execution.
+```kotlin
+@Test
+fun testCheckout() = e2eTest {
+  click("Add to Cart")
+  assertVisible("cart_badge")
+}
+```
+
+Platform drivers (Android, iOS, Desktop, WasmJs) are resolved automatically by the Gradle plugin based on the active test target. Test code does not reference drivers directly.

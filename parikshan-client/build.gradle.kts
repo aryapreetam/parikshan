@@ -16,6 +16,10 @@ dokka {
   dokkaSourceSets.configureEach {
     includes.from("src/commonMain/kotlin/Module.md")
     includes.from("src/commonMain/kotlin/io/github/aryapreetam/parikshan/package.md")
+    perPackageOption {
+      matchingRegex.set("io\\.github\\.aryapreetam\\.parikshan\\.(client|server).*")
+      suppress.set(true)
+    }
   }
 }
 
@@ -31,6 +35,9 @@ kotlin {
     withHostTest {}
   }
   jvm()
+  js {
+    browser()
+  }
   wasmJs {
     browser()
   }
@@ -56,7 +63,6 @@ kotlin {
 
     jvmMain.dependencies {
       api("org.jetbrains.kotlin:kotlin-test-junit5")
-      api("org.jetbrains.kotlin:kotlin-test")
       implementation(libs.ktor.client.cio)
       implementation(libs.playwright.java)
       implementation("org.junit.jupiter:junit-jupiter-api:5.10.2")

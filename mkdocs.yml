@@ -34,28 +34,50 @@ theme:
     - search.suggest
     - search.highlight
 
+plugins:
+  - search
+  - blog:
+      archive: false
+      categories: false
+
 extra_css:
   - stylesheets/extra.css
 
 markdown_extensions:
+  - admonition
+  - pymdownx.details
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
 
 nav:
   - Home: index.md
   - Getting Started:
       - Installation: getting-started/installation.md
       - Quickstart: getting-started/quickstart.md
+  - Examples: examples.md
+  - Test Reports: reports/test-reports.md
+  - CLI Options: configuration/cli-options.md
+  - CI Integration: configuration/ci.md
+  - Plugins: advanced/plugins.md
+  - Roadmap: roadmap.md
+  - User Guides:
+      - Your First Test: guides/your-first-test.md
+  - Blog:
+      - blog/index.md
+  - Reference:
+      - API Overview: reference/api-overview.md
+      - Architecture & Security: reference/architecture.md
+      - API Reference: https://aryapreetam.github.io/parikshan/api/
       - FAQ: getting-started/faq.md
-  - Configuration:
-      - Gradle Plugin: configuration/gradle-plugin.md
-      - CLI Options: configuration/cli-options.md
-      - Video Recording: configuration/video-recording.md
-      - CI Integration: configuration/ci.md
-  - Guides:
-      - Video Troubleshooting: video-recording-troubleshooting.md
+      - Known Limitations: getting-started/known-limitations.md

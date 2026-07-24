@@ -99,6 +99,12 @@ internal object WasmServer {
           "wasm" -> "application/wasm"
           "js" -> "application/javascript"
           "html" -> "text/html"
+          "css" -> "text/css"
+          "png" -> "image/png"
+          "jpg", "jpeg" -> "image/jpeg"
+          "gif" -> "image/gif"
+          "svg" -> "image/svg+xml"
+          "json" -> "application/json"
           else -> "application/octet-stream"
         }
         ex.responseHeaders.add("Content-Type", contentType)

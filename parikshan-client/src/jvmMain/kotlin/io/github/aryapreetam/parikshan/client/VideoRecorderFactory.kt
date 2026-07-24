@@ -9,7 +9,7 @@ object VideoRecorderFactory {
     videoConfig: ParikshanVideoConfig
   ): VideoRecorder {
     return when (target.lowercase()) {
-      "desktop" -> DesktopVideoRecorder(driver, videoConfig)
+      "desktop","jvm" -> DesktopVideoRecorder(driver, videoConfig)
       "wasm", "web" -> WasmVideoRecorder(driver)
       "android" -> AndroidVideoRecorder(
         serial = System.getProperty("parikshan.android.serial") ?: "",

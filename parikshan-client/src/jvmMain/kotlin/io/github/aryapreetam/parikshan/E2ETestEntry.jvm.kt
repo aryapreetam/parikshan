@@ -10,14 +10,10 @@ actual fun e2eTest(
   block: suspend E2ETestScope.() -> Unit
 ) {
   runBlocking {
+    val targetProperty = System.getProperty("parikshan.target")?.lowercase()
     val driver =
-      when (val target = System.getProperty("parikshan.target")?.lowercase()) {
+      when (targetProperty) {
         "android" -> AndroidRemoteDriver.connect()
-        "desktop", null, "" ->
-          DesktopDriver(
-            host = System.getProperty("parikshan.host") ?: "127.0.0.1",
-            port = System.getProperty("parikshan.port")?.toIntOrNull() ?: 9877
-          )
         "ios" ->
           IosRemoteDriver.connect(
             IosDriverConfig(
@@ -26,7 +22,11 @@ actual fun e2eTest(
             )
           )
         "wasm", "web" -> WasmDriver.connect()
-        else -> error("Unsupported Parikshan target '$target'")
+        else ->
+          DesktopDriver(
+            host = System.getProperty("parikshan.host") ?: "127.0.0.1",
+            port = System.getProperty("parikshan.port")?.toIntOrNull() ?: 9877
+          )
       }
 
     val callerClassName = inferCallerClassName()
@@ -45,12 +45,11 @@ actual fun e2eTest(
       methodName = callerMethodName
     )
 
-    val target = System.getProperty("parikshan.target")?.lowercase()
-    val defaultDelay = if (target == "wasm" || target == "web") {
+    val defaultDelay = if (targetProperty == "wasm" || targetProperty == "web") {
       max(config.commandDelayMs, 150L)
-    } else if (target == "ios") {
+    } else if (targetProperty == "ios") {
       max(config.commandDelayMs, 300L)
-    } else if (target == "desktop" && videoConfig.enabled) {
+    } else if (targetProperty != "android" && videoConfig.enabled) {
       max(config.commandDelayMs, 10L)
     } else {
       config.commandDelayMs

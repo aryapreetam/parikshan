@@ -2,6 +2,8 @@ package sample.app.playgrounds
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,8 +23,8 @@ fun TimingPlayground() {
 
   Column(
     modifier = Modifier
-      .fillMaxSize()
-      .padding(16.dp)
+      .fillMaxWidth()
+      .verticalScroll(rememberScrollState())
       .testTag("timing_playground_screen"),
     verticalArrangement = Arrangement.spacedBy(20.dp)
   ) {

@@ -3,13 +3,13 @@ package sample.app
 import io.github.aryapreetam.parikshan.E2ETestScope
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.e2eTest
+import io.github.aryapreetam.parikshan.isIos
+import io.github.aryapreetam.parikshan.E2ETestLifecycle
 import sample.app.setup.selectFromExposedDropdown
 import sample.app.setup.selectDateViaInput
 import sample.app.setup.selectDateFromCalendar
 import sample.app.setup.selectTimeFromDial
-import sample.app.setup.selectTimeFromDialGeometrically
 import sample.app.setup.selectTimeViaInput
-import sample.app.setup.clickAtStill
 import sample.app.setup.clickDropdown
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import io.github.aryapreetam.parikshan.resolveNode
@@ -17,25 +17,28 @@ import io.github.aryapreetam.parikshan.protocol.atIndex
 import kotlinx.coroutines.delay
 import kotlin.test.Test
 
-class OverlayIntegrationTest {
+class OverlayIntegrationTest : E2ETestLifecycle {
+
+  override suspend fun E2ETestScope.beforeEach() {
+    navigateToSection("nav_overlay_playground")
+    assertVisible("overlay_playground_screen")
+  }
+
+  override suspend fun E2ETestScope.afterEach() {
+    navigateToSection("nav_home_screen")
+  }
 
   @Test
   fun testDropdownMenuSelection() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_overlay_playground")
-
     // Open Dropdown Menu via ExposedDropdownMenuBox
     clickDropdown("dropdown_anchor")
     click(Selector.Text("Option Blue"))
     
-	assertVisible("Selected Blue from Dropdown")
+	  assertVisible("Selected Blue from Dropdown")
   }
 
   @Test
   fun testDropdownMenuSelectionAndScroll() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_overlay_playground")
-
     // Open Dropdown Menu via ExposedDropdownMenuBox
     clickDropdown("Select an option")
     
@@ -51,23 +54,15 @@ class OverlayIntegrationTest {
 
   @Test
   fun testAlertDialogConfirmation() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_overlay_playground")
-    assertVisible("overlay_playground_screen")
-
     click("dialog_trigger_button")
     
-    click(Selector.Text("Confirm"))
+    click("dialog_confirm_button")
     
     assertVisible("Dialog Confirmed")
   }
 
   @Test
   fun testModalBottomSheetInteraction() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_overlay_playground")
-    assertVisible("overlay_playground_screen")
-
     click("bottom_sheet_trigger_button")
     assertVisible("bottom_sheet_content")
     
@@ -79,10 +74,15 @@ class OverlayIntegrationTest {
 
   @Test
   fun testDatePickerInputSelection() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_overlay_playground")
-    assertVisible("overlay_playground_screen")
-
+    // WORKAROUND: Compose Multiplatform iOS platform bug.                                                                                                           
+    // Consecutive text input sessions across the full suite contaminate the responder chain,                                                                        
+    // causing the iOS simulator's keyboard focus to get detached (IntermediateTextInputUIView                                                                       
+    // fails to become first responder). Relaunching the app resets the native window hierarchy.                                                                     
+    if (isIos()) {                                                                                                                                                   
+      relaunchApp()  
+      navigateToSection("nav_overlay_playground")
+      assertVisible("overlay_playground_screen")                                                                                                                                                
+    } 
     click("date_picker_trigger_button")
     assertVisible("date_picker_dialog")
     
@@ -97,10 +97,6 @@ class OverlayIntegrationTest {
 
   @Test
   fun testCalendarDateSelectionCurrentMonth() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_overlay_playground")
-    assertVisible("overlay_playground_screen")
-
     click("date_picker_trigger_button")
     assertVisible("date_picker_dialog")
 
@@ -115,10 +111,6 @@ class OverlayIntegrationTest {
 
   @Test
   fun testCalendarDateSelectionPastDate() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_overlay_playground")
-    assertVisible("overlay_playground_screen")
-
     click("date_picker_trigger_button")
     assertVisible("date_picker_dialog")
 
@@ -134,9 +126,6 @@ class OverlayIntegrationTest {
 
   @Test
   fun testCalendarDateSelectionFutureDate() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_overlay_playground")
-    assertVisible("overlay_playground_screen")
 
     click("date_picker_trigger_button")
     assertVisible("date_picker_dialog")
@@ -149,10 +138,6 @@ class OverlayIntegrationTest {
 
   @Test
   fun testTimePickerDialSelection24h() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_overlay_playground")
-    assertVisible("overlay_playground_screen")
-
     click("time_picker_24h_trigger_button")
     assertVisible("time_picker_dialog")
     
@@ -164,10 +149,6 @@ class OverlayIntegrationTest {
 
   @Test
   fun testTimePickerDialSelection12h() = e2eTest {
-    relaunchApp()
-    openAppNavigation(); click("nav_overlay_playground")
-    assertVisible("overlay_playground_screen")
-
     click("time_picker_12h_trigger_button")
     assertVisible("time_picker_dialog")
     

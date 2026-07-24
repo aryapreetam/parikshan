@@ -15,48 +15,18 @@ internal fun Project.registerParikshanIosBootSource(
   logger: Logger,
   sessionToken: String
 ): TaskProvider<Task> {
-  val generatedDir = layout.buildDirectory.dir("parikshan/generated-ios-main").get().asFile
+  val generatedDirProp = layout.buildDirectory.dir("parikshan/generated-ios-main")
+  val projDir = layout.projectDirectory
   val prepareTask =
-    tasks.register("prepareParikshanIosBootSource") {
-      group = "verification"
-      outputs.dir(generatedDir)
-      outputs.upToDateWhen { false }
-      doLast {
-        generatedDir.deleteRecursively()
-        generatedDir.mkdirs()
-        val iosMainDir = File(iosProjectDir, "src/iosMain/kotlin")
-        if (iosMainDir.exists()) {
-          iosMainDir.copyRecursively(generatedDir, overwrite = true)
-        }
-        generatedDir.walkTopDown()
-          .filter { it.isFile && it.extension == "kt" }
-          .forEach { file ->
-            val original = file.readText()
-            val instrumented = instrumentComposeUIViewControllerSource(original)
-            if (instrumented != original) {
-              file.writeText(instrumented)
-              logger.lifecycle("Parikshan iOS: Instrumented generated source ${file.name}")
-            }
-          }
+    tasks.register("prepareParikshanIosBootSource", ParikshanPrepareIosSourceTask::class.java)
+  prepareTask.configure {
+    group = "verification"
+    this.iosProjectDir.set(projDir.asFile)
+    this.generatedDir.set(generatedDirProp.get().asFile)
+    outputs.upToDateWhen { false }
+  }
 
-        val packageName = discoverIosMainPackage(iosProjectDir)
-        val packageLine = packageName?.let { "package $it\n\n" }.orEmpty()
-        File(generatedDir, "ParikshanBoot.kt").writeText(
-          packageLine +
-            """
-            import io.github.aryapreetam.parikshan.server.IosServer
-
-            @Suppress("unused")
-            fun ParikshanStartServer() {
-              IosServer.startIfNeeded()
-            }
-            """.trimIndent() +
-            "\n"
-        )
-        logger.lifecycle("Parikshan iOS: Generated source set at ${generatedDir.absolutePath}")
-      }
-    }
-
+  val generatedDir = generatedDirProp.get().asFile
   replaceIosMainSourceDirWhenAvailable(generatedDir)
   tasks.matching {
     it.name.contains("compileKotlinIos", ignoreCase = true) ||
@@ -64,47 +34,36 @@ internal fun Project.registerParikshanIosBootSource(
   }.configureEach {
     dependsOn(prepareTask)
   }
-  return prepareTask
+  @Suppress("UNCHECKED_CAST")
+  return prepareTask as TaskProvider<Task>
 }
 
 internal fun Project.registerParikshanWasmBootSource(
-  logger: Logger
+  logger: Logger,
+  wasmAppProject: Project = this
 ): TaskProvider<Task> {
-  val generatedDir = layout.buildDirectory.dir("parikshan/generated-wasm-main").get().asFile
-  val projectDirFile = project.projectDir
+  val generatedDirProp = wasmAppProject.layout.buildDirectory.dir("parikshan/generated-wasm-main")
+  val projDir = wasmAppProject.layout.projectDirectory
   val prepareTask =
-    tasks.register("prepareParikshanWasmBootSource") {
-      group = "verification"
-      outputs.dir(generatedDir)
-      outputs.upToDateWhen { false }
-      doLast {
-        generatedDir.deleteRecursively()
-        generatedDir.mkdirs()
-        val wasmMainDir = File(projectDirFile, "src/wasmJsMain/kotlin")
-        if (wasmMainDir.exists()) {
-          wasmMainDir.copyRecursively(generatedDir, overwrite = true)
-        }
-        generatedDir.walkTopDown()
-          .filter { it.isFile && it.extension == "kt" }
-          .forEach { file ->
-            val original = file.readText()
-            val instrumented = instrumentComposeWasmSource(original)
-            if (instrumented != original) {
-              file.writeText(instrumented)
-              logger.lifecycle("Parikshan Wasm: Instrumented generated source ${file.name}")
-            }
-          }
-      }
-    }
+    wasmAppProject.tasks.register("prepareParikshanWasmBootSource", ParikshanPrepareWasmSourceTask::class.java)
+  prepareTask.configure {
+    group = "verification"
+    this.projectDir.set(projDir.asFile)
+    this.generatedDir.set(generatedDirProp.get().asFile)
+    outputs.upToDateWhen { false }
+  }
 
-  replaceWasmMainSourceDirWhenAvailable(generatedDir)
-  tasks.matching {
+  val generatedDir = generatedDirProp.get().asFile
+  wasmAppProject.replaceWasmMainSourceDirWhenAvailable(generatedDir)
+  wasmAppProject.tasks.matching {
     it.name.contains("compileKotlinWasmJs", ignoreCase = true) ||
       it.name.contains("wasmJsBrowser", ignoreCase = true)
   }.configureEach {
     dependsOn(prepareTask)
+    inputs.dir(generatedDir)
   }
-  return prepareTask
+  @Suppress("UNCHECKED_CAST")
+  return prepareTask as TaskProvider<Task>
 }
 
 private fun Project.replaceWasmMainSourceDirWhenAvailable(generatedDir: File) {
@@ -112,16 +71,43 @@ private fun Project.replaceWasmMainSourceDirWhenAvailable(generatedDir: File) {
   @Suppress("UNCHECKED_CAST")
   val sourceSets =
     kmp.javaClass.getMethod("getSourceSets").invoke(kmp) as NamedDomainObjectContainer<Any>
-  sourceSets.all(
-    object : Action<Any> {
-      override fun execute(sourceSet: Any) {
-        val name = (sourceSet as? Named)?.name
-        if (name == "wasmJsMain") {
-          replaceKotlinSourceDirs(sourceSet, generatedDir)
-        }
+  val projectLogger = logger
+  val outerProject = this
+  // Prefer replacing the source set whose directory physically exists on disk.
+  // This avoids duplicate compilation: e.g., if webMain has the sources,
+  // replacing wasmJsMain would create duplicates (webMain + instrumented wasmJsMain).
+  val candidates = listOf("webMain", "wasmJsMain", "jsMain")
+  try {
+    val findMethod = sourceSets.javaClass.getMethod("findByName", String::class.java)
+    for (candidate in candidates) {
+      val ss = findMethod.invoke(sourceSets, candidate) ?: continue
+      val srcDir = File(projectDir, "src/${candidate}/kotlin")
+      if (srcDir.exists()) {
+        projectLogger.lifecycle("Parikshan Wasm: Replacing source set '$candidate' with generated sources: ${generatedDir.absolutePath}")
+        replaceKotlinSourceDirs(ss, generatedDir)
+        return
       }
     }
-  )
+    // Fallback: replace first available source set regardless of physical dir
+    for (candidate in candidates) {
+      val ss = findMethod.invoke(sourceSets, candidate) ?: continue
+      projectLogger.lifecycle("Parikshan Wasm: Replacing source set '$candidate' (fallback) with generated sources: ${generatedDir.absolutePath}")
+      replaceKotlinSourceDirs(ss, generatedDir)
+      return
+    }
+  } catch (e: Exception) {
+    sourceSets.all(
+      object : Action<Any> {
+        override fun execute(sourceSet: Any) {
+          val name = (sourceSet as? Named)?.name
+          if (name == "webMain" || name == "wasmJsMain") {
+            projectLogger.lifecycle("Parikshan Wasm: Replacing source set '$name' (fallback) with generated sources: ${generatedDir.absolutePath}")
+            replaceKotlinSourceDirs(sourceSet, generatedDir)
+          }
+        }
+      }
+    )
+  }
 }
 
 private fun Project.replaceIosMainSourceDirWhenAvailable(generatedDir: File) {
@@ -141,12 +127,22 @@ private fun Project.replaceIosMainSourceDirWhenAvailable(generatedDir: File) {
   )
 }
 
-private fun replaceKotlinSourceDirs(
+private fun Project.replaceKotlinSourceDirs(
   sourceSet: Any,
   generatedDir: File
 ) {
+  val name = (sourceSet as? org.gradle.api.Named)?.name ?: "unknown"
   val kotlinSrc = sourceSet.javaClass.getMethod("getKotlin").invoke(sourceSet) as SourceDirectorySet
-  kotlinSrc.setSrcDirs(listOf(generatedDir))
+  val physicalSrcDirPrefix = File(projectDir, "src").absolutePath
+
+  kotlinSrc.exclude(object : org.gradle.api.specs.Spec<org.gradle.api.file.FileTreeElement> {
+    override fun isSatisfiedBy(element: org.gradle.api.file.FileTreeElement): Boolean {
+      return element.file.absolutePath.startsWith(physicalSrcDirPrefix)
+    }
+  })
+
+  kotlinSrc.srcDirs(generatedDir)
+  logger.lifecycle("Parikshan: Configured source set '$name' for project '${this.path}'. Added source dir: ${generatedDir.absolutePath}")
 }
 
 private fun instrumentComposeUIViewControllerSource(source: String): String {

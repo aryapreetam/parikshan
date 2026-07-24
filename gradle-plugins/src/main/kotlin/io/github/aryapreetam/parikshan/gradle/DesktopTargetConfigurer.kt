@@ -20,7 +20,8 @@ internal object DesktopTargetConfigurer {
     isVideoRequested: Boolean,
     e2eTestClasses: List<String>,
     hostTestTask: TaskProvider<Test>,
-    desktopLaunchManifestFile: File
+    desktopLaunchManifestFile: File,
+    targetName: String
   ) {
     val appJarTaskNameVal = extension.appJarTaskName.get()
     val appArgsVal = extension.appArgs.get()
@@ -33,14 +34,33 @@ internal object DesktopTargetConfigurer {
     val tokenVal = sessionToken
     val manifestFileVal = desktopLaunchManifestFile
 
-    val appJarFileProvider = project.tasks.named<org.gradle.jvm.tasks.Jar>(appJarTaskNameVal)
-      .flatMap { it.archiveFile }
+    val capitalizedTarget = targetName.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+    val startTaskName = "startParikshan${capitalizedTarget}App"
+    val stopTaskName = "stopParikshan${capitalizedTarget}App"
+    val e2eTaskName = "e2e${capitalizedTarget}Test"
 
-    val startDesktopTask = project.tasks.register("startParikshanDesktopApp") {
+    val targetProjectForJar = project.resolveDesktopAppProject(
+      userConfiguredPath = null
+    )
+
+    val appJarFileProvider = if (targetProjectForJar != null && targetProjectForJar.tasks.names.contains(appJarTaskNameVal)) {
+      targetProjectForJar.tasks.named<org.gradle.jvm.tasks.Jar>(appJarTaskNameVal)
+        .flatMap { it.archiveFile }
+    } else {
+      null
+    }
+
+    val startDesktopTask = project.tasks.register(startTaskName) {
       group = "verification"
-      inputs.file(appJarFileProvider)
+      if (appJarFileProvider != null) {
+        inputs.file(appJarFileProvider)
+      }
 
       doLast {
+        if (appJarFileProvider == null) {
+          logger.lifecycle("Parikshan: Task $appJarTaskNameVal not found in project. Skipping application startup; running tests directly.")
+          return@doLast
+        }
         val jar = appJarFileProvider.get().asFile
         val resolvedPort = PortConflictHandler.resolvePortAndCleanStale(
           originalPort = portVal,
@@ -50,7 +70,7 @@ internal object DesktopTargetConfigurer {
         DesktopProcess.start(
           jar = jar,
           token = tokenVal,
-          logFile = File(buildDirVal, "parikshan/desktop-app.log"),
+          logFile = File(buildDirVal, "parikshan/${targetName.lowercase()}-app.log"),
           manifestFile = manifestFileVal,
           appArgs = appArgsVal,
           host = hostVal,
@@ -63,7 +83,7 @@ internal object DesktopTargetConfigurer {
       }
     }
 
-    project.tasks.register("stopParikshanDesktopApp") {
+    project.tasks.register(stopTaskName) {
       group = "verification"
       doLast {
         DesktopProcess.stop(
@@ -75,20 +95,27 @@ internal object DesktopTargetConfigurer {
       }
     }
 
-    startDesktopTask.configure {
-      dependsOn(appJarTaskNameVal)
+    if (appJarFileProvider != null && targetProjectForJar != null) {
+      startDesktopTask.configure {
+        val taskPath = if (targetProjectForJar == project) {
+          appJarTaskNameVal
+        } else {
+          "${targetProjectForJar.path}:${appJarTaskNameVal}"
+        }
+        dependsOn(taskPath)
+      }
     }
 
-    project.registerE2eTestWithReport("e2eDesktopTest", "Desktop") {
+    project.registerE2eTestWithReport(e2eTaskName, capitalizedTarget) {
       group = "verification"
       dependsOn(startDesktopTask)
-      finalizedBy("stopParikshanDesktopApp")
+      finalizedBy(stopTaskName)
 
       configureE2eHostTestExecution(
         hostTestClassesDirs = hostTestTask.get().testClassesDirs,
         hostTestClasspath = hostTestTask.get().classpath,
         e2eTestClasses = e2eTestClasses,
-        target = "Desktop",
+        target = capitalizedTarget,
         logger = project.logger
       )
       systemProperty("parikshan.host", hostVal)
@@ -103,7 +130,7 @@ internal object DesktopTargetConfigurer {
         }
         systemProperty("parikshan.port", port)
       }
-      systemProperty("parikshan.target", "desktop")
+      systemProperty("parikshan.target", targetName.lowercase())
       systemProperty("parikshan.token", tokenVal)
       systemProperty("parikshan.desktop.launchManifest", manifestFileVal.absolutePath)
       if (isBackgroundRequested) {
@@ -195,10 +222,10 @@ internal object DesktopProcess {
       conn.outputStream.use { it.write(json.toByteArray()) }
       conn.responseCode
     }
-    Thread.sleep(3000)
     process?.let { active ->
       if (active.isAlive) {
         active.destroy()
+        try { active.waitFor(500, java.util.concurrent.TimeUnit.MILLISECONDS) } catch (_: Exception) {}
       }
     }
     manifestFile?.let { destroyManifestProcess(it) }

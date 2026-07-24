@@ -74,7 +74,7 @@ jobs:
           set -e
           case "${{ matrix.target }}" in
             jvm)
-              ./gradlew :parikshan-server:test :parikshan-core:jvmTest :parikshan-client:jvmTest :samples:multiplatform-showcase:composeApp:jvmTest
+              ./gradlew :parikshan-server:test :parikshan-core:jvmTest :parikshan-client:jvmTest :samples:multiplatform-showcase:composeApp:jvmTest :parikshan-core:koverHtmlReport :parikshan-core:koverXmlReport
               ;;
             ios)
               ./gradlew :parikshan-core:iosSimulatorArm64Test :parikshan-client:iosSimulatorArm64Test :samples:multiplatform-showcase:composeApp:iosSimulatorArm64Test
@@ -86,6 +86,13 @@ jobs:
               ./gradlew :parikshan-client:testAndroid :samples:multiplatform-showcase:androidApp:testDebugUnitTest
               ;;
           esac
+      - name: Upload Kover Coverage Artifacts
+        if: matrix.target == 'jvm'
+        uses: actions/upload-artifact@v4
+        with:
+          name: parikshan-kover-coverage-reports
+          path: parikshan-core/build/reports/kover/
+          if-no-files-found: ignore
 
   e2e-android:
     name: E2E Android (emulator)
@@ -113,7 +120,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew :samples:multiplatform-showcase:composeApp:e2eAndroidTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"
+          script: ./gradlew :samples:multiplatform-showcase:composeApp:e2eAndroidTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"
       - name: Upload Android Videos
         if: always()
         uses: actions/upload-artifact@v4
@@ -139,7 +146,7 @@ jobs:
       - name: Run Parikshan Desktop E2E tests
         uses: aryapreetam/parikshan-desktop-action@v1
         with:
-          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eDesktopTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"'
+          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eJvmTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"'
       - name: Upload Desktop Videos
         if: always()
         uses: actions/upload-artifact@v4
@@ -165,7 +172,7 @@ jobs:
       - name: Run Parikshan Wasm E2E tests
         uses: aryapreetam/parikshan-wasm-action@v1
         with:
-          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eWasmTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"'
+          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eWasmTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"'
       - name: Upload Wasm Videos
         if: always()
         uses: actions/upload-artifact@v4
@@ -174,37 +181,129 @@ jobs:
           path: samples/multiplatform-showcase/composeApp/build/parikshan/videos/wasm/
           if-no-files-found: ignore
 
-#  e2e-ios:
-#    name: E2E iOS (Simulator)
-#    runs-on: macos-latest
-#    needs: [ unit-tests ]
-#    steps:
-#      - name: Checkout repository
-#        uses: actions/checkout@v4
-#      - name: Set up JDK
-#        uses: actions/setup-java@v4
-#        with:
-#          distribution: 'zulu'
-#          java-version: ${{ env.JAVA_VERSION }}
-#      - name: Cache Kotlin/Native (~/.konan)
-#        uses: actions/cache@v4
-#        with:
-#          path: ~/.konan
-#          key: konan-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml', '**/gradle-wrapper.properties') }}
-#          restore-keys: konan-${{ runner.os }}-
-#      - name: Setup Gradle
-#        uses: gradle/actions/setup-gradle@v3
-#      - name: Run Parikshan iOS E2E tests
-#        run: |
-#          # The plugin handles simulator booting and xcodebuild internally
-#          ./gradlew :samples:multiplatform-showcase:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.SubtextScenarios.testSubtextMatching"
-#      - name: Upload iOS Videos
-#        if: always()
-#        uses: actions/upload-artifact@v4
-#        with:
-#          name: parikshan-ios-videos
-#          path: samples/multiplatform-showcase/composeApp/build/parikshan/videos/ios/
-#          if-no-files-found: ignore
+  e2e-ios-showcase:
+    name: E2E iOS Showcase
+    runs-on: macos-latest
+    needs: [ unit-tests ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml', '**/gradle-wrapper.properties') }}
+          restore-keys: konan-${{ runner.os }}-
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+      - name: Pre-boot Simulator
+        run: |
+          xcrun simctl list devices
+          xcrun simctl boot "iPhone 15" || true
+      - name: Pre-compile Kotlin Native Framework
+        run: |
+          ./gradlew :samples:multiplatform-showcase:composeApp:linkDebugFrameworkIosSimulatorArm64 -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
+      - name: Run Showcase iOS E2E tests
+        run: |
+          ./gradlew :samples:multiplatform-showcase:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching" -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Dparikshan.xcodebuild.timeout=1800
+      - name: Upload iOS E2E Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parikshan-ios-showcase-results
+          path: |
+            samples/multiplatform-showcase/composeApp/build/parikshan/
+            samples/multiplatform-showcase/composeApp/build/reports/
+          if-no-files-found: ignore
+
+  e2e-ios-cmp-latest:
+    name: E2E iOS cmp-latest
+    runs-on: macos-latest
+    needs: [ unit-tests ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml', '**/gradle-wrapper.properties') }}
+          restore-keys: konan-${{ runner.os }}-
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+      - name: Pre-boot Simulator
+        run: |
+          xcrun simctl list devices
+          xcrun simctl boot "iPhone 15" || true
+      - name: Pre-compile Kotlin Native Framework
+        working-directory: samples/cmp-latest
+        run: |
+          ./gradlew :app:shared:linkDebugFrameworkIosSimulatorArm64 -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
+      - name: Run cmp-latest iOS E2E tests
+        working-directory: samples/cmp-latest
+        run: |
+          ./gradlew :app:shared:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="org.example.project.StorefrontFlowTest" -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Dparikshan.xcodebuild.timeout=1800
+      - name: Upload iOS E2E Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parikshan-ios-cmp-latest-results
+          path: |
+            samples/cmp-latest/app/shared/build/parikshan/
+            samples/cmp-latest/app/shared/build/reports/
+          if-no-files-found: ignore
+
+  e2e-ios-composables:
+    name: E2E iOS composables-sample
+    runs-on: macos-latest
+    needs: [ unit-tests ]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml', '**/gradle-wrapper.properties') }}
+          restore-keys: konan-${{ runner.os }}-
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+      - name: Pre-boot Simulator
+        run: |
+          xcrun simctl list devices
+          xcrun simctl boot "iPhone 15" || true
+      - name: Pre-compile Kotlin Native Framework
+        working-directory: samples/composables-sample
+        run: |
+          ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
+      - name: Run composables-sample iOS E2E tests
+        working-directory: samples/composables-sample
+        run: |
+          ./gradlew :shared:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="com.example.app.SampleE2ETest" -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Dparikshan.xcodebuild.timeout=1800
+      - name: Upload iOS E2E Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parikshan-ios-composables-results
+          path: |
+            samples/composables-sample/shared/build/parikshan/
+            samples/composables-sample/shared/build/reports/
+          if-no-files-found: ignore
 
   dex-pollution-audit:
     name: DEX Footprint Audit

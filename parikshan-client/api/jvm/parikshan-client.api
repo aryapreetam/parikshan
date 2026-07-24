@@ -1,3 +1,8 @@
+public final class io/github/aryapreetam/parikshan/E2ETestEntryKt {
+	public static final fun e2eTest (Lio/github/aryapreetam/parikshan/E2ETestLifecycle;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;)V
+	public static synthetic fun e2eTest$default (Lio/github/aryapreetam/parikshan/E2ETestLifecycle;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
+}
+
 public final class io/github/aryapreetam/parikshan/E2ETestEntry_jvmKt {
 	public static final fun e2eTest (Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;)V
 	public static synthetic fun e2eTest$default (Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
@@ -83,12 +88,6 @@ public final class io/github/aryapreetam/parikshan/client/ParikshanJUnit5Extensi
 	public fun <init> ()V
 	public fun afterAll (Lorg/junit/jupiter/api/extension/ExtensionContext;)V
 	public fun beforeAll (Lorg/junit/jupiter/api/extension/ExtensionContext;)V
-}
-
-public final class io/github/aryapreetam/parikshan/client/ParikshanMethodOrderer : org/junit/jupiter/api/MethodOrderer {
-	public static final field $stable I
-	public fun <init> ()V
-	public fun orderMethods (Lorg/junit/jupiter/api/MethodOrdererContext;)V
 }
 
 public final class io/github/aryapreetam/parikshan/client/ParikshanVideoConfig {

@@ -7,6 +7,7 @@ plugins {
   id("parikshan.publishing")
   alias(libs.plugins.dokka)
   alias(libs.plugins.binary.compatibility.validator)
+  alias(libs.plugins.kover)
 }
 
 dokka {
@@ -14,6 +15,10 @@ dokka {
   dokkaSourceSets.configureEach {
     includes.from("src/commonMain/kotlin/Module.md")
     includes.from("src/commonMain/kotlin/io/github/aryapreetam/parikshan/package.md")
+    perPackageOption {
+      matchingRegex.set("io\\.github\\.aryapreetam\\.parikshan\\.(client|server).*")
+      suppress.set(true)
+    }
   }
 }
 
@@ -28,6 +33,9 @@ kotlin {
     minSdk = 24
   }
   jvm()
+  js {
+    browser()
+  }
   wasmJs {
     browser()
   }

@@ -32,6 +32,16 @@ public final class io/github/aryapreetam/parikshan/E2ETestDslKt {
 	public static final fun isWasm (Lio/github/aryapreetam/parikshan/E2ETestScope;)Z
 }
 
+public abstract interface class io/github/aryapreetam/parikshan/E2ETestLifecycle {
+	public fun afterEach (Lio/github/aryapreetam/parikshan/E2ETestScope;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun beforeEach (Lio/github/aryapreetam/parikshan/E2ETestScope;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class io/github/aryapreetam/parikshan/E2ETestLifecycle$DefaultImpls {
+	public static fun afterEach (Lio/github/aryapreetam/parikshan/E2ETestLifecycle;Lio/github/aryapreetam/parikshan/E2ETestScope;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun beforeEach (Lio/github/aryapreetam/parikshan/E2ETestLifecycle;Lio/github/aryapreetam/parikshan/E2ETestScope;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
 public final class io/github/aryapreetam/parikshan/E2ETestScope {
 	public final fun artifactPath (Ljava/lang/String;)Ljava/lang/String;
 	public final fun assertContains (Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -77,6 +87,10 @@ public final class io/github/aryapreetam/parikshan/E2ETestScope {
 	public final fun screenshotPath (Ljava/lang/String;)Ljava/lang/String;
 	public final fun scroll (Lio/github/aryapreetam/parikshan/protocol/Selector;Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun scroll (Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun scrollUntilVisible (Lio/github/aryapreetam/parikshan/protocol/Selector;Lio/github/aryapreetam/parikshan/protocol/Selector;Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;IJLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun scrollUntilVisible (Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;IJLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun scrollUntilVisible$default (Lio/github/aryapreetam/parikshan/E2ETestScope;Lio/github/aryapreetam/parikshan/protocol/Selector;Lio/github/aryapreetam/parikshan/protocol/Selector;Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;IJLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun scrollUntilVisible$default (Lio/github/aryapreetam/parikshan/E2ETestScope;Ljava/lang/String;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/ScrollDirection;IJLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun takeScreenshot (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun waitFor (Lio/github/aryapreetam/parikshan/protocol/Selector;JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun waitFor (Ljava/lang/String;JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -85,10 +99,6 @@ public final class io/github/aryapreetam/parikshan/E2ETestScope {
 }
 
 public abstract interface annotation class io/github/aryapreetam/parikshan/InternalParikshanApi : java/lang/annotation/Annotation {
-}
-
-public abstract interface annotation class io/github/aryapreetam/parikshan/Order : java/lang/annotation/Annotation {
-	public abstract fun value ()I
 }
 
 public abstract interface annotation class io/github/aryapreetam/parikshan/ParikshanScenario : java/lang/annotation/Annotation {

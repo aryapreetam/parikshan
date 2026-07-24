@@ -188,6 +188,99 @@ internal fun Project.findAndroidAppProject(): Project? {
     return rootProject.subprojects.find { it.pluginManager.hasPlugin("com.android.application") }
 }
 
+internal fun Project.resolveDesktopAppProject(
+    userConfiguredPath: String?
+): Project? {
+    val appJarTaskName = "packageUberJarForCurrentOS"
+    
+    // Step 1: Explicit user configuration (highest priority)
+    if (!userConfiguredPath.isNullOrEmpty()) {
+        val configuredProject = rootProject.findProject(userConfiguredPath)
+        if (configuredProject != null && configuredProject.tasks.names.contains(appJarTaskName)) {
+            return configuredProject
+        }
+        return configuredProject  // Return even if task not found, let caller handle error
+    }
+    
+    // Step 2: Check current project
+    if (this.tasks.names.contains(appJarTaskName)) {
+        return this
+    }
+    
+    // Step 3: Check parent sibling (for nested projects like :app:shared → :app:desktopApp)
+    val parentPath = this.path.substringBeforeLast(":")
+    if (parentPath.isNotEmpty()) {
+        val possibleSiblings = listOf(
+            "${parentPath}:desktopApp",
+            "${parentPath}:desktop"
+        )
+        for (siblingPath in possibleSiblings) {
+            val sibling = rootProject.findProject(siblingPath)
+            if (sibling != null && sibling.tasks.names.contains(appJarTaskName)) {
+                return sibling
+            }
+        }
+    }
+    
+    // Step 4: Check root level
+    val rootLevelApps = listOf(":desktopApp", ":desktop")
+    for (appPath in rootLevelApps) {
+        val app = rootProject.findProject(appPath)
+        if (app != null && app.tasks.names.contains(appJarTaskName)) {
+            return app
+        }
+    }
+    
+    // No desktop app found - return null for caller to handle error
+    return null
+}
+
+internal fun Project.resolveWasmAppProject(
+    userConfiguredPath: String?
+): Project? {
+    val markerTaskName = "wasmJsBrowserDevelopmentWebpack"
+
+    // Step 1: Explicit user configuration (highest priority)
+    if (!userConfiguredPath.isNullOrEmpty()) {
+        val configuredProject = rootProject.findProject(userConfiguredPath)
+        if (configuredProject != null && configuredProject.tasks.names.contains(markerTaskName)) {
+            return configuredProject
+        }
+        return configuredProject
+    }
+
+    // Step 2: Check current project (e.g., single-module where wasmJs is here)
+    if (this.tasks.names.contains(markerTaskName)) {
+        return this
+    }
+
+    // Step 3: Check parent sibling (e.g., :app:shared → :app:webApp)
+    val parentPath = this.path.substringBeforeLast(":")
+    if (parentPath.isNotEmpty()) {
+        val possibleSiblings = listOf(
+            "${parentPath}:webApp",
+            "${parentPath}:web"
+        )
+        for (siblingPath in possibleSiblings) {
+            val sibling = rootProject.findProject(siblingPath)
+            if (sibling != null && sibling.tasks.names.contains(markerTaskName)) {
+                return sibling
+            }
+        }
+    }
+
+    // Step 4: Check root level (e.g., :webApp at root)
+    val rootLevelApps = listOf(":webApp", ":web")
+    for (appPath in rootLevelApps) {
+        val app = rootProject.findProject(appPath)
+        if (app != null && app.tasks.names.contains(markerTaskName)) {
+            return app
+        }
+    }
+
+    return null
+}
+
 internal fun Project.discoverE2eTestClasses(): List<String> {
   val dirsToCheck = mutableListOf<File>()
   val hasKmp = pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform")
@@ -422,21 +515,8 @@ internal fun Project.configureParikshanDependencies(isE2EActive: Boolean) {
       }
       
       // Inject server into all JVM targets
-      val kmp = extensions.findByName("kotlin")
-      if (kmp != null) {
-          try {
-              @Suppress("UNCHECKED_CAST")
-              val targets = kmp.javaClass.getMethod("getTargets").invoke(kmp) as NamedDomainObjectCollection<Any>
-              targets.forEach { target ->
-                  val targetName = (target as Named).name
-                  val className = target.javaClass.name
-                  if (className.contains("KotlinJvmTarget", ignoreCase = true) || 
-                      targetName.contains("jvm", ignoreCase = true) || 
-                      targetName.contains("desktop", ignoreCase = true)) {
-                      addParikshanDependency("${targetName}MainImplementation", ":parikshan-server", "io.github.aryapreetam:parikshan-server:$pluginVersion")
-                  }
-              }
-          } catch (_: Exception) { }
+      findJvmTargets().forEach { targetName ->
+          addParikshanDependency("${targetName}MainImplementation", ":parikshan-server", "io.github.aryapreetam:parikshan-server:$pluginVersion")
       }
 
       // Fallback for non-KMP or failed resolution
@@ -456,9 +536,35 @@ internal fun Project.configureParikshanDependencies(isE2EActive: Boolean) {
   }
 }
 
+internal fun Project.findJvmTargets(): List<String> {
+  val jvmTargetNames = mutableListOf<String>()
+  val kmp = extensions.findByName("kotlin")
+  if (kmp != null) {
+    try {
+      @Suppress("UNCHECKED_CAST")
+      val targets = kmp.javaClass.getMethod("getTargets").invoke(kmp) as NamedDomainObjectCollection<Any>
+      targets.forEach { target ->
+        val targetName = (target as Named).name
+        val className = target.javaClass.name
+        if (className.contains("KotlinJvmTarget", ignoreCase = true) || 
+            targetName.contains("jvm", ignoreCase = true) || 
+            targetName.contains("desktop", ignoreCase = true)) {
+          jvmTargetNames.add(targetName)
+        }
+      }
+    } catch (_: Exception) {}
+  }
+  return jvmTargetNames
+}
+
 internal fun Project.addParikshanDependency(config: String, path: String, maven: String) {
   val dep = rootProject.findProject(path)?.let { dependencies.project(mapOf("path" to it.path)) } ?: maven
-  val configuration = configurations.findByName(config) ?: return
+  val configuration = configurations.findByName(config)
+  if (configuration == null) {
+    logger.lifecycle("Parikshan: Configuration '$config' NOT found in project '${this.path}'")
+    return
+  }
+  logger.lifecycle("Parikshan: Adding dependency to project '${this.path}': configuration='$config', dependency='$dep'")
   dependencies.add(config, dep)
 }
 

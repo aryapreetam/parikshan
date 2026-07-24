@@ -10,6 +10,9 @@
   <a href="https://mvnrepository.com/artifact/io.github.aryapreetam/parikshan">
     <img src="https://img.shields.io/maven-central/v/io.github.aryapreetam/parikshan?label=Maven%20Central&color=blue" alt="Maven Central Version">
   </a>
+  <a href="https://github.com/aryapreetam/parikshan/actions/workflows/push-ci.yml">
+    <img src="https://img.shields.io/badge/Coverage-Kover-brightgreen" alt="Code Coverage">
+  </a>
   <a href="https://kotlinlang.org/docs/components-stability.html">
     <img src="https://kotl.in/badges/experimental.svg" alt="Kotlin Experimental">
   </a>
@@ -36,7 +39,7 @@ In your **shared library** (e.g., `:composeApp`) `build.gradle.kts`:
 
 ```kotlin
 plugins {
-  id("io.github.aryapreetam.parikshan") version "0.0.5"
+  id("io.github.aryapreetam.parikshan") version "0.0.6"
 }
 ```
 
@@ -80,7 +83,7 @@ class SimpleGreetTest {
 
 ## 📦 Examples
 
-See the [sample project tests](https://github.com/aryapreetam/parikshan/tree/main/samples/multiplatform-showcase/composeApp/src/commonTest/kotlin/sample/app) for working examples of how to write E2E tests using the Parikshan DSL.
+See the [Examples Page](examples.md) for working samples and video demonstrations of the Parikshan DSL across all target platforms.
 
 ---
 

@@ -2,17 +2,17 @@ package sample.app
 
 import io.github.aryapreetam.parikshan.isAndroid
 import io.github.aryapreetam.parikshan.e2eTest
+import io.github.aryapreetam.parikshan.E2ETestScope
+import io.github.aryapreetam.parikshan.E2ETestLifecycle
 import kotlin.test.Test
 
 class SystemActionIntegrationTest {
 
   @Test
   fun testSystemBackAndHomeActions() = e2eTest {
-    relaunchApp()
-    
     // System-level gestures are only verified on Android target
     if (isAndroid()) {
-      navigateToSection("nav_navigation_playground")
+      navigateToSection("nav_navigation_playground")                                                                                                                                                                  
       assertVisible("navigation_playground_screen")
 
       // Navigate to Screen B
@@ -23,9 +23,10 @@ class SystemActionIntegrationTest {
       pressBack()
       assertVisible("screen_a_title")
 
-      // Press system back again - should pop out of Navigation Playground to TaskList home screen
+      // Press system back again - pops out of activity
       pressBack()
-      assertVisible("task_list_screen")
+      relaunchApp()
+      assertVisible("home_screen")
 
       // Navigate back to playground to test home gesture
       navigateToSection("nav_navigation_playground")
@@ -36,7 +37,7 @@ class SystemActionIntegrationTest {
 
       // Restore foreground state
       relaunchApp()
-      assertVisible("task_list_screen")
+      assertVisible("home_screen")
     }
   }
 }

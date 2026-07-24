@@ -6,6 +6,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -20,40 +21,59 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import io.github.aryapreetam.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.Font
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FormPlayground(
-  onFormSubmitted: (String) -> Unit
+  snackbarHostState: SnackbarHostState? = null,
+  onFormSubmitted: (String) -> Unit = {}
 ) {
+  val coroutineScope = rememberCoroutineScope()
   val scrollState = rememberScrollState()
+  val fontFamily = FontFamily(
+    Font(Res.font.NotoSansDevanagari, FontWeight.Normal),
+    Font(Res.font.NotoSansDevanagari, FontWeight.Bold)
+  )
   var name by remember { mutableStateOf("") }
   var email by remember { mutableStateOf("") }
+  var phone by remember { mutableStateOf("") }
+  var address by remember { mutableStateOf("") }
   var password by remember { mutableStateOf("") }
   var confirmPassword by remember { mutableStateOf("") }
   var passwordVisible by remember { mutableStateOf(false) }
+  
+  var dupInput1 by remember { mutableStateOf("") }
+  var dupInput2 by remember { mutableStateOf("") }
+  var actionStatus by remember { mutableStateOf("") }
+  var formSubmittedMessage by remember { mutableStateOf("") }
   
   var sliderValue by remember { mutableFloatStateOf(50f) }
   var switchValue by remember { mutableStateOf(false) }
   var radioSelection by remember { mutableStateOf("Option A") }
   var checkboxValue by remember { mutableStateOf(false) }
-  
   var indicText by remember { mutableStateOf("") }
   
+  val selectedTags = remember { mutableStateListOf("Kotlin", "Compose") }
+  val availableTags = listOf("Kotlin", "Compose", "Desktop", "Wasm", "Android", "iOS")
+
   val emailError = if (email.isNotEmpty() && !email.contains("@")) "Invalid email address" else null
   val passwordError = if (password.isNotEmpty() && password.length < 6) "Password too short" else null
   val confirmError = if (confirmPassword.isNotEmpty() && password != confirmPassword) "Passwords do not match" else null
-  
-  val formIsValid = name.isNotEmpty() && 
-                    email.isNotEmpty() && emailError == null && 
-                    password.isNotEmpty() && passwordError == null && 
-                    confirmPassword.isNotEmpty() && confirmError == null && 
+
+  val formIsValid = name.isNotEmpty() &&
+                    email.isNotEmpty() && emailError == null &&
+                    password.isNotEmpty() && passwordError == null &&
+                    confirmPassword.isNotEmpty() && confirmError == null &&
                     checkboxValue
 
   Column(
     modifier = Modifier
-      .fillMaxSize()
+      .fillMaxWidth()
       .verticalScroll(scrollState)
-      .padding(16.dp)
       .testTag("form_playground_screen"),
     verticalArrangement = Arrangement.spacedBy(16.dp)
   ) {
@@ -77,6 +97,24 @@ fun FormPlayground(
       supportingText = emailError?.let { { Text(it) } },
       keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
       modifier = Modifier.fillMaxWidth().testTag("form_email_input")
+    )
+    
+    // Phone Number
+    OutlinedTextField(
+      value = phone,
+      onValueChange = { phone = it },
+      label = { Text("Phone Number") },
+      keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next),
+      modifier = Modifier.fillMaxWidth().testTag("form_phone_input")
+    )
+
+    // Multi-line Shipping Address
+    OutlinedTextField(
+      value = address,
+      onValueChange = { address = it },
+      label = { Text("Shipping Address") },
+      minLines = 3,
+      modifier = Modifier.fillMaxWidth().testTag("form_address_input")
     )
     
     // Password Input
@@ -114,7 +152,25 @@ fun FormPlayground(
       modifier = Modifier.fillMaxWidth().testTag("form_confirm_password_input")
     )
 
-    // Slider component
+    // Filter Chips (Material 3)
+    Text("Category Tags", style = MaterialTheme.typography.titleSmall)
+    Row(
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      modifier = Modifier.fillMaxWidth().testTag("form_category_tags")
+    ) {
+      availableTags.take(3).forEach { tag ->
+        FilterChip(
+          selected = selectedTags.contains(tag),
+          onClick = {
+            if (selectedTags.contains(tag)) selectedTags.remove(tag) else selectedTags.add(tag)
+          },
+          label = { Text(tag) },
+          modifier = Modifier.testTag("chip_$tag")
+        )
+      }
+    }
+
+    // Range Selector Slider
     Column {
       Text("Range Selector: ${sliderValue.toInt()}%")
       Slider(
@@ -125,7 +181,7 @@ fun FormPlayground(
       )
     }
 
-    // Switch component
+    // Switch Component
     Row(
       verticalAlignment = Alignment.CenterVertically,
       modifier = Modifier.fillMaxWidth()
@@ -139,7 +195,7 @@ fun FormPlayground(
       )
     }
 
-    // Radio button group
+    // Radio Button Group
     Column {
       Text("Preference Selection")
       listOf("Option A", "Option B", "Option C").forEach { option ->
@@ -165,22 +221,25 @@ fun FormPlayground(
       }
     }
 
-    // International Text Input
+    // Indic / Multilingual Input
     OutlinedTextField(
       value = indicText,
       onValueChange = { indicText = it },
-      label = { Text("Indic / Multilingual Input") },
-      placeholder = { Text("उदा. नमस्ते / தமிழ்") },
+      label = { Text("Indic / Multilingual Input", fontFamily = fontFamily) },
+      placeholder = { Text("उदा. नमस्ते", fontFamily = fontFamily) },
+      textStyle = LocalTextStyle.current.copy(fontFamily = fontFamily),
       modifier = Modifier.fillMaxWidth().testTag("form_indic_input")
     )
     if (indicText.isNotEmpty()) {
       Text(
-        "Indic Value: $indicText",
+        text = "Indic Value: $indicText",
+        fontFamily = fontFamily,
         modifier = Modifier.testTag("indic_preview_text")
       )
     }
 
-    // Checkbox component
+
+    // Checkbox Terms
     Row(
       verticalAlignment = Alignment.CenterVertically,
       modifier = Modifier
@@ -202,17 +261,25 @@ fun FormPlayground(
       Text("I agree to the terms and conditions")
     }
 
-    // Submit Button
-    Button(
-      onClick = {
-        if (formIsValid) {
-          onFormSubmitted("Successfully Submitted: $name ($email)")
-        }
-      },
-      enabled = formIsValid,
-      modifier = Modifier.fillMaxWidth().testTag("form_submit_button")
-    ) {
-      Text("Submit Registration")
+    // Submit Registration / Final Submit Buttons
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+      Button(
+        onClick = {
+          if (formIsValid) {
+            formSubmittedMessage = "Successfully Submitted: $name"
+            onFormSubmitted(formSubmittedMessage)
+            snackbarHostState?.let {
+              coroutineScope.launch {
+                it.showSnackbar(formSubmittedMessage)
+              }
+            }
+          }
+        },
+        enabled = formIsValid,
+        modifier = Modifier.weight(1f).testTag("form_submit_button")
+      ) {
+        Text("Submit")
+      }
     }
   }
 }

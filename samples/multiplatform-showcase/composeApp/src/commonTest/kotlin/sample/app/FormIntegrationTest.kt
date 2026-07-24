@@ -9,6 +9,7 @@ import io.github.aryapreetam.parikshan.isIos
 import sample.app.setup.dragSlider
 import io.github.aryapreetam.parikshan.E2ETestLifecycle
 import kotlin.test.Test
+import kotlin.test.assertTrue
 
 class FormIntegrationTest : E2ETestLifecycle {
 
@@ -103,8 +104,9 @@ class FormIntegrationTest : E2ETestLifecycle {
     val labelText = labelNode.text ?: ""
     val match = Regex("Range Selector: (\\d+)%").find(labelText)
     val percentage = match?.groupValues?.get(1)?.toIntOrNull() ?: 0
-    assert(percentage in 75..85) {
+    assertTrue(
+      percentage in 75..85,
       "Expected slider percentage to be between 75% and 85%, but got $percentage% (full text: '$labelText')"
-    }
+    )
   }
 }

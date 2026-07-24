@@ -63,7 +63,6 @@ kotlin {
 
     jvmMain.dependencies {
       api("org.jetbrains.kotlin:kotlin-test-junit5")
-      api("org.jetbrains.kotlin:kotlin-test")
       implementation(libs.ktor.client.cio)
       implementation(libs.playwright.java)
       implementation("org.junit.jupiter:junit-jupiter-api:5.10.2")

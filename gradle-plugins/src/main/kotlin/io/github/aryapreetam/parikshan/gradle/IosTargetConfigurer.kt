@@ -91,7 +91,7 @@ internal object IosTargetConfigurer {
       this.port.set(iosPortVal)
       this.xcodeTimeout.set(xcodebuildTimeoutProvider)
       this.projectDir.set(projDirProvider.asFile)
-      this.rootDir.set(projDirProvider.asFile)
+      this.rootDir.set(iosRootDirVal)
       this.derivedDataDir.set(buildDirProvider.dir("parikshan/ios-build").get().asFile)
       this.buildDir.set(buildDirProvider.get().asFile)
     }

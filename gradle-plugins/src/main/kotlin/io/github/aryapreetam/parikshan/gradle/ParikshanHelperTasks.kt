@@ -164,13 +164,25 @@ abstract class ParikshanStartIosTask : DefaultTask() {
     generatedIosAppDir.deleteRecursively()
     originalIosAppDir.copyRecursively(generatedIosAppDir)
 
-    val absoluteGradlew = File(rootDirFile, "gradlew").absolutePath
+    fun findGradlew(startDir: File): File {
+      var curr: File? = startDir
+      while (curr != null) {
+        val candidate = File(curr, "gradlew")
+        if (candidate.exists()) return candidate
+        curr = curr.parentFile
+      }
+      return File(startDir, "gradlew")
+    }
+    val gradlewFile = findGradlew(rootDirFile)
+    val absoluteGradlew = gradlewFile.absolutePath
+    val actualRootDir = gradlewFile.parentFile ?: rootDirFile
+
     val javaHomeVal = System.getProperty("java.home") ?: System.getenv("JAVA_HOME") ?: ""
     val javaHomeExport = if (javaHomeVal.isNotBlank()) "export JAVA_HOME=\"$javaHomeVal\"\nexport PATH=\"$javaHomeVal/bin:\$PATH\"\n" else ""
     val gradlewShim = File(generatedIosAppDir, "gradlew")
     val shimContent = """
         #!/bin/sh
-        $javaHomeExport exec "$absoluteGradlew" -p "${rootDirFile.absolutePath}" --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.token=$tokenVal "${'$'}@"
+        $javaHomeExport exec "$absoluteGradlew" -p "${actualRootDir.absolutePath}" --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.token=$tokenVal "${'$'}@"
         """.trimIndent()
     gradlewShim.writeText(shimContent)
     gradlewShim.setExecutable(true)

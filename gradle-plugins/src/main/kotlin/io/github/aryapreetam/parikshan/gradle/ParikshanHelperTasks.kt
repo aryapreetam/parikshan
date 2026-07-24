@@ -164,25 +164,13 @@ abstract class ParikshanStartIosTask : DefaultTask() {
     generatedIosAppDir.deleteRecursively()
     originalIosAppDir.copyRecursively(generatedIosAppDir)
 
-    fun findGradlew(startDir: File): File {
-      var curr: File? = startDir
-      while (curr != null) {
-        val candidate = File(curr, "gradlew")
-        if (candidate.exists()) return candidate
-        curr = curr.parentFile
-      }
-      return File(startDir, "gradlew")
-    }
-    val gradlewFile = findGradlew(rootDirFile)
-    val absoluteGradlew = gradlewFile.absolutePath
-    val actualRootDir = gradlewFile.parentFile ?: rootDirFile
-
+    val absoluteGradlew = File(rootDirFile, "gradlew").absolutePath
     val javaHomeVal = System.getProperty("java.home") ?: System.getenv("JAVA_HOME") ?: ""
     val javaHomeExport = if (javaHomeVal.isNotBlank()) "export JAVA_HOME=\"$javaHomeVal\"\nexport PATH=\"$javaHomeVal/bin:\$PATH\"\n" else ""
     val gradlewShim = File(generatedIosAppDir, "gradlew")
     val shimContent = """
         #!/bin/sh
-        $javaHomeExport exec "$absoluteGradlew" -p "${actualRootDir.absolutePath}" --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.token=$tokenVal "${'$'}@"
+        $javaHomeExport exec "$absoluteGradlew" -p "${rootDirFile.absolutePath}" --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.token=$tokenVal "${'$'}@"
         """.trimIndent()
     gradlewShim.writeText(shimContent)
     gradlewShim.setExecutable(true)
@@ -291,23 +279,23 @@ abstract class ParikshanStartIosTask : DefaultTask() {
     }
     logger.lifecycle("Parikshan iOS: Server ready.")
   }
+}
 
-  private fun postPing(port: Int, token: String): Boolean {
-    val body = """{"type":"ping","id":"health","token":"$token"}"""
-    val conn = runCatching { URL("http://127.0.0.1:$port/").openConnection() as HttpURLConnection }.getOrNull() ?: return false
-    return try {
-      conn.requestMethod = "POST"
-      conn.setRequestProperty("Content-Type", "application/json")
-      conn.doOutput = true
-      conn.connectTimeout = 500
-      conn.readTimeout = 500
-      conn.outputStream.use { it.write(body.toByteArray()) }
-      conn.responseCode == 200 && conn.inputStream.bufferedReader().readText().contains("ok")
-    } catch (_: Exception) {
-      false
-    } finally {
-      conn.disconnect()
-    }
+internal fun postPing(port: Int, token: String): Boolean {
+  val body = """{"type":"ping","id":"health","token":"$token"}"""
+  val conn = runCatching { URL("http://127.0.0.1:$port/").openConnection() as HttpURLConnection }.getOrNull() ?: return false
+  return try {
+    conn.requestMethod = "POST"
+    conn.setRequestProperty("Content-Type", "application/json")
+    conn.doOutput = true
+    conn.connectTimeout = 500
+    conn.readTimeout = 500
+    conn.outputStream.use { it.write(body.toByteArray()) }
+    conn.responseCode == 200 && conn.inputStream.bufferedReader().readText().contains("ok")
+  } catch (_: Exception) {
+    false
+  } finally {
+    conn.disconnect()
   }
 }
 
@@ -366,7 +354,7 @@ abstract class ParikshanStartAndroidTask : DefaultTask() {
     val portVal = port.get()
 
     logger.lifecycle("Parikshan Android: Resolved applicationId: $appId")
-    if (resolvedLauncher != null) {
+    if (!resolvedLauncher.isNullOrBlank()) {
       logger.lifecycle("Parikshan Android: Resolved launcherActivity: $resolvedLauncher")
     }
 
@@ -380,14 +368,39 @@ abstract class ParikshanStartAndroidTask : DefaultTask() {
       "-e", "parikshan_token", sessionToken.get(),
       "-e", "parikshan_port", portVal
     )
-    if (resolvedLauncher != null) {
+    if (!resolvedLauncher.isNullOrBlank()) {
       command.add("-e")
       command.add("launcher_class")
       command.add(resolvedLauncher)
     }
     command.add("$testPackage/androidx.test.runner.AndroidJUnitRunner")
 
-    ProcessBuilder(command).start()
+    val process = ProcessBuilder(command).redirectErrorStream(true).start()
+
+    logger.lifecycle("Parikshan Android: Waiting for server on port $portVal...")
+    val deadline = System.currentTimeMillis() + 60_000
+    var serverReady = false
+    while (System.currentTimeMillis() <= deadline) {
+      if (!process.isAlive) {
+        val output = process.inputStream.bufferedReader().readText()
+        logger.error("Parikshan Android: am instrument process exited unexpectedly:\n$output")
+        throw GradleException("Parikshan Android: am instrument process exited with code ${process.exitValue()}:\n$output")
+      }
+      if (postPing(portVal.toInt(), sessionToken.get())) {
+        serverReady = true
+        break
+      }
+      Thread.sleep(500)
+    }
+
+    if (!serverReady) {
+      val logcatOutput = runCatching {
+        ProcessBuilder("adb", "-s", serial, "logcat", "-d", "-t", "200").start().inputStream.bufferedReader().readText()
+      }.getOrDefault("")
+      logger.error("Parikshan Android: Server failed readiness check on port $portVal. Recent logcat:\n$logcatOutput")
+      throw GradleException("Parikshan Android server failed readiness check on port $portVal")
+    }
+    logger.lifecycle("Parikshan Android: Server ready on port $portVal.")
   }
 }
 
@@ -414,12 +427,13 @@ abstract class ParikshanPrepareIosSourceTask : DefaultTask() {
         val original = file.readText()
         if (original.contains("ComposeUIViewController")) {
           val withoutComposeImport = original.replace(Regex("""import\s+androidx\.compose\.ui\.window\.ComposeUIViewController\s*\R?"""), "")
+          val bodyReplaced = withoutComposeImport.replace("ComposeUIViewController", "ParikshanUIViewController")
           val importLine = "import io.github.aryapreetam.parikshan.ParikshanUIViewController\n"
-          val instrumented = if (withoutComposeImport.contains(Regex("""package\s+[\w.]+\s*\R"""))) {
-            withoutComposeImport.replace(Regex("""(package\s+[\w.]+\s*\R)"""), "$1$importLine")
+          val instrumented = if (bodyReplaced.contains(Regex("""package\s+[\w.]+\s*\R"""))) {
+            bodyReplaced.replace(Regex("""(package\s+[\w.]+\s*\R)"""), "$1$importLine")
           } else {
-            importLine + withoutComposeImport
-          }.replace("ComposeUIViewController", "ParikshanUIViewController")
+            importLine + bodyReplaced
+          }
           file.writeText(instrumented)
           logger.lifecycle("Parikshan iOS: Instrumented generated source ${file.name}")
         }
@@ -490,12 +504,13 @@ abstract class ParikshanPrepareWasmSourceTask : DefaultTask() {
         val original = file.readText()
         if (original.contains("ComposeViewport")) {
           val withoutComposeImport = original.replace(Regex("""import\s+androidx\.compose\.ui\.window\.ComposeViewport\s*\R?"""), "")
+          val bodyReplaced = withoutComposeImport.replace("ComposeViewport", "ParikshanComposeViewport")
           val imports = "import io.github.aryapreetam.parikshan.ParikshanComposeViewport\nimport io.github.aryapreetam.parikshan.initializeParikshanWasm\n"
-          var result = if (withoutComposeImport.contains(Regex("""package\s+[\w.]+\s*\R"""))) {
-            withoutComposeImport.replace(Regex("""(package\s+[\w.]+\s*\R)"""), "$1$imports")
+          var result = if (bodyReplaced.contains(Regex("""package\s+[\w.]+\s*\R"""))) {
+            bodyReplaced.replace(Regex("""(package\s+[\w.]+\s*\R)"""), "$1$imports")
           } else {
-            imports + withoutComposeImport
-          }.replace("ComposeViewport", "ParikshanComposeViewport")
+            imports + bodyReplaced
+          }
 
           val mainMatch = Regex("""fun\s+main\s*\([^)]*\)\s*\{""").find(result)
           if (mainMatch != null) {

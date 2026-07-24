@@ -53,7 +53,7 @@ To run your first test, apply the Parikshan plugin to your shared application mo
 
 ```kotlin
 plugins {
-  id("io.github.aryapreetam.parikshan") version "0.0.5"
+  id("io.github.aryapreetam.parikshan") version "0.0.6"
 }
 ```
 

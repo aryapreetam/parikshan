@@ -73,7 +73,8 @@ A real-world full-stack Compose Multiplatform application (**StorefrontApp**) co
 ### Execution Commands
 
 ```bash
-./gradlew -p samples/cmp-latest :app:shared:e2eTest
+# add --targets=jvm,wasm,android if on Intel based Mac
+./gradlew -p samples/cmp-latest :app:shared:e2eTest      
 ```
 
 ### Visual Demos
@@ -116,7 +117,8 @@ Generated using the [Composables CLI](https://github.com/composablehorizons/comp
 ### Execution Commands
 
 ```bash
-./gradlew :samples:composables-sample:shared:e2eTest
+# add --targets=jvm,wasm,android if on Intel based Mac
+./gradlew -p samples/composables-sample :shared:e2eTest    
 ```
 
 ### Visual Demos
@@ -155,7 +157,11 @@ Demonstrates integrating Parikshan into a standalone, single-module Android proj
 ### Execution Commands
 
 ```bash
-./gradlew :samples:standalone-android:app:e2eAndroidTest
+./gradlew -p samples/standalone-android :app:e2eAndroidTest 
+
+# OR 
+
+# ./gradlew -p samples/standalone-android :app:e2eTest
 ```
 
 ### Visual Demo

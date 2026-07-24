@@ -146,7 +146,7 @@ jobs:
       - name: Run Parikshan Desktop E2E tests
         uses: aryapreetam/parikshan-desktop-action@v1
         with:
-          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eDesktopTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"'
+          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eJvmTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"'
       - name: Upload Desktop Videos
         if: always()
         uses: actions/upload-artifact@v4

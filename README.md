@@ -39,7 +39,7 @@ In your **shared library** (e.g., `:composeApp`) `build.gradle.kts`:
 
 ```kotlin
 plugins {
-  id("io.github.aryapreetam.parikshan") version "0.0.5"
+  id("io.github.aryapreetam.parikshan") version "0.0.6"
 }
 ```
 

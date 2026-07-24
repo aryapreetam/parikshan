@@ -59,12 +59,14 @@ internal object AndroidTargetConfigurer {
 
     val portProvider = project.providers.gradleProperty("parikshan.port").orElse("9879")
 
-    val androidPreflightTask = project.tasks.register("parikshanAndroidPreflight") {
+    val projDirProvider = project.layout.projectDirectory
+
+    val androidPreflightTask = project.tasks.register("parikshanAndroidPreflight", ParikshanPreflightTask::class.java)
+    androidPreflightTask.configure {
       group = "verification"
-      doLast {
-        val serial = AndroidRecorder.resolveDeviceSerial(logger, androidProjectDirVal, androidSerialVal)
-        logger.lifecycle("Parikshan Android: Found connected device/emulator '$serial'")
-      }
+      targetName.set("android")
+      deviceOverride.set(androidSerialVal.orEmpty())
+      projectDir.set(projDirProvider.asFile)
     }
 
     if (isE2EActive) {
@@ -75,69 +77,29 @@ internal object AndroidTargetConfigurer {
       }
     }
 
-    project.tasks.register("stopParikshanAndroidApp") {
+    val stopAndroidAppTask = project.tasks.register("stopParikshanAndroidApp", ParikshanStopAndroidTask::class.java)
+    stopAndroidAppTask.configure {
       group = "verification"
-      val appIdProvider = androidApplicationIdProvider
-      val portValProvider = portProvider
-      doLast {
-        val serial = AndroidRecorder.resolveDeviceSerial(logger, androidProjectDirVal, androidSerialVal)
-        val portVal = portValProvider.get()
-        ProcessBuilder("adb", "-s", serial, "forward", "--remove", "tcp:$portVal").start().waitFor()
-        val appId = appIdProvider.orNull
-          ?: throw GradleException("Parikshan Android: Could not resolve the Android application ID.")
-        ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", appId).start().waitFor()
-      }
+      androidSerial.set(androidSerialVal)
+      port.set(portProvider)
+      applicationId.set(androidApplicationIdProvider)
+      projectDir.set(projDirProvider.asFile)
     }
 
-    val startAndroidAppTask = project.tasks.register("startParikshanAndroidApp") {
+    val startAndroidAppTask = project.tasks.register("startParikshanAndroidApp", ParikshanStartAndroidTask::class.java)
+    startAndroidAppTask.configure {
       group = "verification"
       val appProject = project.findAndroidAppProject() ?: project
       val installTask = if (appProject == project) "installDebug" else "${appProject.path}:installDebug"
       val testInstallTask = if (appProject == project) "installDebugAndroidTest" else "${appProject.path}:installDebugAndroidTest"
 
-      val appIdProvider = androidApplicationIdProvider
-      val portValProvider = portProvider
-
       dependsOn(androidPreflightTask, installTask, testInstallTask)
-      doLast {
-        val serial = AndroidRecorder.resolveDeviceSerial(logger, androidProjectDirVal, androidSerialVal)
-
-        val manifestDir = mergedManifestDirProvider.orNull?.asFile
-        val parsed = manifestDir?.let { dir ->
-          val manifestFile = File(dir, "AndroidManifest.xml")
-          parseAndroidManifest(manifestFile, logger, overrideLauncher)
-        }
-
-        val appId = parsed?.packageName ?: appIdProvider.orNull
-          ?: throw GradleException("Parikshan Android: Could not resolve the Android application ID.")
-        val resolvedLauncher = parsed?.launcherActivity
-
-        logger.lifecycle("Parikshan Android: Resolved applicationId: $appId")
-        if (resolvedLauncher != null) {
-          logger.lifecycle("Parikshan Android: Resolved launcherActivity: $resolvedLauncher")
-        }
-
-        val portVal = portValProvider.get()
-        ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", appId).start().waitFor()
-        ProcessBuilder("adb", "-s", serial, "forward", "tcp:$portVal", "tcp:$portVal").start().waitFor()
-        val testPackage = "$appId.test"
-        logger.lifecycle("Parikshan Android: Starting instrumentation...")
-
-        val command = mutableListOf(
-          "adb", "-s", serial, "shell", "am", "instrument", "-w",
-          "-e", "class", "io.github.aryapreetam.parikshan.ParikshanAndroidRunner",
-          "-e", "parikshan_token", sessionTokenVal,
-          "-e", "parikshan_port", portVal
-        )
-        if (resolvedLauncher != null) {
-          command.add("-e")
-          command.add("launcher_class")
-          command.add(resolvedLauncher)
-        }
-        command.add("$testPackage/androidx.test.runner.AndroidJUnitRunner")
-
-        ProcessBuilder(command).start()
-      }
+      this.androidSerial.set(androidSerialVal)
+      this.port.set(portProvider)
+      this.sessionToken.set(sessionTokenVal)
+      this.applicationId.set(androidApplicationIdProvider)
+      this.launcherActivity.set(overrideLauncher.orEmpty())
+      this.projectDir.set(projDirProvider.asFile)
     }
 
     project.registerE2eTestWithReport("e2eAndroidTest", "Android") {

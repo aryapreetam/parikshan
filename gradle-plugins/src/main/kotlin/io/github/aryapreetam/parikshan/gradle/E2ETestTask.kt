@@ -995,7 +995,16 @@ abstract class E2ETestTask : DefaultTask() {
     )
     keysToRemove.forEach { env.remove(it) }
 
-    val essentialKeys = listOf("JAVA_HOME", "ANDROID_HOME", "PATH")
+    val javaHomeVal = System.getProperty("java.home") ?: System.getenv("JAVA_HOME") ?: ""
+    if (javaHomeVal.isNotBlank()) {
+      env["JAVA_HOME"] = javaHomeVal
+      val currentPath = env["PATH"] ?: System.getenv("PATH") ?: ""
+      if (!currentPath.contains("$javaHomeVal/bin")) {
+        env["PATH"] = "$javaHomeVal/bin:$currentPath"
+      }
+    }
+
+    val essentialKeys = listOf("ANDROID_HOME", "PATH")
     essentialKeys.forEach { key ->
       val sysVal = System.getenv(key)
       if (!sysVal.isNullOrBlank() && !env.containsKey(key)) {

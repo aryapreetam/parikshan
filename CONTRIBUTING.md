@@ -8,19 +8,18 @@ Thank you for your interest in contributing to Parikshan! This document provides
 
 Parikshan is a complex multi-project build. Understanding the boundaries is critical:
 
-- **`:parikshan-core`**: The protocol and selector resolution engine. (Pure Kotlin, no UI dependencies).
-- **`:parikshan-client`**: The developer-facing E2E DSL and platform drivers.
-- **`:parikshan-server`**: The in-app HTTP/WebSocket bridge that reads Compose semantics.
-- **`:gradle-plugins`**: Contains publication scripts and the automation runner plugin (which automates app installation, execution, and video recording).
-- **`:parikshan`**: The aggregator module (empty, used for documentation and publishing).
-- **`:sample`**: A split-sample architecture containing a library (`composeApp`) and an executable (`androidApp`) used to verify the framework.
+- **`:parikshan-core`**: The protocol and selector resolution engine (Pure Kotlin Multiplatform, no UI dependencies).
+- **`:parikshan-client`**: The developer-facing E2E DSL (`e2eTest`) and platform drivers (`DesktopDriver`, `WasmDriver`, `AndroidDriver`, `IosRemoteDriver`).
+- **`:parikshan-server`**: Embedded in-app HTTP/WebSocket server running inside the Desktop, Android, and iOS application processes.
+- **`:gradle-plugins`**: Automation Gradle plugin providing E2E test tasks (`e2eDesktopTest`, `e2eWasmTest`, `e2eAndroidTest`, `e2eIosTest`), simulator/emulator orchestration, and video recording.
+- **`:samples:multiplatform-showcase:composeApp`**: Core Multiplatform showcase application used to dogfood and verify the framework across all targets.
 
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- JDK 17 or later
+- JDK 21 or later
 - Node.js v20+ (for Wasm testing)
 - macOS with Xcode 15+ (only required if running iOS tests)
 
@@ -36,6 +35,13 @@ Before testing E2E behavior, ensure the core logic and test-isolation filters ar
 ```bash
 # Run all unit tests across JVM, Wasm, iOS, and Android
 ./gradlew test
+
+# Generate interactive HTML Code Coverage report (via kotlinx-kover)
+./gradlew :parikshan-core:koverHtmlReport
+# View report at: parikshan-core/build/reports/kover/html/index.html
+
+# Verify API Binary Compatibility (.api dumps)
+./gradlew apiCheck
 ```
 
 ### 3. Run the E2E Tests (Integration)

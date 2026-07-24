@@ -7,6 +7,7 @@ plugins {
   id("parikshan.publishing")
   alias(libs.plugins.dokka)
   alias(libs.plugins.binary.compatibility.validator)
+  alias(libs.plugins.kover)
 }
 
 dokka {

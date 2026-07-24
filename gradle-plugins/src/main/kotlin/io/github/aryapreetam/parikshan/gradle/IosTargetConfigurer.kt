@@ -59,234 +59,41 @@ internal object IosTargetConfigurer {
       .orElse(1200L)
     var iosSimulatorUdid: String? = null
 
-    val iosPreflightTask = project.tasks.register("parikshanIosPreflight") {
+    val projDirProvider = project.layout.projectDirectory
+    val buildDirProvider = project.layout.buildDirectory
+
+    val iosPreflightTask = project.tasks.register("parikshanIosPreflight", ParikshanPreflightTask::class.java)
+    iosPreflightTask.configure {
       group = "verification"
-      doLast {
-        val simulator = resolveIosSimulatorDevice(iosDeviceVal, iosProjectDirVal)
-        logger.lifecycle("Parikshan iOS: Found simulator '${simulator.name}' (${simulator.udid})")
-      }
+      targetName.set("ios")
+      deviceOverride.set(iosDeviceVal)
+      projectDir.set(projDirProvider.asFile)
     }
 
-    val stopIosAppTask = project.tasks.register("stopIosApp") {
+    val stopIosAppTask = project.tasks.register("stopIosApp", ParikshanStopIosTask::class.java)
+    stopIosAppTask.configure {
       group = "verification"
-      doLast {
-        iosSimulatorUdid?.let { udid ->
-          ProcessBuilder("xcrun", "simctl", "terminate", udid, iosBundleIdProvider.get()).start().waitFor()
-          logger.lifecycle("Parikshan iOS: App terminated")
-        }
-      }
+      bundleId.set(iosBundleIdProvider)
     }
-    val rootDirAbs = iosRootDirVal.absolutePath
 
-    val startIosAppTask = project.tasks.register("startIosApp") {
+    val startIosAppTask = project.tasks.register("startIosApp", ParikshanStartIosTask::class.java)
+    startIosAppTask.configure {
       group = "verification"
       dependsOn(iosPreflightTask)
       prepareIosBootSourceTask?.let { dependsOn(it) }
       outputs.upToDateWhen { false }
 
-      doLast {
-        val isCi = System.getenv("CI") == "true"
-        if (isCi) {
-          logger.lifecycle("Parikshan iOS: Running pre-run simulator cleanup (CI environment)...")
-          runCatching {
-            ProcessBuilder("killall", "Simulator").start().waitFor()
-          }
-          runCatching {
-            ProcessBuilder("xcrun", "simctl", "shutdown", "all").start().waitFor()
-          }
-        }
-
-        val simulator = resolveIosSimulatorDevice(iosDeviceVal, iosProjectDirVal)
-        iosSimulatorUdid = simulator.udid
-        logger.lifecycle("Parikshan iOS: Using simulator '${simulator.name}' (${simulator.udid})")
-
-        val isReallyBooted = try {
-          val p = ProcessBuilder("xcrun", "simctl", "list", "devices").start()
-          val out = p.inputStream.bufferedReader().readText()
-          p.waitFor()
-          out.lineSequence().any { it.contains(simulator.udid) && it.contains("(Booted)") }
-        } catch (e: Exception) {
-          simulator.isBooted
-        }
-
-        if (!isReallyBooted) {
-          logger.lifecycle("Parikshan iOS: Booting simulator...")
-          ProcessBuilder("xcrun", "simctl", "boot", simulator.udid).start().waitFor()
-          if (!isCi) {
-            runCatching {
-              ProcessBuilder("open", "-a", "Simulator").start().waitFor()
-            }
-          }
-          ProcessBuilder("xcrun", "simctl", "bootstatus", simulator.udid, "-b").start().waitFor()
-        } else {
-          if (!isCi) {
-            runCatching {
-              ProcessBuilder("open", "-a", "Simulator").start().waitFor()
-            }
-          }
-        }
-
-        val originalIosAppDir = File(iosXcodeProjectVal).parentFile
-        val generatedIosAppDir = File(buildDirVal, "parikshan/ios-host")
-        generatedIosAppDir.deleteRecursively()
-        originalIosAppDir.copyRecursively(generatedIosAppDir)
-
-        // 1. Determine the MainViewController call signature from the cloned project
-        var vcCall = "MainViewControllerKt.MainViewController()"
-        generatedIosAppDir.walkTopDown()
-          .filter { it.isFile && it.extension == "swift" }
-          .forEach { file ->
-            val text = file.readText()
-            if (text.contains("MainKt.MainViewController()")) {
-              vcCall = "MainKt.MainViewController()"
-            } else if (text.contains("MainViewControllerKt.MainViewController()")) {
-              vcCall = "MainViewControllerKt.MainViewController()"
-            }
-          }
-
-        // 2. Instrument Swift App entrypoint in the cloned directory to eager-initialize KMP runtime
-        generatedIosAppDir.walkTopDown()
-          .filter { it.isFile && it.extension == "swift" }
-          .forEach { file ->
-            logger.lifecycle("Parikshan iOS: Scanning Swift file: ${file.name}")
-            val content = file.readText()
-            if (content.contains("@main") && content.contains(": App")) {
-              logger.lifecycle("Parikshan iOS: Found App entrypoint in ${file.name}. Content:\n$content")
-              logger.lifecycle("Parikshan iOS: Cloned entrypoint ${file.name} was NOT modified (content matched original).")
-            }
-          }
-
-        val absoluteGradlew = File(rootDirAbs, "gradlew").absolutePath
-        val gradlewShim = File(generatedIosAppDir, "gradlew")
-        val shimContent = """
-            #!/bin/sh
-            exec "$absoluteGradlew" -p "$rootDirAbs" --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.token=$sessionTokenVal "${'$'}@"
-            """.trimIndent()
-
-        gradlewShim.writeText(shimContent)
-        gradlewShim.setExecutable(true)
-
-        val parentShim = File(generatedIosAppDir.parentFile, "gradlew")
-        parentShim.writeText(shimContent)
-        parentShim.setExecutable(true)
-
-        val grandParentShim = File(generatedIosAppDir.parentFile.parentFile, "gradlew")
-        grandParentShim.writeText(shimContent)
-        grandParentShim.setExecutable(true)
-
-        logger.lifecycle("Parikshan iOS: Building app via xcodebuild...")
-        val appBuildProducts = File(iosDerivedDataVal, "Build/Products/Debug-iphonesimulator")
-        appBuildProducts.mkdirs()
-
-        val logFile = File(buildDirVal, "parikshan/xcodebuild.log")
-        logFile.parentFile.mkdirs()
-
-        val buildProcess = ProcessBuilder(
-          "xcodebuild", "build", "-project", File(generatedIosAppDir, File(iosXcodeProjectVal).name).absolutePath,
-          "-scheme", iosXcodeSchemeVal, "-configuration", "Debug",
-          "-sdk", "iphonesimulator",
-          "-destination", "platform=iOS Simulator,id=${simulator.udid}",
-          "-derivedDataPath", iosDerivedDataVal.absolutePath,
-          "CONFIGURATION_BUILD_DIR=${appBuildProducts.absolutePath}",
-          "SUPPORTED_PLATFORMS=iphonesimulator",
-          "DEBUG_INFORMATION_FORMAT=dwarf",
-          "ONLY_ACTIVE_ARCH=YES",
-          "ENABLE_BITCODE=NO"
-        ).apply {
-          environment()["PARIKSHAN_TOKEN"] = sessionTokenVal
-          redirectErrorStream(true)
-          redirectOutput(logFile)
-        }.start()
-
-        val xcodeTimeout = xcodebuildTimeoutProvider.get()
-        val finished = buildProcess.waitFor(xcodeTimeout, java.util.concurrent.TimeUnit.SECONDS)
-        if (!finished) {
-          buildProcess.destroyForcibly()
-          throw GradleException("Parikshan iOS: xcodebuild compilation timed out after $xcodeTimeout seconds.")
-        }
-        val buildResult = buildProcess.exitValue()
-
-        if (buildResult != 0) {
-          logger.error("Parikshan iOS: xcodebuild failed. Dumping last 50 lines of log...")
-          val lines = logFile.readLines()
-          lines.takeLast(50).forEach { logger.error(it) }
-          throw GradleException("xcodebuild failed with exit code $buildResult")
-        }
-
-        val appBundle = appBuildProducts.listFiles()?.firstOrNull { it.name.endsWith(".app") } ?: throw GradleException("No .app bundle")
-
-        // Verify the built binary is a simulator slice, not a macOS binary
-        val fileOutput = ProcessBuilder("file", File(appBundle, appBundle.nameWithoutExtension).absolutePath)
-          .start().inputStream.bufferedReader().readText()
-        logger.lifecycle("Parikshan iOS: Built binary type: $fileOutput")
-
-        val activePort = project.providers.gradleProperty("parikshan.ios.port").orNull?.toIntOrNull() ?: iosPortVal
-        logger.lifecycle("Parikshan iOS: Launching app on simulator ${simulator.udid}...")
-
-        ProcessBuilder("xcrun", "simctl", "terminate", simulator.udid, iosBundleIdProvider.get()).start().waitFor()
-
-        val installResult = ProcessBuilder("xcrun", "simctl", "install", simulator.udid, appBundle.absolutePath)
-          .redirectErrorStream(true).start()
-        val installOutput = installResult.inputStream.bufferedReader().readText()
-        installResult.waitFor()
-        if (installResult.exitValue() != 0) {
-          logger.error("Parikshan iOS: simctl install failed: $installOutput")
-          throw GradleException("simctl install failed with exit code ${installResult.exitValue()}")
-        }
-
-        val launchProcess = ProcessBuilder("xcrun", "simctl", "launch", simulator.udid, iosBundleIdProvider.get()).apply {
-          environment()["SIMCTL_CHILD_PARIKSHAN_TOKEN"] = sessionTokenVal
-          environment()["PARIKSHAN_TOKEN"] = sessionTokenVal
-          environment()["SIMCTL_CHILD_PARIKSHAN_PORT"] = activePort.toString()
-          environment()["PARIKSHAN_PORT"] = activePort.toString()
-          redirectErrorStream(true)
-        }.start()
-        val launchOutput = launchProcess.inputStream.bufferedReader().readText()
-        launchProcess.waitFor()
-        if (launchProcess.exitValue() != 0) {
-          logger.error("Parikshan iOS: simctl launch failed: $launchOutput")
-          throw GradleException("simctl launch failed with exit code ${launchProcess.exitValue()}")
-        }
-        logger.lifecycle("Parikshan iOS: App launched. $launchOutput")
-
-        logger.lifecycle("Parikshan iOS: Waiting for server on port $activePort...")
-        val deadline = System.currentTimeMillis() + 90_000
-        var serverReady = false
-        while (System.currentTimeMillis() <= deadline) {
-          if (postIosPing(activePort, sessionTokenVal)) {
-            serverReady = true
-            break
-          }
-          Thread.sleep(500)
-        }
-
-         if (!serverReady) {
-           val processName = appBundle.nameWithoutExtension
-           val bundleId = iosBundleIdProvider.get()
-           logger.error("Parikshan iOS: Server failed to start. Dumping logs for process '$processName'...")
-
-           // Check if the app process is still alive
-           val pidCheck = ProcessBuilder("xcrun", "simctl", "spawn", simulator.udid, "launchctl", "list")
-             .start().inputStream.bufferedReader().readText()
-           val appStillRunning = pidCheck.contains(bundleId)
-           logger.error("Parikshan iOS: App process still running: $appStillRunning")
-
-           // Dump crash logs if any
-           val crashLogs = ProcessBuilder("xcrun", "simctl", "spawn", simulator.udid, "log", "show",
-             "--predicate", "process == \"$processName\" OR (eventMessage CONTAINS \"$processName\" AND eventMessage CONTAINS[c] \"crash\")",
-             "--style", "syslog", "--last", "5m").start().inputStream.bufferedReader().readText()
-           if (crashLogs.trim().lines().size <= 1) {
-             logger.error("Parikshan iOS: No process-specific logs found. Dumping last 200 lines of all simulator system logs...")
-             val allLogs = ProcessBuilder("xcrun", "simctl", "spawn", simulator.udid, "log", "show",
-               "--style", "syslog", "--last", "3m").start().inputStream.bufferedReader().readText()
-             allLogs.lines().takeLast(200).forEach { logger.error(it) }
-           } else {
-             logger.error(crashLogs)
-           }
-           throw GradleException("Parikshan iOS server failed readiness check")
-         }
-        logger.lifecycle("Parikshan iOS: Server ready.")
-      }
+      this.iosDevice.set(iosDeviceVal)
+      this.xcodeProject.set(iosXcodeProjectVal)
+      this.xcodeScheme.set(iosXcodeSchemeVal)
+      this.bundleId.set(iosBundleIdProvider)
+      this.sessionToken.set(sessionTokenVal)
+      this.port.set(iosPortVal)
+      this.xcodeTimeout.set(xcodebuildTimeoutProvider)
+      this.projectDir.set(projDirProvider.asFile)
+      this.rootDir.set(iosRootDirVal)
+      this.derivedDataDir.set(buildDirProvider.dir("parikshan/ios-build").get().asFile)
+      this.buildDir.set(buildDirProvider.get().asFile)
     }
 
     project.registerE2eTestWithReport("e2eIosTest", "iOS") {

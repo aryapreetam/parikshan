@@ -3,3 +3,8 @@ code, kbd, pre, .md-typeset pre code {
     font-family: "JetBrains Mono", "Monaco", "Courier New", monospace !important;
 }
 
+/* Hide developer internal Code Coverage badge on public website */
+.md-typeset img[alt="Code Coverage"] {
+    display: none !important;
+}
+

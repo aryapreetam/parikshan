@@ -1009,35 +1009,39 @@ internal object IosSemanticsAccessor {
       return "Active text responder not found"
     }
 
-    @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
-    if (firstResponder is androidx.compose.ui.window.IntermediateTextInputUIView) {
-      @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
-      val input = firstResponder.input
+    val responderObj = firstResponder as? NSObject
+    if (responderObj != null) {
+      val input = try { responderObj.valueForKey("input") as? NSObject } catch (_: Throwable) { null }
       if (input != null) {
-        logDebug("Found IntermediateTextInputUIView and IOSSkikoInput. Mutating input directly.")
-        
-        // Clear existing text
-        val currentTextLength = snapshot.text?.length ?: 0
-        logDebug("Direct clearing existing text of length $currentTextLength.")
-        
-        @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
-        input.beginEditBatch()
-        try {
-          repeat(currentTextLength) {
-            @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
-            input.deleteBackward()
-          }
-          // Type new text
-          logDebug("Direct inserting text: '$text'")
-          @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
-          input.insertText(text)
-        } finally {
-          @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
-          input.endEditBatch()
-        }
+        val beginSel = NSSelectorFromString("beginEditBatch")
+        val deleteSel = NSSelectorFromString("deleteBackward")
+        val insertSel = NSSelectorFromString("insertText:")
+        val endSel = NSSelectorFromString("endEditBatch")
 
-        pumpRunLoop(iterations = 10, intervalSeconds = 0.01)
-        return "OK"
+        if (input.respondsToSelector(beginSel) && input.respondsToSelector(endSel)) {
+          logDebug("Found Compose text input responder via KVC. Mutating input directly.")
+          
+          val currentTextLength = snapshot.text?.length ?: 0
+          logDebug("Direct clearing existing text of length $currentTextLength.")
+          
+          input.performSelector(beginSel)
+          try {
+            repeat(currentTextLength) {
+              if (input.respondsToSelector(deleteSel)) {
+                input.performSelector(deleteSel)
+              }
+            }
+            logDebug("Direct inserting text: '$text'")
+            if (input.respondsToSelector(insertSel)) {
+              input.performSelector(insertSel, withObject = NSString.create(string = text))
+            }
+          } finally {
+            input.performSelector(endSel)
+          }
+
+          pumpRunLoop(iterations = 10, intervalSeconds = 0.01)
+          return "OK"
+        }
       }
     }
 

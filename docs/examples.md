@@ -11,7 +11,7 @@ This page documents the sample applications included in the repository under `sa
 | **`multiplatform-showcase`** | Multi-Screen Component Showcase | 2.3.21 | 1.10.1 | Desktop, Wasm, Android, iOS |
 | **`cmp-latest`** | Full-Stack Storefront App | 2.4.0 | 1.11.0+ | Desktop, Wasm, Android, iOS |
 | **`composables-sample`** | Third-Party Design System | 2.4.0 | 1.11.0+ | Desktop, Wasm, Android, iOS |
-| **`standalone-android`** | Non-KMP Android App | 2.4.0 | N/A (Android Jetpack) | Android |
+| **`standalone-android`** | Non-KMP Android App | 2.0.21 | N/A (Android Jetpack) | Android |
 
 ---
 

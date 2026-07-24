@@ -86,6 +86,9 @@ jobs:
               ./gradlew :parikshan-client:testAndroid :samples:multiplatform-showcase:androidApp:testDebugUnitTest
               ;;
           esac
+      - name: Verify Library Publication (Dry-Run)
+        if: matrix.target == 'ios'
+        run: ./gradlew publishToMavenLocal --no-configuration-cache
       - name: Upload Kover Coverage Artifacts
         if: matrix.target == 'jvm'
         uses: actions/upload-artifact@v4

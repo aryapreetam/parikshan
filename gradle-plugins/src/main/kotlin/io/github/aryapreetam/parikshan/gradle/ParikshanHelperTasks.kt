@@ -124,31 +124,31 @@ abstract class ParikshanStartIosTask : DefaultTask() {
     val output = process.inputStream.bufferedReader().readText()
     process.waitFor()
 
-    var runtime = ""
-    var selectedUdid = ""
-    var selectedName = deviceVal
-    var isBooted = false
-
+    val allDevices = mutableListOf<Triple<String, String, Boolean>>()
     output.lineSequence().forEach { line ->
-      if (line.startsWith("--")) {
-        runtime = line.trim('-', ' ')
-      } else if (line.contains("(")) {
+      if (line.contains("(")) {
         val name = line.substringBefore("(").trim()
         val udid = line.substringAfter("(").substringBefore(")")
         val state = line.substringAfterLast("(").substringBefore(")")
-        if ((deviceVal == "booted" && state.contains("Booted", ignoreCase = true)) || deviceVal == name || deviceVal == udid) {
-          if (selectedUdid.isEmpty() || state.contains("Booted", ignoreCase = true)) {
-            selectedUdid = udid
-            selectedName = name
-            isBooted = state.contains("Booted", ignoreCase = true)
-          }
+        if (name.isNotEmpty() && udid.isNotEmpty() && udid.contains("-")) {
+          allDevices += Triple(name, udid, state.contains("Booted", ignoreCase = true))
         }
       }
     }
 
-    if (selectedUdid.isEmpty()) {
-      selectedUdid = "iPhone 16"
+    val exactMatch = allDevices.filter {
+      (deviceVal == "booted" && it.third) || deviceVal == it.first || deviceVal == it.second
     }
+    val targetDevice = exactMatch.firstOrNull { it.third }
+      ?: exactMatch.firstOrNull()
+      ?: allDevices.firstOrNull { it.third }
+      ?: allDevices.firstOrNull { it.first.startsWith("iPhone", ignoreCase = true) }
+      ?: allDevices.firstOrNull()
+      ?: throw GradleException("Parikshan iOS: No available iOS Simulators detected.")
+
+    val selectedName = targetDevice.first
+    val selectedUdid = targetDevice.second
+    val isBooted = targetDevice.third
 
     logger.lifecycle("Parikshan iOS: Using simulator '$selectedName' ($selectedUdid)")
 
@@ -477,8 +477,14 @@ abstract class ParikshanPrepareWasmSourceTask : DefaultTask() {
       .forEach { file ->
         val original = file.readText()
         if (original.contains("ComposeViewport")) {
-          var result = original.replace(Regex("""import\s+androidx\.compose\.ui\.window\.ComposeViewport\s*\R"""), "").replace("ComposeViewport", "ParikshanComposeViewport")
-          result = "import io.github.aryapreetam.parikshan.ParikshanComposeViewport\nimport io.github.aryapreetam.parikshan.initializeParikshanWasm\n" + result
+          val withoutComposeImport = original.replace(Regex("""import\s+androidx\.compose\.ui\.window\.ComposeViewport\s*\R?"""), "")
+          val imports = "import io.github.aryapreetam.parikshan.ParikshanComposeViewport\nimport io.github.aryapreetam.parikshan.initializeParikshanWasm\n"
+          var result = if (withoutComposeImport.contains(Regex("""package\s+[\w.]+\s*\R"""))) {
+            withoutComposeImport.replace(Regex("""(package\s+[\w.]+\s*\R)"""), "$1$imports")
+          } else {
+            imports + withoutComposeImport
+          }.replace("ComposeViewport", "ParikshanComposeViewport")
+
           val mainMatch = Regex("""fun\s+main\s*\([^)]*\)\s*\{""").find(result)
           if (mainMatch != null) {
             result = result.replaceRange(mainMatch.range.last + 1, mainMatch.range.last + 1, "\n  initializeParikshanWasm()\n")

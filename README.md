@@ -10,8 +10,8 @@
   <a href="https://mvnrepository.com/artifact/io.github.aryapreetam/parikshan">
     <img src="https://img.shields.io/maven-central/v/io.github.aryapreetam/parikshan?label=Maven%20Central&color=blue" alt="Maven Central Version">
   </a>
-  <a href="https://codecov.io/gh/aryapreetam/parikshan">
-    <img src="https://codecov.io/gh/aryapreetam/parikshan/branch/main/graph/badge.svg" alt="Code Coverage">
+  <a href="https://github.com/aryapreetam/parikshan/actions/workflows/push-ci.yml">
+    <img src="https://img.shields.io/badge/Coverage-Kover-brightgreen" alt="Code Coverage">
   </a>
   <a href="https://kotlinlang.org/docs/components-stability.html">
     <img src="https://kotl.in/badges/experimental.svg" alt="Kotlin Experimental">

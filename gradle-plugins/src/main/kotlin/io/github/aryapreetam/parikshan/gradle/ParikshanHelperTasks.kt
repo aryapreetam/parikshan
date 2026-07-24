@@ -96,7 +96,7 @@ abstract class ParikshanStartIosTask : DefaultTask() {
   @get:OutputDirectory
   abstract val derivedDataDir: DirectoryProperty
 
-  @get:OutputDirectory
+  @get:Internal
   abstract val buildDir: DirectoryProperty
 
   @TaskAction

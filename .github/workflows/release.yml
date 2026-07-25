@@ -89,7 +89,11 @@ jobs:
       - name: Build MkDocs Site
         run: mkdocs build --clean
 
-      # 2. Add API Reference (Dokka)
+      # 2. Bypass Jekyll on GitHub Pages
+      - name: Add .nojekyll
+        run: touch site/.nojekyll
+
+      # 3. Add API Reference (Dokka)
       - name: Generate API Docs
         run: ./gradlew :parikshan:dokkaGeneratePublicationHtml
       - name: Prepare API Docs
@@ -97,7 +101,7 @@ jobs:
           mkdir -p site/api
           cp -r parikshan/build/dokka/html/* site/api/
 
-      # 3. Add Demo Site (Wasm)
+      # 4. Add Demo Site (Wasm)
       - name: Build Wasm Demo
         run: ./gradlew :samples:multiplatform-showcase:composeApp:wasmJsBrowserDistribution
       - name: Prepare Demo Site
@@ -105,7 +109,7 @@ jobs:
           mkdir -p site/demo
           cp -r samples/multiplatform-showcase/composeApp/build/dist/wasmJs/productionExecutable/* site/demo/
 
-      # 4. Deploy to GitHub Pages
+      # 5. Deploy to GitHub Pages
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload Pages Artifact

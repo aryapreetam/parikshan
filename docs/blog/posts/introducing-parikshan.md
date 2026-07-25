@@ -7,7 +7,7 @@ categories:
 
 # E2E Testing for Compose Multiplatform
 
-Parikshan is an E2E testing framework for Compose Multiplatform - Write a test in Kotlin, run it on Android, iOS, Desktop, and Wasm — and watch it execute on each target.
+Parikshan is an E2E testing framework for Compose Multiplatform - Write a test in Kotlin, run it on Android, iOS, Desktop, and Wasm — watch it execute on each target.
 
 <!-- more -->
 
@@ -33,7 +33,7 @@ None of these cover all four CMP targets with a single test language.
 ## What I Set Out to Build
 
 - Write tests in Kotlin only
-- No need to learn Compose testing APIs — simple commands like `click`, `input`, `assertVisible`
+- simple commands like `click`, `input`, `assertVisible` - No Compose test APIs required
 - One plugin dependency, everything works out of the box
 - No test-specific code in the main application — the framework handles all wiring
 - All CMP targets supported, including Wasm
@@ -45,7 +45,7 @@ None of these cover all four CMP targets with a single test language.
 - Synchronized execution — all targets running the same test step at the same time
 - Watch mode — automatic re-execution on file save without restarting Gradle
 - Multi-instance testing — launch and interact with two windows of the same application
-- Multi-target testing — a Desktop instance and a Wasm instance communicating through the test
+- Multi-target testing — a Desktop and a Wasm instance communicating through the test
 - IDE plugin for IntelliJ and Android Studio
 
 ## Parikshan

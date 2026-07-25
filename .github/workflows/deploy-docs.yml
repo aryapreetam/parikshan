@@ -16,6 +16,15 @@ on:
       - 'README.md'
       - 'CHANGELOG.md'
   workflow_dispatch:
+    inputs:
+      include_api:
+        description: 'Build and deploy Dokka API Docs (/api)'
+        type: boolean
+        default: false
+      include_demo:
+        description: 'Build and deploy Wasm Demo (/demo)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -47,8 +56,38 @@ jobs:
       - name: Build MkDocs Site
         run: mkdocs build --clean
 
+      - name: Bypass Jekyll on GitHub Pages
+        run: touch site/.nojekyll
+
+      - name: Set up JDK for Gradle
+        if: github.event_name == 'workflow_dispatch' && (inputs.include_api || inputs.include_demo)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Setup Gradle
+        if: github.event_name == 'workflow_dispatch' && (inputs.include_api || inputs.include_demo)
+        uses: gradle/actions/setup-gradle@v3
+
+      # Build API Docs (Only if manually requested via workflow_dispatch)
+      - name: Build & Prepare API Docs
+        if: github.event_name == 'workflow_dispatch' && inputs.include_api
+        run: |
+          ./gradlew :parikshan:dokkaGeneratePublicationHtml
+          mkdir -p site/api
+          cp -r parikshan/build/dokka/html/* site/api/
+
+      # Build Wasm Demo (Only if manually requested via workflow_dispatch)
+      - name: Build & Prepare Wasm Demo
+        if: github.event_name == 'workflow_dispatch' && inputs.include_demo
+        run: |
+          ./gradlew :samples:multiplatform-showcase:composeApp:wasmJsBrowserDistribution
+          mkdir -p site/demo
+          cp -r samples/multiplatform-showcase/composeApp/build/dist/wasmJs/productionExecutable/* site/demo/
+
       - name: Upload Pages Artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
@@ -56,7 +95,7 @@ jobs:
   deploy-pages:
     name: Deploy to GitHub Pages
     needs: [ build-and-verify ]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

@@ -347,6 +347,32 @@ jobs:
             echo "Success: Zero-pollution audit passed. No Parikshan classes found in release APK."
           fi
 
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - lint
+      - unit-tests
+      - e2e-android
+      - e2e-desktop
+      - e2e-wasm
+      - e2e-ios-showcase
+      - e2e-ios-cmp-latest
+      - e2e-ios-composables
+      - dex-pollution-audit
+    steps:
+      - name: Verify all required jobs passed
+        run: |
+          needs_json='${{ toJson(needs) }}'
+          echo "Job statuses: $needs_json"
+          if echo "$needs_json" | grep -q '"result": "failure"\|"result": "cancelled"'; then
+            echo "❌ One or more required CI jobs failed or were cancelled!"
+            exit 1
+          fi
+          echo "✅ All required CI jobs completed successfully!"
+
+
 #  compatibility-matrix-non-ios:
 #    name: Compatibility Matrix Non-iOS (Kotlin ${{ matrix.kotlin }}, Compose ${{ matrix.compose }})
 #    runs-on: ubuntu-latest

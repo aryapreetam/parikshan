@@ -46,6 +46,13 @@ dokka {
   dokkaPublications.html {
     includes.from("src/commonMain/kotlin/Module.md")
   }
+  pluginsConfiguration.html {
+    customAssets.from(
+      rootProject.file("docs/assets/logo.png"),
+      rootProject.file("docs/assets/logo-icon.svg")
+    )
+    customStyleSheets.from(rootProject.file("docs/styles/logo-styles.css"))
+  }
 }
 
 mavenPublishing {

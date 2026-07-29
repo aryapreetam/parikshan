@@ -502,9 +502,10 @@ internal object IosSemanticsAccessor {
       }
 
       val hasArea = width > 0.0 && height > 0.0
+      val inset = 44.0 * scale
       val isPhysicallyVisible = hasArea &&
           right > 0.0 && left < physicalScreenWidth &&
-          bottom > 0.0 && top < physicalScreenHeight
+          bottom > inset && top < (physicalScreenHeight - inset)
 
       val snapshot = NodeSnapshot(
         tag = tag,
@@ -801,13 +802,13 @@ internal object IosSemanticsAccessor {
     val touchSet = NSSet.setWithObject(touch)
     val targetView = touch.view ?: window
 
-    val inputViews = mutableListOf<UIView>()
-    collectInputViews(window, inputViews)
-    if (!inputViews.contains(targetView)) {
-      inputViews.add(targetView)
+    val viewsToNotify = mutableListOf<UIView>()
+    viewsToNotify.add(targetView)
+    if (targetView != window && targetView.superview != null) {
+      viewsToNotify.add(window)
     }
 
-    inputViews.forEach { view ->
+    viewsToNotify.forEach { view ->
       try {
         when (phase) {
           UITouchPhase.UITouchPhaseBegan -> view.touchesBegan(touchSet, withEvent = event)
@@ -1011,7 +1012,9 @@ internal object IosSemanticsAccessor {
 
     val responderObj = firstResponder as? NSObject
     if (responderObj != null) {
-      val input = try { responderObj.valueForKey("input") as? NSObject } catch (_: Throwable) { null }
+      val input = if (responderObj.respondsToSelector(platform.Foundation.NSSelectorFromString("input"))) {
+        try { responderObj.valueForKey("input") as? NSObject } catch (_: Throwable) { null }
+      } else null
       if (input != null) {
         val beginSel = NSSelectorFromString("beginEditBatch")
         val deleteSel = NSSelectorFromString("deleteBackward")

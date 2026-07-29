@@ -34,6 +34,11 @@ class ParikshanPlugin : Plugin<Project> {
     project.tasks.withType(Zip::class.java).configureEach {
       isZip64 = true
     }
+
+    // Workaround for Gradle 9.1 + Kotlin Multiplatform task validation check on synthesized clean tasks
+    project.tasks.matching { it.name.startsWith("cleanWasmJsBrowserTest") }.configureEach {
+      enabled = false
+    }
     val sessionToken = project.providers.gradleProperty("parikshan.token").getOrNull() ?: UUID.randomUUID().toString()
 
     // Centralized flag detection
@@ -344,7 +349,21 @@ class ParikshanPlugin : Plugin<Project> {
         })
         
         hostTestClassesDirs.setFrom(hostTestTask.get().testClassesDirs)
-        hostTestClasspath.setFrom(hostTestTask.get().classpath)
+        val filesList = mutableListOf<org.gradle.api.file.FileCollection>()
+        filesList.add(hostTestTask.get().classpath)
+        if (project.tasks.names.contains("e2eDesktopTest")) {
+          filesList.add(project.tasks.named<Test>("e2eDesktopTest").get().classpath)
+        }
+        if (project.tasks.names.contains("e2eWasmTest")) {
+          filesList.add(project.tasks.named<Test>("e2eWasmTest").get().classpath)
+        }
+        if (project.tasks.names.contains("e2eAndroidTest")) {
+          filesList.add(project.tasks.named<Test>("e2eAndroidTest").get().classpath)
+        }
+        if (project.tasks.names.contains("e2eIosTest")) {
+          filesList.add(project.tasks.named<Test>("e2eIosTest").get().classpath)
+        }
+        hostTestClasspath.setFrom(project.files(filesList))
         junitConsoleJars.setFrom(junitConsoleConfig)
         this.e2eTestClasses.set(project.provider { e2eTestClasses })
         this.projectPath.set(project.path)
@@ -408,6 +427,10 @@ class ParikshanPlugin : Plugin<Project> {
 
         val prodSources = project.resolveProductionSources()
         this.productionSources.setFrom(prodSources)
+        val testSourcesList = project.resolveTestSources()
+        this.testSources.setFrom(testSourcesList)
+        val prodClassesList = project.resolveProductionClassesDirs()
+        this.productionClassesDirs.setFrom(prodClassesList)
 
         val appProject = project.findAndroidAppProject()
         if (appProject != null) {

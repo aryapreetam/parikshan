@@ -1,5 +1,8 @@
 package sample.app
 
+// Import navigation & screens
+
+// Import playgrounds
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -11,24 +14,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
-
-// Import navigation & screens
 import sample.app.navigation.SampleScreen
 import sample.app.navigation.SidebarNavigation
+import sample.app.playgrounds.*
 import sample.app.screens.HomeScreen
 import sample.app.screens.SimpleGreetDemo
 
-// Import playgrounds
-import sample.app.playgrounds.AccessibilityPlayground
-import sample.app.playgrounds.FormPlayground
-import sample.app.playgrounds.GesturePlayground
-import sample.app.playgrounds.NavigationPlayground
-import sample.app.playgrounds.OverlayPlayground
-import sample.app.playgrounds.ScrollPlayground
-import sample.app.playgrounds.SelectorParityPlayground
-import sample.app.playgrounds.TimingPlayground
-
-val isDemo = false
+val isDemo = false // this will be manually changed by the developer when recording demo
 
 @Composable
 fun App() {

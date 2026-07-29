@@ -20,7 +20,7 @@ package io.github.aryapreetam.parikshan
  * @see AfterAll
  * @see E2ETestLifecycle
  */
-@Target(AnnotationTarget.FUNCTION)
+@kotlin.annotation.Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.RUNTIME)
 annotation class BeforeAll
 
@@ -44,7 +44,7 @@ annotation class BeforeAll
  * @see BeforeAll
  * @see E2ETestLifecycle
  */
-@Target(AnnotationTarget.FUNCTION)
+@kotlin.annotation.Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.RUNTIME)
 annotation class AfterAll
 

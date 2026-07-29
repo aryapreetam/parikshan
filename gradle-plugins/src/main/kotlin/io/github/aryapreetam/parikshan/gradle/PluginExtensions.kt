@@ -678,3 +678,154 @@ internal fun Project.resolveProductionSources(): List<File> {
   return dirs.filter { it.exists() }.distinct()
 }
 
+internal fun Project.resolveProductionClassesDirs(): List<File> {
+  val dirs = mutableListOf<File>()
+  val kmp = extensions.findByName("kotlin")
+  if (kmp != null) {
+    try {
+      @Suppress("UNCHECKED_CAST")
+      val targets = kmp.javaClass.getMethod("getTargets").invoke(kmp) as org.gradle.api.NamedDomainObjectCollection<Any>
+      targets.forEach { target ->
+        runCatching {
+          @Suppress("UNCHECKED_CAST")
+          val compilations = target.javaClass.getMethod("getCompilations").invoke(target) as org.gradle.api.NamedDomainObjectCollection<Any>
+          val mainCompilation = compilations.findByName("main")
+          if (mainCompilation != null) {
+            val output = mainCompilation.javaClass.getMethod("getOutput").invoke(mainCompilation)
+            val classesDirs = output.javaClass.getMethod("getClassesDirs").invoke(output) as org.gradle.api.file.FileCollection
+            dirs.addAll(classesDirs.files)
+          }
+        }
+      }
+    } catch (_: Exception) {}
+  }
+  
+  val android = extensions.findByName("android")
+  if (android != null) {
+    try {
+      val sourceSets = android.javaClass.getMethod("getSourceSets").invoke(android) as org.gradle.api.NamedDomainObjectCollection<Any>
+      val mainSourceSet = sourceSets.findByName("main")
+      if (mainSourceSet != null) {
+        val output = mainSourceSet.javaClass.getMethod("getOutput").invoke(mainSourceSet)
+        val classesDirs = output.javaClass.getMethod("getClassesDirs").invoke(output) as org.gradle.api.file.FileCollection
+        dirs.addAll(classesDirs.files)
+      }
+    } catch (_: Exception) {}
+  }
+
+  val java = extensions.findByName("java")
+  if (java != null) {
+    try {
+      val sourceSets = java.javaClass.getMethod("getSourceSets").invoke(java) as org.gradle.api.NamedDomainObjectCollection<Any>
+      val mainSourceSet = sourceSets.findByName("main")
+      if (mainSourceSet != null) {
+        val output = mainSourceSet.javaClass.getMethod("getOutput").invoke(mainSourceSet)
+        val classesDirs = output.javaClass.getMethod("getClassesDirs").invoke(output) as org.gradle.api.file.FileCollection
+        dirs.addAll(classesDirs.files)
+      }
+    } catch (_: Exception) {}
+  }
+
+  return dirs.filter { it.exists() }.distinct()
+}
+
+
+internal fun Project.resolveTestSources(): List<File> {
+  val dirs = mutableListOf<File>()
+  
+  // 1. Kotlin Multiplatform Extension resolution (Layout-agnostic)
+  val kmp = extensions.findByName("kotlin")
+  if (kmp != null) {
+    try {
+      @Suppress("UNCHECKED_CAST")
+      val targets = kmp.javaClass.getMethod("getTargets").invoke(kmp) as org.gradle.api.NamedDomainObjectCollection<Any>
+      targets.forEach { target ->
+        runCatching {
+          @Suppress("UNCHECKED_CAST")
+          val compilations = target.javaClass.getMethod("getCompilations").invoke(target) as org.gradle.api.NamedDomainObjectCollection<Any>
+          val testCompilation = compilations.findByName("test") ?: compilations.findByName("androidTest")
+          if (testCompilation != null) {
+            @Suppress("UNCHECKED_CAST")
+            val allSourceSets = testCompilation.javaClass.getMethod("getAllKotlinSourceSets").invoke(testCompilation) as Set<Any>
+            allSourceSets.forEach { sourceSet ->
+              runCatching {
+                val kotlinSrcSet = sourceSet.javaClass.getMethod("getKotlin").invoke(sourceSet) as? org.gradle.api.file.SourceDirectorySet
+                kotlinSrcSet?.srcDirs?.let { dirs.addAll(it) }
+              }
+              runCatching {
+                val resourcesSrcSet = sourceSet.javaClass.getMethod("getResources").invoke(sourceSet) as? org.gradle.api.file.SourceDirectorySet
+                resourcesSrcSet?.srcDirs?.let { dirs.addAll(it) }
+              }
+            }
+          }
+        }
+      }
+    } catch (_: Exception) {
+    }
+  }
+
+  // 2. Standard Android plugin resolution
+  val android = extensions.findByName("android")
+  if (android != null) {
+    try {
+      @Suppress("UNCHECKED_CAST")
+      val sourceSets = android.javaClass.getMethod("getSourceSets").invoke(android) as org.gradle.api.NamedDomainObjectCollection<Any>
+      val testSourceSet = sourceSets.findByName("androidTest") ?: sourceSets.findByName("test")
+      if (testSourceSet != null) {
+        runCatching {
+          val javaSrcSet = testSourceSet.javaClass.getMethod("getJava").invoke(testSourceSet) as? org.gradle.api.file.SourceDirectorySet
+          javaSrcSet?.srcDirs?.let { dirs.addAll(it) }
+        }
+        runCatching {
+          val resSrcSet = testSourceSet.javaClass.getMethod("getRes").invoke(testSourceSet) as? org.gradle.api.file.SourceDirectorySet
+          resSrcSet?.srcDirs?.let { dirs.addAll(it) }
+        }
+      }
+    } catch (_: Exception) {
+    }
+  }
+
+  // 3. Standard Java plugin resolution
+  val java = extensions.findByName("java")
+  if (java != null) {
+    try {
+      @Suppress("UNCHECKED_CAST")
+      val sourceSets = java.javaClass.getMethod("getSourceSets").invoke(java) as org.gradle.api.NamedDomainObjectCollection<Any>
+      val testSourceSet = sourceSets.findByName("test")
+      if (testSourceSet != null) {
+        runCatching {
+          val allJava = testSourceSet.javaClass.getMethod("getAllJava").invoke(testSourceSet) as? org.gradle.api.file.SourceDirectorySet
+          allJava?.srcDirs?.let { dirs.addAll(it) }
+        }
+        runCatching {
+          val resources = testSourceSet.javaClass.getMethod("getResources").invoke(testSourceSet) as? org.gradle.api.file.SourceDirectorySet
+          resources?.srcDirs?.let { dirs.addAll(it) }
+        }
+      }
+    } catch (_: Exception) {
+    }
+  }
+
+  return dirs.filter { it.exists() }.distinct()
+}
+
+
+internal fun parseSize(input: String?): Pair<Int, Int>? {
+  if (input.isNullOrBlank()) return null
+  val regex = Regex("^(\\d+)x(\\d+)$")
+  val match = regex.matchEntire(input.trim()) ?: return null
+  val width = match.groupValues[1].toIntOrNull() ?: return null
+  val height = match.groupValues[2].toIntOrNull() ?: return null
+  return Pair(width, height)
+}
+
+internal fun parsePosition(input: String?): Pair<Int, Int>? {
+  if (input.isNullOrBlank()) return null
+  val regex = Regex("^(-?\\d+)(?:,|x)(-?\\d+)$")
+  val match = regex.matchEntire(input.trim()) ?: return null
+  val x = match.groupValues[1].toIntOrNull() ?: return null
+  val y = match.groupValues[2].toIntOrNull() ?: return null
+  return Pair(x, y)
+}
+
+

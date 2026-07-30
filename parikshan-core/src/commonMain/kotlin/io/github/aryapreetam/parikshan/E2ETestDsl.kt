@@ -345,6 +345,7 @@ class E2ETestScope internal constructor(
     )
   }
 
+
   /**
    * Asserts that a UI element matching string [tag] is present and visible on screen.
    *
@@ -736,6 +737,7 @@ class E2ETestScope internal constructor(
       }
       delay(WAIT_POLL_INTERVAL_MS)
     } while (true)
+
 
     if (config.captureScreenshotOnFailure) {
       runCatching {

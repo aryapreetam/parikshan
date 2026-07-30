@@ -501,11 +501,22 @@ internal object IosSemanticsAccessor {
         physicalScreenHeight = size.height * scale
       }
 
+      val keyWindow = getActiveWindows().lastOrNull()
+      var topInset = 0.0
+      var bottomInset = 0.0
+      if (keyWindow != null) {
+        try {
+          keyWindow.safeAreaInsets.useContents {
+            topInset = top * scale
+            bottomInset = bottom * scale
+          }
+        } catch (_: Throwable) {}
+      }
+
       val hasArea = width > 0.0 && height > 0.0
-      val inset = 44.0 * scale
       val isPhysicallyVisible = hasArea &&
           right > 0.0 && left < physicalScreenWidth &&
-          bottom > inset && top < (physicalScreenHeight - inset)
+          bottom > topInset && top < (physicalScreenHeight - bottomInset)
 
       val snapshot = NodeSnapshot(
         tag = tag,

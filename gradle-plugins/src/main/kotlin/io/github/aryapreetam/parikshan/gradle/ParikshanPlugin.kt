@@ -301,6 +301,10 @@ class ParikshanPlugin : Plugin<Project> {
         val resultsDir = project.layout.buildDirectory.dir("test-results/e2eTest")
         val reportsDir = project.layout.buildDirectory.dir("reports/tests/e2eTest")
         
+        doFirst {
+          resultsDir.get().asFile.mkdirs()
+          reportsDir.get().asFile.mkdirs()
+        }
         inputs.dir(resultsDir)
         outputs.dir(reportsDir)
         

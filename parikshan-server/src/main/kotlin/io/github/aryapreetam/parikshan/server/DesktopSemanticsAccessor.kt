@@ -18,6 +18,8 @@ import java.awt.Window
 import java.awt.event.MouseEvent
 import java.awt.event.InputEvent
 import javax.swing.SwingUtilities
+import kotlinx.coroutines.delay
+
 
 internal data class DesktopNode(
   val tag: String,
@@ -224,7 +226,7 @@ internal class DesktopSemanticsAccessor(
     return success
   }
 
-  fun performDrag(
+  suspend fun performDrag(
     fromX: Double,
     fromY: Double,
     toX: Double,
@@ -250,7 +252,7 @@ internal class DesktopSemanticsAccessor(
     }
 
     // Small delay to ensure "drag" is registered
-    Thread.sleep(50)
+    delay(50)
 
     val steps = 30
     val stepDelay = (durationMs / steps).coerceAtLeast(1L)
@@ -266,11 +268,7 @@ internal class DesktopSemanticsAccessor(
             targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_DRAGGED, System.currentTimeMillis(), InputEvent.BUTTON1_DOWN_MASK, curXRel.toInt(), curYRel.toInt(), curXAbs.toInt(), curYAbs.toInt(), 0, false, MouseEvent.NOBUTTON))
         }
         
-        try {
-            Thread.sleep(stepDelay)
-        } catch (_: InterruptedException) {
-            break
-        }
+        delay(stepDelay)
     }
 
     onEdt {

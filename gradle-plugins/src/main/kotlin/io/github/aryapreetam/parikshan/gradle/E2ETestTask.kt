@@ -351,25 +351,28 @@ abstract class E2ETestTask : DefaultTask() {
       listOf(result.copy(durationMs = duration))
     } else {
       val executor = Executors.newFixedThreadPool(activeTargets.size)
-      val futures = mutableListOf<Future<TargetResult>>()
+      val res = try {
+        val futures = mutableListOf<Future<TargetResult>>()
 
-      activeTargets.forEach { target ->
-        val future = executor.submit<TargetResult> {
-          val targetStartTime = System.currentTimeMillis()
-          try {
-            val result = executeTarget(target, filteredClasses, activeProcesses, activeForwardedPorts, resolvedHost, finalAndroidSerial, finalIosDevice)
-            val duration = System.currentTimeMillis() - targetStartTime
-            result.copy(durationMs = duration)
-          } catch (e: Exception) {
-            val duration = System.currentTimeMillis() - targetStartTime
-            TargetResult(target, false, e.message ?: "Execution failed", duration)
+        activeTargets.forEach { target ->
+          val future = executor.submit<TargetResult> {
+            val targetStartTime = System.currentTimeMillis()
+            try {
+              val result = executeTarget(target, filteredClasses, activeProcesses, activeForwardedPorts, resolvedHost, finalAndroidSerial, finalIosDevice)
+              val duration = System.currentTimeMillis() - targetStartTime
+              result.copy(durationMs = duration)
+            } catch (e: Exception) {
+              val duration = System.currentTimeMillis() - targetStartTime
+              TargetResult(target, false, e.message ?: "Execution failed", duration)
+            }
           }
+          futures.add(future)
         }
-        futures.add(future)
-      }
 
-      val res = futures.map { it.get() }
-      executor.shutdown()
+        futures.map { it.get() }
+      } finally {
+        executor.shutdown()
+      }
       res
     }
 
@@ -2465,9 +2468,15 @@ abstract class E2ETestTask : DefaultTask() {
           pendingChange.set(file.toPath())
           
           synchronized(activeProcesses) {
-              try { compileJob?.destroy() } catch (_: Exception) {}
-              activeProcesses.forEach {
-                  try { it.destroy() } catch (_: Exception) {}
+              runCatching {
+                  compileJob?.toHandle()?.descendants()?.forEach { it.destroy() }
+                  compileJob?.destroy()
+              }
+              activeProcesses.forEach { proc ->
+                  runCatching {
+                      proc.toHandle()?.descendants()?.forEach { it.destroy() }
+                      proc.destroy()
+                  }
               }
           }
 

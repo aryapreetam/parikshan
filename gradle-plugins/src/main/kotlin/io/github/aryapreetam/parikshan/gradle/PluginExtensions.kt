@@ -83,9 +83,8 @@ internal fun Test.configureE2eHostTestExecution(
     }
 
     val resultsDir = reports.junitXml.outputLocation.get().asFile
-    if (resultsDir.exists()) {
-      resultsDir.listFiles()?.forEach { it.deleteRecursively() }
-    }
+    resultsDir.mkdirs()
+    resultsDir.listFiles()?.forEach { it.deleteRecursively() }
   }
   outputs.dir(videoOutputDirProvider)
   

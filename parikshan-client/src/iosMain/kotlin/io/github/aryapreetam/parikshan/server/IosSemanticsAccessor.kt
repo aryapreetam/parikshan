@@ -507,8 +507,8 @@ internal object IosSemanticsAccessor {
       if (keyWindow != null) {
         try {
           keyWindow.safeAreaInsets.useContents {
-            topInset = top * scale
-            bottomInset = bottom * scale
+            topInset = this.top * scale
+            bottomInset = this.bottom * scale
           }
         } catch (_: Throwable) {}
       }
@@ -863,8 +863,21 @@ internal object IosSemanticsAccessor {
       for (owner in activeOwners) {
         @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
         val allNodes = owner.getAllSemanticsNodes(mergingEnabled = false)
-        val found = allNodes.find { 
-          it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag) == tag
+        var found = if (tag.isNotBlank()) {
+          allNodes.find { 
+            it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag) == tag
+          }
+        } else null
+        
+        if (found == null) {
+          found = allNodes.find { n ->
+            val nodeTexts = n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)
+            val nodeTextStr = nodeTexts?.joinToString(" ") { it.text }
+            val nodeLabel = n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.ContentDescription)?.joinToString(" ")
+            val matchText = snapshot.text
+            (nodeTextStr != null && matchText != null && nodeTextStr.contains(matchText, ignoreCase = true)) ||
+                (nodeLabel != null && matchText != null && nodeLabel.contains(matchText, ignoreCase = true))
+          }
         }
         if (found != null) {
           targetSemanticsNode = found
@@ -874,15 +887,26 @@ internal object IosSemanticsAccessor {
       logDebug("Found target SemanticsNode via registry: $targetSemanticsNode")
       
       if (targetSemanticsNode != null) {
+        var current: SemanticsNode? = targetSemanticsNode
+        var setTextAction = current?.config?.getOrNull(androidx.compose.ui.semantics.SemanticsActions.SetText)
+        var depth = 0
+        while (setTextAction == null && current?.parent != null && depth < 3) {
+          current = current?.parent
+          setTextAction = current?.config?.getOrNull(androidx.compose.ui.semantics.SemanticsActions.SetText)
+          depth++
+        }
+        if (current != null && setTextAction != null) {
+          targetSemanticsNode = current
+        }
+
         // Request focus via semantics if available
-        val requestFocusAction = targetSemanticsNode.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.RequestFocus)
+        val requestFocusAction = targetSemanticsNode?.config?.getOrNull(androidx.compose.ui.semantics.SemanticsActions.RequestFocus)
         if (requestFocusAction != null) {
           logDebug("Requesting focus via semantics action.")
           requestFocusAction.action?.invoke()
         }
         
         // Set text via semantics
-        val setTextAction = targetSemanticsNode.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.SetText)
         if (setTextAction != null) {
           logDebug("Invoking SetText semantics action with '$text'")
           val success = setTextAction.action?.invoke(androidx.compose.ui.text.AnnotatedString(text))
@@ -892,7 +916,7 @@ internal object IosSemanticsAccessor {
             return "OK"
           }
         } else {
-          logDebug("SetText semantics action not found on node.")
+          logDebug("SetText semantics action not found on node or its parents.")
         }
       }
     } catch (e: Throwable) {

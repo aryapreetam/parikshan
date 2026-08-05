@@ -4,8 +4,26 @@ on:
   push:
     branches:
       - '**'
+      - '!draft/**'
+      - '!sandbox/**'
+      - '!debug/**'
     tags-ignore:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      target_job:
+        description: 'Specific CI job to run (all, ios-cmp-latest, ios-showcase, desktop, wasm, android)'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - ios-issue-playground
+          - ios-cmp-latest
+          - ios-showcase
+          - desktop
+          - wasm
+          - android
     paths:
       # Run CI only when these files/directories change
       - 'parikshan/**'
@@ -91,6 +109,8 @@ jobs:
     needs: check-template-setup
     if: needs.check-template-setup.outputs.is_configured == 'true'
     uses: ./.github/workflows/ci.yml
+    with:
+      target_job: ${{ inputs.target_job || 'all' }}
 
   skip-ci:
     name: Template not configured - CI skipped

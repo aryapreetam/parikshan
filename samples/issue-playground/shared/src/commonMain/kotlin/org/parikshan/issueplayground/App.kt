@@ -29,7 +29,12 @@ fun App() {
     MaterialTheme {
         var selectedIssueId by remember { mutableStateOf<String?>(null) }
         
-        Surface(modifier = Modifier.fillMaxSize()) {
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .safeDrawingPadding()
+        ) {
             if (selectedIssueId == "10") {
                 Column(modifier = Modifier.fillMaxSize()) {
                     TextButton(

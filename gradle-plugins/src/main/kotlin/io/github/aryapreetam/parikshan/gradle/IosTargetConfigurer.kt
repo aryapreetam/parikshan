@@ -46,7 +46,7 @@ internal object IosTargetConfigurer {
         parameters.scheme.set(iosXcodeSchemeVal)
       }
       val extracted = provider.orNull
-      project.logger.lifecycle("Parikshan iOS: Extracted bundle ID: $extracted")
+      project.logger.info("Parikshan iOS: Extracted bundle ID: $extracted")
       return extracted ?: "sample.app.ios"
     }
     val iosBundleIdProvider = project.provider { getIosBundleId() }
@@ -101,20 +101,40 @@ internal object IosTargetConfigurer {
       dependsOn(startIosAppTask)
       finalizedBy(stopIosAppTask)
       configureE2eHostTestExecution(
-        hostTestClassesDirs = hostTestTask.get().testClassesDirs,
-        hostTestClasspath = hostTestTask.get().classpath,
+        hostTestTaskProvider = hostTestTask,
         e2eTestClasses = e2eTestClasses,
         target = "iOS",
-        logger = project.logger
+        logger = logger
       )
       systemProperty("parikshan.target", "ios")
       systemProperty("parikshan.host", "127.0.0.1")
       systemProperty("parikshan.port", iosPortVal.toString())
       systemProperty("parikshan.token", sessionTokenVal)
+      val iosPortFileVal = project.layout.buildDirectory.file("parikshan/ios-port.txt").get().asFile
       doFirst {
+        val osName = System.getProperty("os.name").orEmpty().lowercase()
+        val osArch = System.getProperty("os.arch").orEmpty().lowercase()
+        if (!osName.contains("mac")) {
+          throw GradleException(
+            "Parikshan iOS: Running iOS E2E tests requires macOS host OS with Xcode tools installed. " +
+            "Current OS: ${System.getProperty("os.name")}"
+          )
+        }
+        if (osArch.contains("x86") || osArch.contains("amd64")) {
+          logger.lifecycle("Parikshan iOS: Skipped iOS target — Architecture mismatch: host is Intel x86_64 Mac, but target requires ARM64 iOS simulator")
+          return@doFirst
+        }
         val simulator = resolveIosSimulatorDevice(iosDeviceVal, iosProjectDirVal)
         systemProperty("parikshan.ios.udid", simulator.udid)
         systemProperty("parikshan.ios.bundleId", iosBundleIdProvider.get())
+
+        val portFile = iosPortFileVal
+        if (portFile.exists()) {
+          val actualPort = portFile.readText().trim()
+          if (actualPort.isNotEmpty()) {
+            systemProperty("parikshan.port", actualPort)
+          }
+        }
       }
     }
   }

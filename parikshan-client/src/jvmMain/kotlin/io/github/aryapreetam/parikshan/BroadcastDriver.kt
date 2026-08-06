@@ -9,7 +9,7 @@ import kotlinx.coroutines.coroutineScope
 
 class MultiTargetFailureException(message: String) : AssertionError(message)
 
-class BroadcastDriver(
+internal class BroadcastDriver(
   val drivers: List<TestDriver>
 ) : TestDriver {
   override val targetPlatform: String = "sync"

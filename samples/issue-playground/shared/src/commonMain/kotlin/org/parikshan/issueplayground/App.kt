@@ -20,7 +20,7 @@ val issueList = listOf(
     IssueItem(
         id = "10",
         title = "Issue #10",
-        description = "iOS input() crash with NSUnknownKeyException on custom Host text field"
+        description = "iOS input() crash with NSUnknownKeyException when targeting text fields by label"
     )
 )
 

@@ -66,8 +66,7 @@ internal object WasmTargetConfigurer {
       dependsOn(installPlaywrightTask, startWasmTask)
       finalizedBy("stopParikshanWasmApp")
       configureE2eHostTestExecution(
-        hostTestClassesDirs = hostTestTask.get().testClassesDirs,
-        hostTestClasspath = hostTestTask.get().classpath,
+        hostTestTaskProvider = hostTestTask,
         e2eTestClasses = e2eTestClasses,
         target = "Wasm",
         logger = logger
@@ -113,10 +112,20 @@ internal object WasmTargetConfigurer {
 internal object WasmServer {
   private var server: com.sun.net.httpserver.HttpServer? = null
 
-  fun start(port: Int, root: File) {
+  fun start(requestedPort: Int, root: File): Int {
     stop()
-    val s = com.sun.net.httpserver.HttpServer.create(InetSocketAddress(port), 0)
-    s.createContext("/") { ex ->
+    var boundPort = requestedPort
+    var s: com.sun.net.httpserver.HttpServer? = null
+    for (offset in 0..20) {
+      val candidate = requestedPort + offset
+      try {
+        s = com.sun.net.httpserver.HttpServer.create(InetSocketAddress(candidate), 0)
+        boundPort = candidate
+        break
+      } catch (_: Exception) {}
+    }
+    val http = s ?: throw IllegalStateException("Could not bind WasmServer to any port in range $requestedPort..${requestedPort + 20}")
+    http.createContext("/") { ex ->
       val path = if (ex.requestURI.path == "/") "/index.html" else ex.requestURI.path
       val file = File(root, path.removePrefix("/"))
       if (file.exists() && file.isFile) {
@@ -143,8 +152,9 @@ internal object WasmServer {
       }
       ex.close()
     }
-    s.start()
-    server = s
+    http.start()
+    server = http
+    return boundPort
   }
 
   fun stop() {

@@ -12,8 +12,7 @@ import org.gradle.process.CommandLineArgumentProvider
 import java.io.File
 
 internal fun Test.configureE2eHostTestExecution(
-  hostTestClassesDirs: FileCollection,
-  hostTestClasspath: FileCollection,
+  hostTestTaskProvider: TaskProvider<Test>,
   e2eTestClasses: List<String>,
   target: String,
   logger: Logger
@@ -30,16 +29,24 @@ internal fun Test.configureE2eHostTestExecution(
       .orElse(project.providers.systemProperty("parikshan.video.granularity"))
       .orElse("class")
 
-  testClassesDirs = hostTestClassesDirs
+  val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.7"
+  val clientDep = project.rootProject.findProject(":parikshan-client")
+    ?.let { project.dependencies.project(mapOf("path" to it.path)) }
+    ?: "io.github.aryapreetam.parikshan:parikshan-client:$pluginVersion"
+
   val launcherConfig = project.configurations.detachedConfiguration(
+      project.dependencies.create(clientDep),
       project.dependencies.create("org.junit.platform:junit-platform-launcher:1.10.2"),
+      project.dependencies.create("org.junit.jupiter:junit-jupiter-engine:5.10.2"),
       project.dependencies.create("org.junit.vintage:junit-vintage-engine:5.10.2")
   )
-  classpath = hostTestClasspath.plus(launcherConfig)
+  testClassesDirs = project.files(hostTestTaskProvider.map { it.testClassesDirs })
+  classpath = launcherConfig.plus(project.files(hostTestTaskProvider.map { it.classpath }))
+
   reports.junitXml.outputLocation.set(
     project.layout.buildDirectory.dir("test-results/e2eTest/${target.lowercase()}")
   )
-  dependsOn(hostTestClassesDirs.buildDependencies)
+  dependsOn(testClassesDirs.buildDependencies)
 
   filter {
     isFailOnNoMatchingTests = true
@@ -61,7 +68,12 @@ internal fun Test.configureE2eHostTestExecution(
     }
     logger.lifecycle("Parikshan $target: running E2E test classes ${e2eTestClasses.joinToString()}")
 
-    val strategy = videoStrategyProvider.get().lowercase()
+    val validGranularities = setOf("session", "run", "class", "test")
+    val rawStrategy = videoStrategyProvider.get().trim().lowercase()
+    if (rawStrategy !in validGranularities) {
+      throw GradleException("Parikshan: Invalid video granularity '$rawStrategy'. Must be strictly one of: ${validGranularities.joinToString()}")
+    }
+    val strategy = rawStrategy
     if (strategy == "class" || strategy == "run" || strategy == "session") {
       val patterns = filter.includePatterns
       val isMethodFilter = patterns.any { pattern ->
@@ -131,8 +143,14 @@ internal fun Test.configureE2eHostTestExecution(
   })
 }
 
-internal fun Project.resolveHostTestTaskName(override: String?): String {
-  if (override != null) return override
+internal fun Project.findOrRegisterHostTestTask(override: String?): TaskProvider<Test> {
+  if (override != null && tasks.names.contains(override)) {
+    val existing = tasks.findByName(override)
+    if (existing is Test) {
+      return tasks.named(override, Test::class.java)
+    }
+  }
+
   val kmp = extensions.findByName("kotlin")
   val isKmp = kmp != null && runCatching { kmp.javaClass.getMethod("getTargets") }.isSuccess
 
@@ -142,29 +160,155 @@ internal fun Project.resolveHostTestTaskName(override: String?): String {
       val targets = kmp.javaClass.getMethod("getTargets").invoke(kmp) as NamedDomainObjectCollection<Any>
       
       val jvmTargets = targets.filter { target ->
-          val targetName = (target as Named).name
-          val className = target.javaClass.name
-          className.contains("KotlinJvmTarget", ignoreCase = true) || 
-                    targetName.contains("jvm", ignoreCase = true) || 
-                    targetName.contains("desktop", ignoreCase = true)
+        val targetName = (target as Named).name
+        val className = target.javaClass.name
+        className.contains("KotlinJvmTarget", ignoreCase = true) || 
+          targetName.contains("jvm", ignoreCase = true) || 
+          targetName.contains("desktop", ignoreCase = true)
       }
       
       val target = jvmTargets.find { (it as Named).name in listOf("desktop", "jvm") }
-          ?: jvmTargets.firstOrNull()
+        ?: jvmTargets.firstOrNull()
           
       if (target != null) {
-          val name = (target as Named).name
-          return "${name}Test"
+        val name = (target as Named).name
+        val taskName = "${name}Test"
+        if (tasks.names.contains(taskName)) {
+          val existing = tasks.findByName(taskName)
+          if (existing is Test) {
+            return tasks.named(taskName, Test::class.java)
+          }
+        }
       }
     } catch (_: Exception) {}
   }
 
-  return when {
-      tasks.names.contains("testDebugUnitTest") -> "testDebugUnitTest"
-      tasks.names.contains("test") -> "test"
-      tasks.names.contains("jvmTest") -> "jvmTest"
-      else -> "test"
+  for (candidate in listOf("test", "jvmTest", "desktopTest", "testDebugUnitTest", "testAndroidHostTest")) {
+    if (tasks.names.contains(candidate)) {
+      val existing = tasks.findByName(candidate)
+      if (existing is Test) {
+        return tasks.named(candidate, Test::class.java)
+      }
+    }
   }
+
+  val fallbackName = "parikshanHostTest"
+  val hostTaskProvider = if (tasks.names.contains(fallbackName)) {
+    tasks.named(fallbackName, Test::class.java)
+  } else {
+    tasks.register(fallbackName, Test::class.java) {
+      group = "verification"
+      description = "Host JVM test execution task for Parikshan E2E orchestration"
+      useJUnitPlatform()
+    }
+  }
+
+  afterEvaluate {
+    val compileTask = tasks.findByName("compileAndroidHostTest")
+      ?: tasks.findByName("compileDebugUnitTestKotlin")
+      ?: tasks.names.filter { it.contains("compile", ignoreCase = true) && (it.contains("HostTest", ignoreCase = true) || it.contains("UnitTest", ignoreCase = true)) }
+        .mapNotNull { tasks.findByName(it) }.firstOrNull()
+
+    val existingTestTask = tasks.findByName("testAndroidHostTest") as? Test
+      ?: tasks.findByName("testDebugUnitTest") as? Test
+      ?: tasks.findByName("testUnitTest") as? Test
+      ?: tasks.withType(Test::class.java).firstOrNull { it.name.contains("HostTest", ignoreCase = true) || it.name.contains("UnitTest", ignoreCase = true) }
+
+    val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.7"
+    val clientDep = project.rootProject.findProject(":parikshan-client")
+      ?.let { project.dependencies.project(mapOf("path" to it.path)) }
+      ?: "io.github.aryapreetam.parikshan:parikshan-client:$pluginVersion"
+
+    val hostLauncherConfig = project.configurations.detachedConfiguration(
+        project.dependencies.create(clientDep),
+        project.dependencies.create("org.junit.platform:junit-platform-launcher:1.10.2"),
+        project.dependencies.create("org.junit.jupiter:junit-jupiter-engine:5.10.2"),
+        project.dependencies.create("org.junit.vintage:junit-vintage-engine:5.10.2")
+    )
+
+    hostTaskProvider.configure {
+      if (compileTask != null) {
+        val classDirs = compileTask.outputs.files.filter { dir ->
+          dir.isDirectory && (dir.path.contains("classes") || dir.name == "hostTest")
+        }
+        testClassesDirs = project.files(classDirs)
+        val runtimeConfig = configurations.findByName("androidHostTestRuntimeClasspath")
+          ?: configurations.findByName("androidUnitTestRuntimeClasspath")
+          ?: configurations.findByName("commonTestImplementation")
+        val baseClasspath = if (runtimeConfig != null) {
+          val artifactTypeAttr = org.gradle.api.attributes.Attribute.of("artifactType", String::class.java)
+          val resolvedJars = runtimeConfig.incoming.artifactView {
+            attributes { attribute(artifactTypeAttr, "jar") }
+            lenient(true)
+          }.files
+          project.files(resolvedJars).plus(project.files(classDirs))
+        } else {
+          project.files(classDirs)
+        }
+        classpath = hostLauncherConfig.plus(baseClasspath)
+        dependsOn(compileTask)
+        filter.isFailOnNoMatchingTests = false
+      } else if (existingTestTask != null) {
+        testClassesDirs = existingTestTask.testClassesDirs
+        classpath = hostLauncherConfig.plus(existingTestTask.classpath)
+        dependsOn(existingTestTask.testClassesDirs.buildDependencies)
+        filter.isFailOnNoMatchingTests = false
+        existingTestTask.filter.isFailOnNoMatchingTests = false
+      }
+    }
+  }
+
+  return hostTaskProvider
+}
+
+internal fun Project.resolveHostTestTaskName(override: String?): String {
+  return findOrRegisterHostTestTask(override).name
+}
+
+internal fun Project.findWasmTargets(): List<String> {
+  val kmp = extensions.findByName("kotlin") ?: return emptyList()
+  try {
+    @Suppress("UNCHECKED_CAST")
+    val targets = kmp.javaClass.getMethod("getTargets").invoke(kmp) as NamedDomainObjectCollection<Any>
+    return targets.filter { 
+      val name = (it as Named).name
+      val className = it.javaClass.name
+      name.contains("wasm", ignoreCase = true) || className.contains("Wasm", ignoreCase = true)
+    }.map { (it as Named).name }
+  } catch (_: Exception) { return emptyList() }
+}
+
+internal fun Project.findIosTargets(): List<String> {
+  val kmp = extensions.findByName("kotlin") ?: return emptyList()
+  try {
+    @Suppress("UNCHECKED_CAST")
+    val targets = kmp.javaClass.getMethod("getTargets").invoke(kmp) as NamedDomainObjectCollection<Any>
+    return targets.filter { 
+      val name = (it as Named).name
+      val className = it.javaClass.name
+      name.startsWith("ios", ignoreCase = true) || className.contains("KotlinNativeTarget", ignoreCase = true)
+    }.map { (it as Named).name }
+  } catch (_: Exception) { return emptyList() }
+}
+
+internal fun checkIosHostSupport(iosTargets: List<String>): Pair<Boolean, String?> {
+  val osName = (System.getProperty("parikshan.os.name") ?: System.getProperty("os.name")).orEmpty().lowercase()
+  if (!osName.contains("mac")) {
+    return false to "iOS target requires macOS host OS (current OS: ${System.getProperty("os.name")})"
+  }
+
+  val osArch = (System.getProperty("parikshan.os.arch") ?: System.getProperty("os.arch")).orEmpty().lowercase()
+  val isIntelMac = osArch.contains("x86") || osArch.contains("amd64")
+
+  val hasOnlyArm64Simulator = iosTargets.isNotEmpty() &&
+    iosTargets.all { it.contains("SimulatorArm64", ignoreCase = true) || it.contains("arm64", ignoreCase = true) } &&
+    iosTargets.none { it.contains("x64", ignoreCase = true) || it.contains("x86", ignoreCase = true) }
+
+  if (isIntelMac && hasOnlyArm64Simulator) {
+    return false to "Architecture mismatch: host is Intel x86_64 Mac, but configured target requires ARM64 iOS simulator (${iosTargets.joinToString()})"
+  }
+
+  return true to null
 }
 
 internal fun Project.resolveWasmDistributionTaskName(override: String?): String {
@@ -198,16 +342,11 @@ internal fun Project.resolveDesktopAppProject(
         if (configuredProject != null && configuredProject.tasks.names.contains(appJarTaskName)) {
             return configuredProject
         }
-        return configuredProject  // Return even if task not found, let caller handle error
+        return configuredProject
     }
     
-    // Step 2: Check current project
-    if (this.tasks.names.contains(appJarTaskName)) {
-        return this
-    }
-    
-    // Step 3: Check parent sibling (for nested projects like :app:shared → :app:desktopApp)
-    val parentPath = this.path.substringBeforeLast(":")
+    // Step 2: Check parent sibling (for nested projects like :app:shared → :app:desktopApp)
+    val parentPath = this.path.substringBeforeLast(":", "")
     if (parentPath.isNotEmpty()) {
         val possibleSiblings = listOf(
             "${parentPath}:desktopApp",
@@ -221,16 +360,20 @@ internal fun Project.resolveDesktopAppProject(
         }
     }
     
-    // Step 4: Check root level
+    // Step 3: Check root level subprojects (for flat projects like :shared → :desktopApp)
     val rootLevelApps = listOf(":desktopApp", ":desktop")
     for (appPath in rootLevelApps) {
         val app = rootProject.findProject(appPath)
-        if (app != null && app.tasks.names.contains(appJarTaskName)) {
+        if (app != null && app != this && app.tasks.names.contains(appJarTaskName)) {
             return app
         }
     }
     
-    // No desktop app found - return null for caller to handle error
+    // Step 4: Check current project
+    if (this.tasks.names.contains(appJarTaskName)) {
+        return this
+    }
+    
     return null
 }
 
@@ -248,13 +391,8 @@ internal fun Project.resolveWasmAppProject(
         return configuredProject
     }
 
-    // Step 2: Check current project (e.g., single-module where wasmJs is here)
-    if (this.tasks.names.contains(markerTaskName)) {
-        return this
-    }
-
-    // Step 3: Check parent sibling (e.g., :app:shared → :app:webApp)
-    val parentPath = this.path.substringBeforeLast(":")
+    // Step 2: Check parent sibling (e.g., :app:shared → :app:webApp)
+    val parentPath = this.path.substringBeforeLast(":", "")
     if (parentPath.isNotEmpty()) {
         val possibleSiblings = listOf(
             "${parentPath}:webApp",
@@ -268,13 +406,18 @@ internal fun Project.resolveWasmAppProject(
         }
     }
 
-    // Step 4: Check root level (e.g., :webApp at root)
+    // Step 3: Check root level subprojects (e.g., :shared → :webApp)
     val rootLevelApps = listOf(":webApp", ":web")
     for (appPath in rootLevelApps) {
         val app = rootProject.findProject(appPath)
-        if (app != null && app.tasks.names.contains(markerTaskName)) {
+        if (app != null && app != this && app.tasks.names.contains(markerTaskName)) {
             return app
         }
+    }
+
+    // Step 4: Check current project (e.g., single-module app where wasmJs is in current project)
+    if (this.tasks.names.contains(markerTaskName)) {
+        return this
     }
 
     return null
@@ -449,24 +592,24 @@ private fun String.maskKotlinCommentsAndLiterals(): String {
 
 internal fun Project.configureParikshanDependencies(isE2EActive: Boolean) {
   // Resolve version dynamically from loaded plugin class metadata.
-  val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.1"
+  val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.7"
 
   val hasKmp = pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform")
   if (hasKmp) {
-      addParikshanDependency("commonTestImplementation", ":parikshan", "io.github.aryapreetam:parikshan:$pluginVersion")
-      addParikshanDependency("commonTestImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client:$pluginVersion")
+      addParikshanDependency("commonTestImplementation", ":parikshan", "io.github.aryapreetam.parikshan:parikshan:$pluginVersion")
+      addParikshanDependency("commonTestImplementation", ":parikshan-client", "io.github.aryapreetam.parikshan:parikshan-client:$pluginVersion")
   } else if (pluginManager.hasPlugin("com.android.application")) {
-      addParikshanDependency("testImplementation", ":parikshan", "io.github.aryapreetam:parikshan-jvm:$pluginVersion")
-      addParikshanDependency("testImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client-jvm:$pluginVersion")
+      addParikshanDependency("testImplementation", ":parikshan", "io.github.aryapreetam.parikshan:parikshan:$pluginVersion")
+      addParikshanDependency("testImplementation", ":parikshan-client", "io.github.aryapreetam.parikshan:parikshan-client:$pluginVersion")
       addParikshanDependency("testImplementation", "org.junit.platform:junit-platform-launcher:1.10.2", "org.junit.platform:junit-platform-launcher:1.10.2")
       addParikshanDependency("testImplementation", "org.junit.vintage:junit-vintage-engine:5.10.2", "org.junit.vintage:junit-vintage-engine:5.10.2")
   }
 
-  if (!hasKmp) {
+  if (!hasKmp && !isE2EActive) {
       configurations.configureEach {
           if (name.contains("UnitTest", ignoreCase = true) || name.startsWith("test")) {
-              exclude(mapOf("group" to "io.github.aryapreetam", "module" to "parikshan-client"))
-              exclude(mapOf("group" to "io.github.aryapreetam", "module" to "parikshan"))
+              exclude(mapOf("group" to "io.github.aryapreetam.parikshan", "module" to "parikshan-client"))
+              exclude(mapOf("group" to "io.github.aryapreetam.parikshan", "module" to "parikshan"))
           }
       }
   } else {
@@ -475,12 +618,15 @@ internal fun Project.configureParikshanDependencies(isE2EActive: Boolean) {
               exclude(mapOf("group" to "org.jetbrains.kotlin", "module" to "kotlin-test-junit"))
           }
       }
+      tasks.withType(Test::class.java).configureEach {
+          filter.isFailOnNoMatchingTests = false
+      }
   }
 
   // The client engine is only injected into the production binary during active E2E tasks.
   if (isE2EActive) {
       if (hasKmp) {
-          addParikshanDependency("commonMainImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client:$pluginVersion")
+          addParikshanDependency("commonMainImplementation", ":parikshan-client", "io.github.aryapreetam.parikshan:parikshan-client:$pluginVersion")
       } else if (pluginManager.hasPlugin("com.android.application") || pluginManager.hasPlugin("com.android.library")) {
           try {
               val manifestDir = File(project.layout.buildDirectory.asFile.get(), "parikshan/manifest")
@@ -515,19 +661,19 @@ internal fun Project.configureParikshanDependencies(isE2EActive: Boolean) {
       
       // Inject server into all JVM targets
       findJvmTargets().forEach { targetName ->
-          addParikshanDependency("${targetName}MainImplementation", ":parikshan-server", "io.github.aryapreetam:parikshan-server:$pluginVersion")
+          addParikshanDependency("${targetName}MainImplementation", ":parikshan-server", "io.github.aryapreetam.parikshan:parikshan-server:$pluginVersion")
       }
 
       // Fallback for non-KMP or failed resolution
       if (configurations.findByName("jvmMainImplementation") != null) {
-          addParikshanDependency("jvmMainImplementation", ":parikshan-server", "io.github.aryapreetam:parikshan-server:$pluginVersion")
+          addParikshanDependency("jvmMainImplementation", ":parikshan-server", "io.github.aryapreetam.parikshan:parikshan-server:$pluginVersion")
       }
 
       val appProject = findAndroidAppProject()
       if (appProject != null) {
           appProject.configurations.configureEach {
               if (name == "androidTestImplementation") {
-                  appProject.addParikshanDependency("androidTestImplementation", ":parikshan-client", "io.github.aryapreetam:parikshan-client:$pluginVersion")
+                  appProject.addParikshanDependency("androidTestImplementation", ":parikshan-client", "io.github.aryapreetam.parikshan:parikshan-client:$pluginVersion")
                   appProject.addParikshanDependency("androidTestImplementation", "androidx.test:runner:1.6.2", "androidx.test:runner:1.6.2")
               }
           }
@@ -557,13 +703,17 @@ internal fun Project.findJvmTargets(): List<String> {
 }
 
 internal fun Project.addParikshanDependency(config: String, path: String, maven: String) {
-  val dep = rootProject.findProject(path)?.let { dependencies.project(mapOf("path" to it.path)) } ?: maven
+  val targetProject = rootProject.findProject(path)
+  val dep = targetProject?.let { dependencies.project(mapOf("path" to it.path)) } ?: maven
+  if (targetProject == null) {
+    logger.info("Parikshan: Project '$path' not found in rootProject '${rootProject.name}', resolving via Maven coordinates '$maven' (composite build substitution)")
+  }
   val configuration = configurations.findByName(config)
   if (configuration == null) {
-    logger.lifecycle("Parikshan: Configuration '$config' NOT found in project '${this.path}'")
+    logger.info("Parikshan: Configuration '$config' NOT found in project '${this.path}'")
     return
   }
-  logger.lifecycle("Parikshan: Adding dependency to project '${this.path}': configuration='$config', dependency='$dep'")
+  logger.info("Parikshan: Adding dependency to project '${this.path}': configuration='$config', dependency='$dep'")
   dependencies.add(config, dep)
 }
 
@@ -578,7 +728,7 @@ internal fun Project.registerE2eTestWithReport(
     description = "Generates a Parikshan E2E HTML report for the $target target."
     val resultsDir = layout.buildDirectory.dir("test-results/e2eTest/${target.lowercase()}")
     val reportsDir = layout.buildDirectory.dir("reports/tests/e2eTest/${target.lowercase()}")
-    inputs.dir(resultsDir)
+    inputs.dir(resultsDir).optional()
     outputs.dir(reportsDir)
     doLast {
       generateUnifiedReport(
@@ -815,6 +965,7 @@ internal fun parseSize(input: String?): Pair<Int, Int>? {
   val match = regex.matchEntire(input.trim()) ?: return null
   val width = match.groupValues[1].toIntOrNull() ?: return null
   val height = match.groupValues[2].toIntOrNull() ?: return null
+  if (width <= 0 || height <= 0) return null
   return Pair(width, height)
 }
 

@@ -134,11 +134,10 @@ internal object DesktopTargetConfigurer {
       finalizedBy(stopTaskName)
 
       configureE2eHostTestExecution(
-        hostTestClassesDirs = hostTestTask.get().testClassesDirs,
-        hostTestClasspath = hostTestTask.get().classpath,
+        hostTestTaskProvider = hostTestTask,
         e2eTestClasses = e2eTestClasses,
-        target = "Desktop",
-        logger = project.logger
+        target = capitalizedTarget,
+        logger = logger
       )
       systemProperty("parikshan.host", hostVal)
       doFirst {

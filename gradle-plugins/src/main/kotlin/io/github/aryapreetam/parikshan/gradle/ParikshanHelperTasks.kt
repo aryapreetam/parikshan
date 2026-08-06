@@ -14,6 +14,11 @@ import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.IgnoreEmptyDirectories
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -162,7 +167,19 @@ abstract class ParikshanStartIosTask : DefaultTask() {
     val originalIosAppDir = File(projVal).parentFile
     val generatedIosAppDir = File(buildDirFile, "parikshan/ios-host")
     generatedIosAppDir.deleteRecursively()
-    originalIosAppDir.copyRecursively(generatedIosAppDir)
+    generatedIosAppDir.mkdirs()
+
+    originalIosAppDir.walkTopDown()
+      .onEnter { dir -> dir.name != "build" && dir.name != ".gradle" && dir.name != "DerivedData" }
+      .forEach { file ->
+        val relativePath = file.relativeTo(originalIosAppDir)
+        val targetFile = File(generatedIosAppDir, relativePath.path)
+        if (file.isDirectory) {
+          targetFile.mkdirs()
+        } else {
+          runCatching { file.copyTo(targetFile, overwrite = true) }
+        }
+      }
 
     val absoluteGradlew = File(rootDirFile, "gradlew").absolutePath
     val javaHomeVal = System.getProperty("java.home") ?: System.getenv("JAVA_HOME") ?: ""
@@ -170,7 +187,7 @@ abstract class ParikshanStartIosTask : DefaultTask() {
     val gradlewShim = File(generatedIosAppDir, "gradlew")
     val shimContent = """
         #!/bin/sh
-        $javaHomeExport exec "$absoluteGradlew" -p "${rootDirFile.absolutePath}" --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.token=$tokenVal "${'$'}@"
+        $javaHomeExport exec "$absoluteGradlew" -p "${rootDirFile.absolutePath}" --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.targets=ios -Pparikshan.token=$tokenVal "${'$'}@"
         """.trimIndent()
     gradlewShim.writeText(shimContent)
     gradlewShim.setExecutable(true)
@@ -251,12 +268,26 @@ abstract class ParikshanStartIosTask : DefaultTask() {
     logger.lifecycle("Parikshan iOS: Waiting for server on port $activePort...")
     val deadline = System.currentTimeMillis() + 90_000
     var serverReady = false
+    var workingPort = activePort
     while (System.currentTimeMillis() <= deadline) {
-      if (postPing(activePort, tokenVal)) {
-        serverReady = true
-        break
+      for (candidatePort in activePort..(activePort + 20)) {
+        if (postPing(candidatePort, tokenVal)) {
+          serverReady = true
+          workingPort = candidatePort
+          break
+        }
       }
+      if (serverReady) break
       Thread.sleep(500)
+    }
+
+    val portFile = File(buildDirFile, "parikshan/ios-port.txt")
+    portFile.parentFile.mkdirs()
+    portFile.writeText(workingPort.toString())
+
+    if (workingPort != activePort) {
+      logger.lifecycle("Parikshan iOS: Server bound to port $workingPort (fallback from $activePort).")
+      System.setProperty("parikshan.port", workingPort.toString())
     }
 
     if (!serverReady) {
@@ -408,6 +439,10 @@ abstract class ParikshanPrepareIosSourceTask : DefaultTask() {
   @get:Internal
   abstract val iosProjectDir: DirectoryProperty
 
+  @get:InputDirectory
+  @get:Optional
+  abstract val iosMainDir: DirectoryProperty
+
   @get:OutputDirectory
   abstract val generatedDir: DirectoryProperty
 
@@ -471,32 +506,29 @@ abstract class ParikshanPrepareWasmSourceTask : DefaultTask() {
   @get:Internal
   abstract val projectDir: DirectoryProperty
 
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  @get:IgnoreEmptyDirectories
+  @get:Optional
+  abstract val sourceFiles: ConfigurableFileCollection
+
   @get:OutputDirectory
   abstract val generatedDir: DirectoryProperty
 
   @TaskAction
   fun run() {
     val genDirFile = generatedDir.get().asFile
-    val projectDirFile = projectDir.get().asFile
     genDirFile.deleteRecursively()
     genDirFile.mkdirs()
-    val sourceDirs = listOf(
-      File(projectDirFile, "src/webMain/kotlin"),
-      File(projectDirFile, "src/wasmJsMain/kotlin"),
-      File(projectDirFile, "src/jsMain/kotlin"),
-      File(projectDirFile, "src/commonMain/kotlin")
-    )
+    
     var copiedAny = false
-    for (srcDir in sourceDirs) {
-      if (srcDir.exists()) {
-        srcDir.copyRecursively(genDirFile, overwrite = true)
-        logger.lifecycle("Parikshan Wasm: Found source directory at ${srcDir.absolutePath}")
-        copiedAny = true
-        break
-      }
+    sourceFiles.files.filter { it.exists() }.forEach { srcDir ->
+      srcDir.copyRecursively(genDirFile, overwrite = true)
+      logger.lifecycle("Parikshan Wasm: Found and copied source directory at ${srcDir.absolutePath}")
+      copiedAny = true
     }
     if (!copiedAny) {
-      logger.warn("Parikshan Wasm: No source directories found in ${projectDirFile.absolutePath}")
+      logger.warn("Parikshan Wasm: No source directories found to copy.")
     }
     genDirFile.walkTopDown()
       .filter { it.isFile && it.extension == "kt" }

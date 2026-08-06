@@ -9,6 +9,9 @@ on:
       - '!debug/**'
     tags-ignore:
       - 'v*'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   workflow_dispatch:
     inputs:
       target_job:
@@ -21,44 +24,14 @@ on:
           - ios-issue-playground
           - ios-cmp-latest
           - ios-showcase
+          - ios-composables
           - desktop
           - wasm
           - android
-    paths:
-      # Run CI only when these files/directories change
-      - 'parikshan/**'
-      - 'samples/**'
-      - 'parikshan-core/**'
-      - 'parikshan-client/**'
-      - 'parikshan-server/**'
-      - 'gradle-plugins/**'
-      - 'build-logic/**'
-      - 'gradle/**'
-      - 'gradle.properties'
-      - 'settings.gradle.kts'
-      - 'build.gradle.kts'
-      - 'gradlew'
-      - 'gradlew.bat'
-      - '.github/workflows/ci.yml'
-      - '.github/workflows/push-ci.yml'
   pull_request:
-    paths:
-      # Same path filters for PRs
-      - 'parikshan/**'
-      - 'samples/**'
-      - 'parikshan-core/**'
-      - 'parikshan-client/**'
-      - 'parikshan-server/**'
-      - 'gradle-plugins/**'
-      - 'build-logic/**'
-      - 'gradle/**'
-      - 'gradle.properties'
-      - 'settings.gradle.kts'
-      - 'build.gradle.kts'
-      - 'gradlew'
-      - 'gradlew.bat'
-      - '.github/workflows/ci.yml'
-      - '.github/workflows/push-ci.yml'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
 
 permissions:
   contents: read

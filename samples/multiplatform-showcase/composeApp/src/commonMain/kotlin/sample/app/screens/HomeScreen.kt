@@ -14,8 +14,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import io.github.aryapreetam.composeapp.generated.resources.Res
-import io.github.aryapreetam.composeapp.generated.resources.parikshan_logo
+import sample.app.composeapp.generated.resources.Res
+import sample.app.composeapp.generated.resources.parikshan_logo
 import org.jetbrains.compose.resources.painterResource
 import sample.app.getPlatformName
 

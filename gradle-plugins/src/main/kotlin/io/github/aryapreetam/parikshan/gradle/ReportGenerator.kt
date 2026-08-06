@@ -168,7 +168,7 @@ internal fun generateUnifiedReport(
             status = "ignored"
           }
 
-          val existingVideoPaths = suiteVideoPaths.filter { File(it).exists() }
+          val existingVideoPaths = suiteVideoPaths.filter { File(it).let { f -> f.exists() && f.length() > 0L } }
           val videoPath = existingVideoPaths.firstOrNull { path ->
             path.contains(methodName)
           } ?: existingVideoPaths.firstOrNull { path ->

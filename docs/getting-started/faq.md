@@ -63,3 +63,25 @@ Playwright requires Chromium binaries to execute WasmJs tests in a browser. If t
    ```bash
    npx playwright install --with-deps chromium
    ```
+
+---
+
+### What does running e2eTest without --targets do?
+
+Running the `e2eTest` task without an explicit `--targets` argument runs tests across the project's configured targets (for example: `desktop`, `wasm`, `android`, `ios`). The plugin computes a default target list from the project configuration and uses it as the task's `targets` value.
+
+To run a single platform, pass a property when invoking Gradle:
+
+```bash
+./gradlew :samples:multiplatform-showcase:composeApp:e2eTest -Pparikshan.targets=wasm
+# or
+./gradlew :samples:multiplatform-showcase:composeApp:e2eTest --targets=wasm
+```
+
+If a Wasm test times out when running the default `e2eTest`, inspect the build logs for a lifecycle message that confirms instrumentation:
+
+```
+Parikshan: Wasm instrumentation REGISTERED for project: ':your:webApp'
+```
+
+If the message is present, the Wasm bridge was injected and the failure is likely a runtime issue. If the message is absent, re-run with `-Pparikshan.targets=wasm` or configure `parikshan.wasmAppProjectPath` so the plugin can locate your Wasm app project.

@@ -236,10 +236,23 @@ abstract class E2ETestTask : DefaultTask() {
       throw GradleException("No E2E test classes matched the filter pattern: '$testsPattern'")
     }
 
-    val activeTargets = targets.split(",")
+    val validLayouts = setOf("default", "side-by-side")
+    val rawLayout = layout.trim().lowercase()
+    if (rawLayout !in validLayouts) {
+      throw GradleException("Parikshan: Invalid layout option '$layout'. Valid options: ${validLayouts.joinToString()}")
+    }
+
+    val rawTargetTokens = targets.split(",")
       .map { it.trim().lowercase() }
       .filter { it.isNotEmpty() }
-      
+
+    val canonicalTokens = rawTargetTokens.map { when (it) { "jvm" -> "desktop"; "web" -> "wasm"; else -> it } }
+    val duplicates = rawTargetTokens.filter { token -> rawTargetTokens.count { it == token } > 1 }.distinct()
+    if (duplicates.isNotEmpty()) {
+      throw GradleException("Parikshan: Duplicate target(s) specified in --targets='$targets': ${duplicates.joinToString()}. Targets must be distinct.")
+    }
+
+    val activeTargets = canonicalTokens.distinct()
     if (activeTargets.isEmpty()) {
       throw GradleException("No execution targets specified in --targets")
     }
@@ -909,6 +922,13 @@ abstract class E2ETestTask : DefaultTask() {
             }
             if (startExit != 0) {
               return TargetResult("ios", false, "Failed to start iOS app (exit code $startExit). Check build/parikshan/logs/ios-start.log")
+            }
+            val portFile = File(buildDir.get().asFile, "parikshan/ios-port.txt")
+            if (portFile.exists()) {
+              val actualPort = portFile.readText().trim().toIntOrNull()
+              if (actualPort != null) {
+                activePort = actualPort
+              }
             }
             writeSession("ios", TargetSession(token.get(), activePort, System.currentTimeMillis()))
           }

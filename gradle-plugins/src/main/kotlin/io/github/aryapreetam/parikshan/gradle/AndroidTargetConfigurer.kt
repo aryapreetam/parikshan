@@ -107,11 +107,10 @@ internal object AndroidTargetConfigurer {
       dependsOn(startAndroidAppTask)
       finalizedBy("stopParikshanAndroidApp")
       configureE2eHostTestExecution(
-        hostTestClassesDirs = hostTestTask.get().testClassesDirs,
-        hostTestClasspath = hostTestTask.get().classpath,
+        hostTestTaskProvider = hostTestTask,
         e2eTestClasses = e2eTestClasses,
         target = "Android",
-        logger = project.logger
+        logger = logger
       )
       systemProperty("parikshan.target", "android")
       systemProperty("parikshan.host", "127.0.0.1")

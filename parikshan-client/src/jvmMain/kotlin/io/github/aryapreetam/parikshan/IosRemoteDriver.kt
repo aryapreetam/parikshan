@@ -267,6 +267,6 @@ internal class IosRemoteDriver private constructor(
  * @suppress
  */
 data class IosDriverConfig(
-  val host: String = "127.0.0.1",
-  val port: Int = 9878
+  val host: String = System.getProperty("parikshan.host") ?: "127.0.0.1",
+  val port: Int = System.getProperty("parikshan.port")?.toIntOrNull() ?: 9878
 )

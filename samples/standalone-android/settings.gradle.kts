@@ -1,4 +1,5 @@
 pluginManagement {
+  includeBuild("../../gradle-plugins")
   repositories {
     mavenLocal()
     gradlePluginPortal()
@@ -20,6 +21,8 @@ dependencyResolutionManagement {
     mavenCentral()
   }
 }
+
+includeBuild("../../")
 
 rootProject.name = "standalone-android"
 include(":app")

@@ -71,6 +71,7 @@ public final class io/github/aryapreetam/parikshan/E2ETestScope {
 	public final fun hasVisibleNode (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun input (Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun input (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun onTarget (Lio/github/aryapreetam/parikshan/Target;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun pressBack (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun pressHome (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun relaunchApp (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -142,6 +143,17 @@ public final class io/github/aryapreetam/parikshan/SelectorResolutionKt {
 	public static synthetic fun resolveNode$default (Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/util/List;ZILjava/lang/Object;)Lio/github/aryapreetam/parikshan/ResolvedSelector;
 }
 
+public final class io/github/aryapreetam/parikshan/Target : java/lang/Enum {
+	public static final field Android Lio/github/aryapreetam/parikshan/Target;
+	public static final field Desktop Lio/github/aryapreetam/parikshan/Target;
+	public static final field Ios Lio/github/aryapreetam/parikshan/Target;
+	public static final field Wasm Lio/github/aryapreetam/parikshan/Target;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public final fun getPlatformName ()Ljava/lang/String;
+	public static fun valueOf (Ljava/lang/String;)Lio/github/aryapreetam/parikshan/Target;
+	public static fun values ()[Lio/github/aryapreetam/parikshan/Target;
+}
+
 public abstract interface class io/github/aryapreetam/parikshan/TestDriver {
 	public abstract fun close (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun getTargetPlatform ()Ljava/lang/String;
@@ -149,6 +161,7 @@ public abstract interface class io/github/aryapreetam/parikshan/TestDriver {
 	public fun reset (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun resolveArtifactPath (Ljava/lang/String;)Ljava/lang/String;
 	public abstract fun send (Lio/github/aryapreetam/parikshan/protocol/Command;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun setRouteTarget (Ljava/lang/String;)V
 	public fun updateVirtualCursor (DD)V
 }
 
@@ -156,6 +169,7 @@ public final class io/github/aryapreetam/parikshan/TestDriver$DefaultImpls {
 	public static fun relaunchApp (Lio/github/aryapreetam/parikshan/TestDriver;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun reset (Lio/github/aryapreetam/parikshan/TestDriver;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun resolveArtifactPath (Lio/github/aryapreetam/parikshan/TestDriver;Ljava/lang/String;)Ljava/lang/String;
+	public static fun setRouteTarget (Lio/github/aryapreetam/parikshan/TestDriver;Ljava/lang/String;)V
 	public static fun updateVirtualCursor (Lio/github/aryapreetam/parikshan/TestDriver;DD)V
 }
 

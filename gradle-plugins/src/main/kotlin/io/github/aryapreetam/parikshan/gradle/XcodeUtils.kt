@@ -10,34 +10,38 @@ import java.io.File
 import javax.inject.Inject
 
 internal fun Project.discoverIosXcodeProject(): File? {
-    // 1. Search in current project directory
-    val inProject = projectDir.walkTopDown().maxDepth(3)
-        .filter { it.isDirectory && it.extension == "xcodeproj" && !it.absolutePath.contains(".gradle") && !it.absolutePath.contains("build") }
-        .firstOrNull()
-    if (inProject != null) return inProject
+  // Candidate relative folder names to probe in order of priority
+  val candidateFolderNames = listOf("iosApp", "ios", "iOS", "ios-app", "ios_app", "apple")
+  val baseDirs = listOfNotNull(projectDir, projectDir.parentFile, projectDir.parentFile?.parentFile, rootDir).distinct()
 
-    // 2. Search in parent directory
-    val parentDir = projectDir.parentFile
-    if (parentDir != null) {
-        val inParent = parentDir.walkTopDown().maxDepth(3)
-            .filter { it.isDirectory && it.extension == "xcodeproj" && !it.absolutePath.contains(".gradle") && !it.absolutePath.contains("build") }
-            .firstOrNull()
-        if (inParent != null) return inParent
+  // 1. Direct probe for standard .xcodeproj locations inside candidate folders
+  for (base in baseDirs) {
+    for (folderName in candidateFolderNames) {
+      val folder = File(base, folderName)
+      if (folder.exists() && folder.isDirectory) {
+        val xcodeProj = folder.listFiles()?.firstOrNull { it.isDirectory && it.extension == "xcodeproj" }
+        if (xcodeProj != null) return xcodeProj
+      }
     }
+  }
 
-    // 3. Search in parent's parent directory
-    val grandParentDir = parentDir?.parentFile
-    if (grandParentDir != null) {
-        val inGrandParent = grandParentDir.walkTopDown().maxDepth(3)
-            .filter { it.isDirectory && it.extension == "xcodeproj" && !it.absolutePath.contains(".gradle") && !it.absolutePath.contains("build") }
-            .firstOrNull()
-        if (inGrandParent != null) return inGrandParent
+  // 2. Direct probe for any .xcodeproj directly at root of baseDirs
+  for (base in baseDirs) {
+    val xcodeProj = base.listFiles()?.firstOrNull { it.isDirectory && it.extension == "xcodeproj" }
+    if (xcodeProj != null) return xcodeProj
+  }
+
+  // 3. Fallback: Controlled single-level child directory check (excluding build, Pods, .gradle, node_modules)
+  val ignoredNames = setOf("build", ".gradle", ".idea", "node_modules", "Pods", "DerivedData", "bin")
+  for (base in baseDirs) {
+    val children = base.listFiles()?.filter { it.isDirectory && it.name !in ignoredNames && !it.name.startsWith(".") } ?: emptyList()
+    for (child in children) {
+      val xcodeProj = child.listFiles()?.firstOrNull { it.isDirectory && it.extension == "xcodeproj" }
+      if (xcodeProj != null) return xcodeProj
     }
+  }
 
-    // 4. Fallback to walking rootDir
-    return rootDir.walkTopDown()
-        .filter { it.isDirectory && it.extension == "xcodeproj" && !it.absolutePath.contains(".gradle") && !it.absolutePath.contains("build") }
-        .firstOrNull()
+  return null
 }
 
 abstract class XcodeBundleIdValueSource : ValueSource<String, XcodeBundleIdValueSource.Parameters> {
@@ -50,13 +54,20 @@ abstract class XcodeBundleIdValueSource : ValueSource<String, XcodeBundleIdValue
   abstract val execOperations: ExecOperations
 
   override fun obtain(): String? {
+    val isMac = System.getProperty("os.name").orEmpty().lowercase().contains("mac")
+    if (!isMac) return null
+
     val projectFile = parameters.xcodeProject.orNull ?: return null
+    if (!projectFile.exists()) return null
+
     val schemeName = parameters.scheme.orNull ?: return null
     return try {
       val outputStream = ByteArrayOutputStream()
+      val errorStream = ByteArrayOutputStream()
       execOperations.exec {
-        commandLine("xcodebuild", "-project", projectFile.absolutePath, "-scheme", schemeName, "-sdk", "iphonesimulator", "-showBuildSettings")
+        commandLine("xcodebuild", "-project", projectFile.absolutePath, "-scheme", schemeName, "-destination", "generic/platform=iOS", "-showBuildSettings")
         standardOutput = outputStream
+        errorOutput = errorStream
         isIgnoreExitValue = true
       }
       val output = outputStream.toString()

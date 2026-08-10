@@ -304,7 +304,7 @@ internal object AndroidTargetConfigurer {
         val serials = readyDevices.joinToString { it.serial }
         throw GradleException(
           "Parikshan Android: Multiple Android devices/emulators are connected: $serials. " +
-            "Set `-Pparikshan.android.serial=<serial>` to choose one."
+            "Specify a target using `--android-device=<serial>`, `--device=<serial>`, or `-Pparikshan.android.serial=<serial>`."
         )
       }
 

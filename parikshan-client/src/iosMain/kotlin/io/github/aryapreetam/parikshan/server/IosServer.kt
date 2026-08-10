@@ -313,7 +313,8 @@ object IosServer {
       is Command.Shutdown -> Response.Ok(command.id)
       is Command.Ping -> Response.Ok(command.id)
       is Command.Reset -> {
-          Response.Ok(command.id)
+        pumpRunLoop(iterations = 10, intervalSeconds = 0.05)
+        Response.Ok(command.id)
       }
       else -> Response.Ok(command.id)
     }

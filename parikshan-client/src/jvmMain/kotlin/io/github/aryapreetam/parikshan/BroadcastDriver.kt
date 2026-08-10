@@ -44,22 +44,27 @@ internal class BroadcastDriver(
       val primaryDriver = targetDrivers.first()
 
       // Phase 1: Resolve per-target coordinates in parallel
+      val primaryTreeRes = runCatching { primaryDriver.send(Command.GetTree(id = "${command.id}_tree_primary")) }.getOrNull()
+      val primaryNodes = (primaryTreeRes as? Response.Tree)?.nodes ?: emptyList()
+
+      val primaryNode = primaryNodes
+        .filter { n ->
+          (n.tag.isNotEmpty() || !n.text.isNullOrEmpty()) &&
+              command.fromX >= n.bounds.left && command.fromX <= n.bounds.right &&
+              command.fromY >= n.bounds.top && command.fromY <= n.bounds.bottom
+        }
+        .minByOrNull { n -> n.bounds.width * n.bounds.height }
+
       val resolvedCommands = targetDrivers.map { driver ->
         driver to async(Dispatchers.IO) {
-          val primaryTreeRes = runCatching { primaryDriver.send(Command.GetTree(id = "${command.id}_tree_primary")) }.getOrNull()
-          val primaryNodes = (primaryTreeRes as? Response.Tree)?.nodes ?: emptyList()
-
-          val primaryNode = primaryNodes
-            .filter { n ->
-              (n.tag.isNotEmpty() || !n.text.isNullOrEmpty()) &&
-                  command.fromX >= n.bounds.left && command.fromX <= n.bounds.right &&
-                  command.fromY >= n.bounds.top && command.fromY <= n.bounds.bottom
-            }
-            .minByOrNull { n -> n.bounds.width * n.bounds.height }
-
           if (primaryNode != null && primaryNode.bounds.width > 0 && primaryNode.bounds.height > 0) {
-            val targetTreeRes = runCatching { driver.send(Command.GetTree(id = "${command.id}_tree_${driver.targetPlatform}")) }.getOrNull()
-            val targetNodes = (targetTreeRes as? Response.Tree)?.nodes ?: emptyList()
+            val targetNodes = if (driver == primaryDriver) {
+              primaryNodes
+            } else {
+              val targetTreeRes = runCatching { driver.send(Command.GetTree(id = "${command.id}_tree_${driver.targetPlatform}")) }.getOrNull()
+              (targetTreeRes as? Response.Tree)?.nodes ?: emptyList()
+            }
+
             val targetNode = targetNodes.firstOrNull { n ->
               (primaryNode.tag.isNotEmpty() && n.tag == primaryNode.tag) ||
                   (!primaryNode.text.isNullOrEmpty() && n.text == primaryNode.text)
@@ -151,6 +156,22 @@ internal class BroadcastDriver(
       if (r != null && r !is Response.Error) r else null
     }
     successfulResponse ?: Response.Error(id = command.id, message = "All targets failed to execute command: $command")
+  }
+
+  override suspend fun executeParallel(block: suspend (TestDriver) -> Unit): Unit = coroutineScope {
+    val targetDrivers = getTargetDrivers()
+    if (targetDrivers.size <= 1) {
+      val driver = targetDrivers.firstOrNull()
+      if (driver != null) {
+        block(driver)
+      }
+    } else {
+      targetDrivers.map { driver ->
+        async(Dispatchers.IO) {
+          block(driver)
+        }
+      }.awaitAll()
+    }
   }
 
   override suspend fun relaunchApp() = coroutineScope {

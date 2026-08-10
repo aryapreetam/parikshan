@@ -275,6 +275,19 @@ internal object DesktopProcess {
     process = null
   }
 
+  fun isProcessAlive(manifestFile: File?): Boolean {
+    if (process != null) {
+      return process?.isAlive == true
+    }
+    if (manifestFile == null || !manifestFile.exists()) {
+      return false
+    }
+    val pid = runCatching {
+      Properties().apply { manifestFile.inputStream().use(::load) }.getProperty("pid")?.toLongOrNull()
+    }.getOrNull() ?: return false
+    return ProcessHandle.of(pid).map { it.isAlive }.orElse(false)
+  }
+
   private fun writeLaunchManifest(
     manifestFile: File,
     pid: Long,

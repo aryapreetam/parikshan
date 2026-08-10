@@ -11,6 +11,12 @@ for arg in "$@"; do
   fi
 done
 
+# Helper to run gradlew commands
+run_gradle() {
+  echo "==> Executing: gradlew $*..."
+  "${PARIKSHAN_ROOT}/gradlew" "$@"
+}
+
 # Helper to verify required tasks are present in project's task list
 verify_tasks_exist() {
   local dir_flag="$1"
@@ -36,37 +42,49 @@ echo "============================================================="
 # 1. Framework Library Unit Tests
 # -------------------------------------------------------------
 echo "==> Step 1: Running unit tests across library modules..."
-"${PARIKSHAN_ROOT}/gradlew" :parikshan-core:jvmTest :parikshan-server:test :parikshan-client:jvmTest :gradle-plugins:test
+run_gradle :parikshan-core:jvmTest :parikshan-server:test :parikshan-client:jvmTest :gradle-plugins:test --parallel   
 
 # -------------------------------------------------------------
 # 2. Sample E2E Suites (Composite Builds - no publishToMavenLocal needed)
 # -------------------------------------------------------------
 echo "==> Step 2a: Testing multiplatform-showcase..."
 verify_tasks_exist "" ":samples:multiplatform-showcase:composeApp" "e2eTest" "e2eJvmTest" "e2eWasmTest" "e2eAndroidTest" "e2eIosTest"
-"${PARIKSHAN_ROOT}/gradlew" :samples:multiplatform-showcase:composeApp:e2eTest --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"
+echo "==> Verifying if target specific tasks work..."
+run_gradle :samples:multiplatform-showcase:composeApp:e2eJvmTest --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"
+run_gradle :samples:multiplatform-showcase:composeApp:e2eWasmTest --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"
+run_gradle :samples:multiplatform-showcase:composeApp:e2eAndroidTest --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"
+run_gradle :samples:multiplatform-showcase:composeApp:e2eIosTest --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"
+echo "==> Running all tests for all target...(verify e2eTest)"
+run_gradle :samples:multiplatform-showcase:composeApp:e2eTest
+echo "==> Verifying sync mode..."
+run_gradle :samples:multiplatform-showcase:composeApp:e2eTest --tests="sample.app.FormIntegrationTest.testSliderDrag" --sync
+echo "==> Verifying watch mode..."
+"${PARIKSHAN_ROOT}/scripts/verify-watch-mode.sh"
+echo "==> Verifying watch mode with sync enabled..."
+"${PARIKSHAN_ROOT}/scripts/verify-watch-mode.sh" --sync
 
 echo "==> Step 2b: Testing cmp-latest..."
 verify_tasks_exist "-p samples/cmp-latest" ":app:shared" "e2eTest" "e2eJvmTest" "e2eWasmTest" "e2eAndroidTest"
-"${PARIKSHAN_ROOT}/gradlew" -p samples/cmp-latest :app:shared:e2eTest
+run_gradle -p samples/cmp-latest :app:shared:e2eTest
 
 echo "==> Step 2c: Testing composables-sample..."
 verify_tasks_exist "-p samples/composables-sample" ":shared" "e2eTest" "e2eJvmTest" "e2eWasmTest" "e2eAndroidTest"
-"${PARIKSHAN_ROOT}/gradlew" -p samples/composables-sample :shared:e2eTest
+run_gradle -p samples/composables-sample :shared:e2eTest
 
 echo "==> Step 2d: Testing issue-playground..."
 verify_tasks_exist "-p samples/issue-playground" ":shared" "e2eTest" "e2eJvmTest" "e2eWasmTest" "e2eAndroidTest"
-"${PARIKSHAN_ROOT}/gradlew" -p samples/issue-playground :shared:e2eTest
+run_gradle -p samples/issue-playground :shared:e2eTest
 
 echo "==> Step 2e: Testing standalone-android..."
 verify_tasks_exist "-p samples/standalone-android" ":app" "e2eTest" "e2eAndroidTest"
-"${PARIKSHAN_ROOT}/gradlew" -p samples/standalone-android :app:e2eTest
+run_gradle -p samples/standalone-android :app:e2eTest
 
 # -------------------------------------------------------------
 # 3. Publish to Maven Local (Required ONLY for external kmp-mobile)
 # -------------------------------------------------------------
 if [ "${PUBLISH_MAVEN}" = true ]; then
   echo "==> Step 2: Publishing Parikshan library to Maven Local..."
-  "${PARIKSHAN_ROOT}/gradlew" publishToMavenLocal
+  run_gradle publishToMavenLocal
 else
   echo "==> Step 2: Skipping publishToMavenLocal (pass --publish to enable)."
 fi

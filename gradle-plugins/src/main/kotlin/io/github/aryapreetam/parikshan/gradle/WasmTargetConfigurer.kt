@@ -37,10 +37,9 @@ internal object WasmTargetConfigurer {
           host = "127.0.0.1",
           logger = logger
         )
+        val boundPort = WasmServer.start(resolvedPort, wasmOutputDirVal)
         wasmPortFileVal.parentFile.mkdirs()
-        wasmPortFileVal.writeText(resolvedPort.toString())
-
-        WasmServer.start(resolvedPort, wasmOutputDirVal)
+        wasmPortFileVal.writeText(boundPort.toString())
       }
     }
 
@@ -126,6 +125,14 @@ internal object WasmServer {
     }
     val http = s ?: throw IllegalStateException("Could not bind WasmServer to any port in range $requestedPort..${requestedPort + 20}")
     http.createContext("/") { ex ->
+      if (ex.requestURI.path == "/health") {
+        val bytes = "{\"status\":\"health\"}".toByteArray()
+        ex.responseHeaders.add("Content-Type", "application/json")
+        ex.sendResponseHeaders(200, bytes.size.toLong())
+        ex.responseBody.write(bytes)
+        ex.close()
+        return@createContext
+      }
       val path = if (ex.requestURI.path == "/") "/index.html" else ex.requestURI.path
       val file = File(root, path.removePrefix("/"))
       if (file.exists() && file.isFile) {

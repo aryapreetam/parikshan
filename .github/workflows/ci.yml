@@ -195,6 +195,74 @@ jobs:
           path: samples/multiplatform-showcase/composeApp/build/parikshan/videos/wasm/
           if-no-files-found: ignore
 
+  e2e-sync:
+    name: E2E Sync (JVM + Wasm)
+    runs-on: ubuntu-latest
+    needs: [ unit-tests ]
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'sync')"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+      - name: Setup Desktop E2E Environment
+        uses: aryapreetam/parikshan-desktop-action@v1
+        with:
+          command: 'echo "Desktop environment setup complete."'
+      - name: Setup WASM E2E Environment
+        uses: aryapreetam/parikshan-wasm-action@v1
+        with:
+          command: 'echo "WASM environment setup complete."'
+      - name: Run Parikshan Synchronized E2E tests
+        run: |
+          xvfb-run ./gradlew :samples:multiplatform-showcase:composeApp:e2eTest --targets=jvm,wasm --tests="sample.app.FormIntegrationTest.testSliderDrag" --sync --window-size=360x720 --layout=side-by-side -Dparikshan.video.enabled=true --no-configuration-cache
+      - name: Upload Sync Videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parikshan-sync-videos
+          path: samples/multiplatform-showcase/composeApp/build/parikshan/videos/
+          if-no-files-found: ignore
+
+  e2e-watch-script:
+    name: E2E Watch Verification Script
+    runs-on: ubuntu-latest
+    needs: [ unit-tests ]
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'watch-script')"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+      - name: Setup Desktop E2E Environment
+        uses: aryapreetam/parikshan-desktop-action@v1
+        with:
+          command: 'echo "Desktop setup complete."'
+      - name: Setup WASM E2E Environment
+        uses: aryapreetam/parikshan-wasm-action@v1
+        with:
+          command: 'echo "WASM setup complete."'
+      - name: Run Watch Mode Verification Script
+        run: |
+          xvfb-run ./scripts/verify-watch-mode.sh
+      - name: Upload Watch Script Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parikshan-watch-script-logs
+          path: build/parikshan/logs/
+          if-no-files-found: ignore
+
   e2e-ios-showcase:
     name: E2E iOS Showcase
     runs-on: macos-latest

@@ -28,6 +28,8 @@ on:
           - desktop
           - wasm
           - android
+          - sync
+          - watch-script
   pull_request:
     paths-ignore:
       - '**.md'

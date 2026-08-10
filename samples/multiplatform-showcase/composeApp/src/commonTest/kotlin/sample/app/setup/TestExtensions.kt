@@ -4,7 +4,6 @@ import io.github.aryapreetam.parikshan.E2ETestScope
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.protocol.atIndex
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
-import sample.app.scrollUntilVisible
 import kotlinx.coroutines.delay
 import kotlin.math.cos
 import kotlin.math.sin

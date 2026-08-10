@@ -43,6 +43,7 @@ public final class io/github/aryapreetam/parikshan/E2ETestLifecycle$DefaultImpls
 }
 
 public final class io/github/aryapreetam/parikshan/E2ETestScope {
+	public fun <init> (Lio/github/aryapreetam/parikshan/TestDriver;Lio/github/aryapreetam/parikshan/E2ETestConfig;)V
 	public final fun artifactPath (Ljava/lang/String;)Ljava/lang/String;
 	public final fun assertContains (Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun assertContains (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -65,6 +66,7 @@ public final class io/github/aryapreetam/parikshan/E2ETestScope {
 	public static synthetic fun drag$default (Lio/github/aryapreetam/parikshan/E2ETestScope;DDDDJLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun drag$default (Lio/github/aryapreetam/parikshan/E2ETestScope;Lio/github/aryapreetam/parikshan/protocol/Selector;DDJLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun drag$default (Lio/github/aryapreetam/parikshan/E2ETestScope;Ljava/lang/String;DDJLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun executeParallel (Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun getTargetPlatform ()Ljava/lang/String;
 	public final fun getTree (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun hasVisibleNode (Lio/github/aryapreetam/parikshan/protocol/Selector;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -156,6 +158,7 @@ public final class io/github/aryapreetam/parikshan/Target : java/lang/Enum {
 
 public abstract interface class io/github/aryapreetam/parikshan/TestDriver {
 	public abstract fun close (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun executeParallel (Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun getTargetPlatform ()Ljava/lang/String;
 	public fun relaunchApp (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun reset (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -166,6 +169,7 @@ public abstract interface class io/github/aryapreetam/parikshan/TestDriver {
 }
 
 public final class io/github/aryapreetam/parikshan/TestDriver$DefaultImpls {
+	public static fun executeParallel (Lio/github/aryapreetam/parikshan/TestDriver;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun relaunchApp (Lio/github/aryapreetam/parikshan/TestDriver;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun reset (Lio/github/aryapreetam/parikshan/TestDriver;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun resolveArtifactPath (Lio/github/aryapreetam/parikshan/TestDriver;Ljava/lang/String;)Ljava/lang/String;

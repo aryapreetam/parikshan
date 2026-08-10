@@ -542,7 +542,7 @@ class ParikshanPlugin : Plugin<Project> {
         val appProject = project.findAndroidAppProject()
         val appBuildDir = appProject?.layout?.buildDirectory?.orNull?.asFile ?: project.layout.buildDirectory.get().asFile
         this.androidApkDir.set(File(appBuildDir, "outputs/apk/debug"))
-        this.iosAppDir.set(File(appBuildDir, "cocoapods/synthetic/IOS/build/Release-iphonesimulator"))
+        this.iosAppDir.set(File(project.layout.buildDirectory.get().asFile, "parikshan/ios-build/Build/Products/Debug-iphonesimulator"))
       }
 
       project.tasks.configureEach {

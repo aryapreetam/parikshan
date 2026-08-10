@@ -74,6 +74,9 @@ internal object IosTargetConfigurer {
     stopIosAppTask.configure {
       group = "verification"
       bundleId.set(iosBundleIdProvider)
+      simulatorUdid.set(project.provider {
+        resolveIosRuntimeProperty("device") ?: resolveIosRuntimeProperty("serial") ?: resolveIosRuntimeProperty("parikshan.ios.device") ?: "booted"
+      })
     }
 
     val startIosAppTask = project.tasks.register("startIosApp", ParikshanStartIosTask::class.java)

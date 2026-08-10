@@ -62,10 +62,40 @@ abstract class ParikshanStopIosTask : DefaultTask() {
 
   @TaskAction
   fun run() {
-    val udid = simulatorUdid.orNull
-    if (!udid.isNullOrBlank()) {
-      ProcessBuilder("xcrun", "simctl", "terminate", udid, bundleId.get()).start().waitFor()
-      logger.lifecycle("Parikshan iOS: App terminated")
+    val bId = bundleId.orNull
+    if (bId.isNullOrBlank()) return
+
+    val rawDevice = simulatorUdid.orNull ?: "booted"
+    val udid = resolveUdid(rawDevice) ?: "booted"
+
+    runCatching {
+      ProcessBuilder("xcrun", "simctl", "terminate", udid, bId).start().waitFor()
+      logger.lifecycle("Parikshan iOS: App '$bId' terminated")
+    }
+  }
+
+  private fun resolveUdid(rawDevice: String): String? {
+    if (rawDevice.contains("-") && rawDevice.length >= 30) return rawDevice
+    return try {
+      val process = ProcessBuilder("xcrun", "simctl", "list", "devices", "available").start()
+      val output = process.inputStream.bufferedReader().readText()
+      process.waitFor()
+      val devices = mutableListOf<Triple<String, String, Boolean>>()
+      output.lineSequence().forEach { line ->
+        if (line.contains("(")) {
+          val name = line.substringBefore("(").trim()
+          val u = line.substringAfter("(").substringBefore(")")
+          val state = line.substringAfterLast("(").substringBefore(")")
+          if (name.isNotEmpty() && u.isNotEmpty() && u.contains("-")) {
+            devices += Triple(name, u, state.contains("Booted", ignoreCase = true))
+          }
+        }
+      }
+      devices.firstOrNull { (rawDevice == "booted" && it.third) || rawDevice == it.first || rawDevice == it.second }?.second
+        ?: devices.firstOrNull { it.third }?.second
+        ?: "booted"
+    } catch (_: Throwable) {
+      "booted"
     }
   }
 }
@@ -187,7 +217,7 @@ abstract class ParikshanStartIosTask : DefaultTask() {
     val gradlewShim = File(generatedIosAppDir, "gradlew")
     val shimContent = """
         #!/bin/sh
-        $javaHomeExport exec "$absoluteGradlew" -p "${rootDirFile.absolutePath}" --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.targets=ios -Pparikshan.token=$tokenVal "${'$'}@"
+        $javaHomeExport exec "$absoluteGradlew" -p "${rootDirFile.absolutePath}" --no-daemon --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.targets=ios -Pparikshan.token=$tokenVal "${'$'}@"
         """.trimIndent()
     gradlewShim.writeText(shimContent)
     gradlewShim.setExecutable(true)
@@ -268,27 +298,18 @@ abstract class ParikshanStartIosTask : DefaultTask() {
     logger.lifecycle("Parikshan iOS: Waiting for server on port $activePort...")
     val deadline = System.currentTimeMillis() + 90_000
     var serverReady = false
-    var workingPort = activePort
+    val workingPort = activePort
     while (System.currentTimeMillis() <= deadline) {
-      for (candidatePort in activePort..(activePort + 20)) {
-        if (postPing(candidatePort, tokenVal)) {
-          serverReady = true
-          workingPort = candidatePort
-          break
-        }
+      if (postPing(activePort, tokenVal)) {
+        serverReady = true
+        break
       }
-      if (serverReady) break
       Thread.sleep(500)
     }
 
     val portFile = File(buildDirFile, "parikshan/ios-port.txt")
     portFile.parentFile.mkdirs()
     portFile.writeText(workingPort.toString())
-
-    if (workingPort != activePort) {
-      logger.lifecycle("Parikshan iOS: Server bound to port $workingPort (fallback from $activePort).")
-      System.setProperty("parikshan.port", workingPort.toString())
-    }
 
     if (!serverReady) {
       val processName = appBundle.nameWithoutExtension

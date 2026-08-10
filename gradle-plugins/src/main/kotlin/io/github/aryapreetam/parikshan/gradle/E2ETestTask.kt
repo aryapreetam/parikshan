@@ -257,8 +257,27 @@ abstract class E2ETestTask : DefaultTask() {
       throw GradleException("No execution targets specified in --targets")
     }
 
-    val hasAndroid = activeTargets.contains("android")
-    val hasIos = activeTargets.contains("ios")
+    val isMac = System.getProperty("os.name").lowercase().contains("mac")
+    val effectiveTargets = activeTargets.toMutableList()
+
+    if (effectiveTargets.contains("ios")) {
+      if (!isMac) {
+        val isExplicitIosOnly = (rawTargetTokens == listOf("ios"))
+        if (isExplicitIosOnly) {
+          throw GradleException("Parikshan iOS: Cannot run iOS E2E tests on non-macOS operating system '${System.getProperty("os.name")}'.")
+        } else {
+          logger.lifecycle("Parikshan: Host OS is not macOS. Skipping iOS target execution.")
+          effectiveTargets.remove("ios")
+        }
+      }
+    }
+
+    if (effectiveTargets.isEmpty()) {
+      throw GradleException("No runnable execution targets available for this operating system.")
+    }
+
+    val hasAndroid = effectiveTargets.contains("android")
+    val hasIos = effectiveTargets.contains("ios")
 
     var resolvedAndroidSerial: String? = null
     var resolvedIosDevice: String? = null
@@ -300,7 +319,7 @@ abstract class E2ETestTask : DefaultTask() {
       }
     }
 
-    val finalAndroidSerial = resolvedAndroidSerial
+    val initialAndroidSerial = resolvedAndroidSerial
       ?: gradleDevice.orNull?.takeIf { it.isNotBlank() }
       ?: gradleSerial.orNull?.takeIf { it.isNotBlank() }
       ?: gradleAndroidSerial.orNull?.takeIf { it.isNotBlank() }
@@ -308,19 +327,45 @@ abstract class E2ETestTask : DefaultTask() {
 
     val resolvedHost = host.getOrElse("127.0.0.1")
 
-    val finalIosDevice = resolvedIosDevice
+    var finalAndroidSerial: String? = null
+    if (hasAndroid) {
+      finalAndroidSerial = AndroidTargetConfigurer.AndroidRecorder.resolveDeviceSerial(
+        logger, File(projectRootDir.get()), initialAndroidSerial
+      )
+      logger.lifecycle("Parikshan Android: Pre-flight check passed for device '$finalAndroidSerial'.")
+    }
+
+    val initialIosDevice = resolvedIosDevice
       ?: gradleDevice.orNull?.takeIf { it.isNotBlank() }
       ?: gradleSerial.orNull?.takeIf { it.isNotBlank() }
       ?: gradleIosDevice.orNull?.takeIf { it.isNotBlank() }
       ?: System.getenv("PARIKSHAN_IOS_DEVICE")?.takeIf { it.isNotBlank() }
-      ?: getAvailableIosSimulators().firstOrNull { it.isBooted }?.name
-      ?: getAvailableIosSimulators().firstOrNull()?.name
-      ?: "iPhone 16"
+
+    var finalIosDevice: String = "iPhone 16"
+    if (hasIos) {
+      val availableSims = getAvailableIosSimulators()
+      if (availableSims.isEmpty()) {
+        throw GradleException("Parikshan iOS: No available iOS Simulators detected. Run `xcrun simctl list devices available` to check your environment.")
+      }
+      if (initialIosDevice != null && initialIosDevice.isNotBlank()) {
+        val matches = availableSims.any { it.name.equals(initialIosDevice, ignoreCase = true) || it.udid == initialIosDevice }
+        if (!matches) {
+          val simNames = availableSims.map { it.name }.distinct().joinToString()
+          throw GradleException("Parikshan iOS: Specified iOS simulator '$initialIosDevice' was not found in available simulators. Available simulators: $simNames.")
+        }
+        finalIosDevice = initialIosDevice
+      } else {
+        finalIosDevice = availableSims.firstOrNull { it.isBooted }?.name
+          ?: availableSims.firstOrNull()?.name
+          ?: "iPhone 16"
+      }
+      logger.lifecycle("Parikshan iOS: Pre-flight check passed for simulator '$finalIosDevice'.")
+    }
 
     val logDir = File(buildDir.get().asFile, "parikshan/logs")
     logDir.mkdirs()
 
-    logger.lifecycle("Parikshan: Starting parallel E2E runs for targets: ${activeTargets.joinToString()}")
+    logger.lifecycle("Parikshan: Starting parallel E2E runs for targets: ${effectiveTargets.joinToString()}")
     logger.lifecycle("Parikshan: Target test classes: ${filteredClasses.joinToString()}")
 
     val activeProcesses = mutableListOf<Process>()
@@ -331,7 +376,18 @@ abstract class E2ETestTask : DefaultTask() {
           try { it.destroyForcibly() } catch (_: Exception) {}
         }
       }
+      try {
+        val manifest = desktopLaunchManifestFile.orNull?.asFile
+        if (manifest != null && manifest.exists()) {
+          val props = java.util.Properties()
+          manifest.inputStream().use { props.load(it) }
+          val dPort = props.getProperty("port")?.toIntOrNull() ?: 9879
+          val dToken = props.getProperty("token") ?: ""
+          DesktopProcess.stop(host.getOrElse("127.0.0.1"), dPort, dToken, manifest)
+        }
+      } catch (_: Exception) {}
       try { WasmServer.stop() } catch (_: Exception) {}
+      try { cleanupWasmChromeProcess() } catch (_: Exception) {}
       synchronized(activeForwardedPorts) {
         activeForwardedPorts.forEach { port ->
           try {
@@ -339,59 +395,79 @@ abstract class E2ETestTask : DefaultTask() {
           } catch (_: Exception) {}
         }
       }
+      try {
+        if (effectiveTargets.contains("android")) {
+          val serial = finalAndroidSerial
+          val appId = androidApplicationId.orNull
+          if (appId != null) {
+            val stopCmd = if (!serial.isNullOrBlank()) listOf("adb", "-s", serial, "shell", "am", "force-stop", appId)
+                          else listOf("adb", "shell", "am", "force-stop", appId)
+            ProcessBuilder(stopCmd).start().waitFor()
+          }
+        }
+      } catch (_: Exception) {}
+      try {
+        if (effectiveTargets.contains("ios")) {
+          val udid = getIosSimulatorUdid(finalIosDevice) ?: getBootedIosSimulatorUdid()
+          val bundleId = iosBundleId.orNull
+          if (udid != null && bundleId != null) {
+            ProcessBuilder("xcrun", "simctl", "terminate", udid, bundleId).start().waitFor()
+          }
+        }
+      } catch (_: Exception) {}
+      try {
+        val sessionFile = File(buildDir.get().asFile, "parikshan/active-session.json")
+        sessionFile.delete()
+      } catch (_: Exception) {}
     }
     Runtime.getRuntime().addShutdownHook(shutdownHook)
 
-    if (watch) {
-      try {
-        runWatchLoop(activeTargets, filteredClasses, activeProcesses, activeForwardedPorts, resolvedHost, finalAndroidSerial, finalIosDevice)
-      } finally {
-        try {
-          Runtime.getRuntime().removeShutdownHook(shutdownHook)
-        } catch (_: Exception) {}
+    val results = try {
+      if (watch) {
+        runWatchLoop(effectiveTargets, filteredClasses, activeProcesses, activeForwardedPorts, resolvedHost, finalAndroidSerial, finalIosDevice)
+        return
       }
-      return
-    }
 
-    val results = if (sync) {
-      val targetStartTime = System.currentTimeMillis()
-      val result = try {
-        executeSyncTarget(activeTargets, filteredClasses, activeProcesses, finalAndroidSerial, finalIosDevice)
-      } catch (e: Exception) {
-        TargetResult("sync", false, e.message ?: "Sync execution failed")
-      }
-      val duration = System.currentTimeMillis() - targetStartTime
-      listOf(result.copy(durationMs = duration))
-    } else {
-      val executor = Executors.newFixedThreadPool(activeTargets.size)
-      val res = try {
-        val futures = mutableListOf<Future<TargetResult>>()
-
-        activeTargets.forEach { target ->
-          val future = executor.submit<TargetResult> {
-            val targetStartTime = System.currentTimeMillis()
-            try {
-              val result = executeTarget(target, filteredClasses, activeProcesses, activeForwardedPorts, resolvedHost, finalAndroidSerial, finalIosDevice)
-              val duration = System.currentTimeMillis() - targetStartTime
-              result.copy(durationMs = duration)
-            } catch (e: Exception) {
-              val duration = System.currentTimeMillis() - targetStartTime
-              TargetResult(target, false, e.message ?: "Execution failed", duration)
-            }
-          }
-          futures.add(future)
+      if (sync) {
+        val targetStartTime = System.currentTimeMillis()
+        val result = try {
+          executeSyncTarget(effectiveTargets, filteredClasses, activeProcesses, finalAndroidSerial, finalIosDevice)
+        } catch (e: Exception) {
+          TargetResult("sync", false, e.message ?: "Sync execution failed")
         }
+        val duration = System.currentTimeMillis() - targetStartTime
+        listOf(result.copy(durationMs = duration))
+      } else {
+        val executor = Executors.newFixedThreadPool(effectiveTargets.size)
+        val res = try {
+          val futures = mutableListOf<Future<TargetResult>>()
 
-        futures.map { it.get() }
-      } finally {
-        executor.shutdown()
+          effectiveTargets.forEach { target ->
+            val future = executor.submit<TargetResult> {
+              val targetStartTime = System.currentTimeMillis()
+              try {
+                val result = executeTarget(target, filteredClasses, activeProcesses, activeForwardedPorts, resolvedHost, finalAndroidSerial, finalIosDevice)
+                val duration = System.currentTimeMillis() - targetStartTime
+                result.copy(durationMs = duration)
+              } catch (e: Exception) {
+                val duration = System.currentTimeMillis() - targetStartTime
+                TargetResult(target, false, e.message ?: "Execution failed", duration)
+              }
+            }
+            futures.add(future)
+          }
+
+          futures.map { it.get() }
+        } finally {
+          executor.shutdown()
+        }
+        res
       }
-      res
+    } finally {
+      try {
+        Runtime.getRuntime().removeShutdownHook(shutdownHook)
+      } catch (_: Exception) {}
     }
-
-    try {
-      Runtime.getRuntime().removeShutdownHook(shutdownHook)
-    } catch (_: Exception) {}
 
     logger.lifecycle("\n========================================")
     logger.lifecycle("      Parikshan E2E Test Results        ")
@@ -437,7 +513,8 @@ abstract class E2ETestTask : DefaultTask() {
           val session = if (keepAlive) readSession(target) else null
           val minBinaryTimestamp = getTargetOutputTimestamp(target)
           val maxSourceTimestamp = getProductionSourceTimestamp()
-          val healthy = session != null && checkTargetHealth(host.get(), session.port, session.token)
+          val expectedDesktopPort = originalDesktopPort.get()
+          val healthy = session != null && session.port == expectedDesktopPort && checkTargetHealth(host.get(), session.port, session.token)
           val fresh = isTargetFresh(target)
           logger.debug("Parikshan [$target] keep-alive check: session=${session != null}, healthy=$healthy, fresh=$fresh, session.timestamp=${session?.timestamp}, minBinary=$minBinaryTimestamp, maxSource=$maxSourceTimestamp")
           val canReuse = session != null && healthy && fresh && session.timestamp >= minBinaryTimestamp
@@ -566,7 +643,9 @@ abstract class E2ETestTask : DefaultTask() {
         target == "wasm" -> {
         val session = if (keepAlive) readSession("wasm") else null
         val minBinaryTimestamp = getTargetOutputTimestamp("wasm")
+        val expectedWasmPort = originalWasmPort.get()
         val canReuse = session != null && 
+                       session.port == expectedWasmPort &&
                        checkTargetHealth("127.0.0.1", session.port, session.token) && 
                        isTargetFresh("wasm") && 
                        session.timestamp >= minBinaryTimestamp
@@ -584,13 +663,13 @@ abstract class E2ETestTask : DefaultTask() {
             host = "127.0.0.1",
             logger = logger
           )
+          val boundPort = WasmServer.start(port, wasmOutputDir.get().asFile)
           val portFile = wasmPortFile.get().asFile
           portFile.parentFile.mkdirs()
-          portFile.writeText(port.toString())
+          portFile.writeText(boundPort.toString())
 
-          WasmServer.start(port, wasmOutputDir.get().asFile)
-          writeSession("wasm", TargetSession(token.get(), port, System.currentTimeMillis()))
-          port
+          writeSession("wasm", TargetSession(token.get(), boundPort, System.currentTimeMillis()))
+          boundPort
         }
 
         val activeToken = if (canReuse && session != null) session.token else token.get()
@@ -598,7 +677,8 @@ abstract class E2ETestTask : DefaultTask() {
         val systemProps = mutableMapOf(
           "parikshan.target" to "wasm",
           "parikshan.token" to activeToken,
-          "parikshan.wasm.url" to "http://127.0.0.1:$resolvedPort"
+          "parikshan.wasm.url" to "http://127.0.0.1:$resolvedPort",
+          "parikshan.projectRootDir" to projectRootDir.get()
         )
         val isAppModeActive = appMode || (layout == "side-by-side")
         systemProps["parikshan.wasm.appMode"] = isAppModeActive.toString()
@@ -656,7 +736,7 @@ abstract class E2ETestTask : DefaultTask() {
         val defaultAndroidPort = androidPort.orNull ?: 9879
         val resolvedAndroidPort = session?.port ?: defaultAndroidPort
         val resolvedToken = session?.token ?: token.get()
-        val isHealthy = session != null && checkTargetHealth(resolvedHost, resolvedAndroidPort, resolvedToken)
+        val isHealthy = session != null && session.port == defaultAndroidPort && checkTargetHealth(resolvedHost, resolvedAndroidPort, resolvedToken)
         val isFresh = isTargetFresh("android")
         val minBinaryTimestamp = getTargetOutputTimestamp("android")
         val canReuse = isHealthy && isFresh && session!!.timestamp >= minBinaryTimestamp
@@ -810,12 +890,11 @@ abstract class E2ETestTask : DefaultTask() {
 
         target == "ios" -> {
         val isExplicit = targets.split(",").map { it.trim().lowercase() }.contains("ios")
-        val isIosE2EExplicit = isExplicit && targets != "desktop,wasm,android,ios"
-        val hasIosDeviceSpecified = iosDevice.isNotBlank() || device.isNotBlank() || gradleIosDevice.orNull?.isNotBlank() == true || gradleDevice.orNull?.isNotBlank() == true || gradleSerial.orNull?.isNotBlank() == true
-        val shouldExecuteIos = isIosE2EExplicit || hasIosDeviceSpecified || isIosSimulatorBooted(finalIosDevice)
+        val availableSims = getAvailableIosSimulators()
+        val shouldExecuteIos = isExplicit && availableSims.isNotEmpty()
 
         if (!shouldExecuteIos) {
-          logger.lifecycle("Parikshan: Skipping target 'ios' because no booted iOS simulator was detected and no explicit device was targeted.")
+          logger.lifecycle("Parikshan: Skipping target 'ios' because no available iOS simulator was detected.")
           return TargetResult("ios", true, "Skipped (no device detected)")
         }
 
@@ -826,7 +905,7 @@ abstract class E2ETestTask : DefaultTask() {
         val defaultIosPort = iosPort.orNull ?: 9878
         val resolvedIosPort = session?.port ?: defaultIosPort
         val resolvedToken = session?.token ?: token.get()
-        val isHealthy = session != null && checkTargetHealth(resolvedHost, resolvedIosPort, resolvedToken)
+        val isHealthy = session != null && session.port == defaultIosPort && checkTargetHealth(resolvedHost, resolvedIosPort, resolvedToken)
         val isFresh = isTargetFresh("ios")
         val minBinaryTimestamp = getTargetOutputTimestamp("ios")
         val canReuse = isHealthy && isFresh && session!!.timestamp >= minBinaryTimestamp
@@ -958,7 +1037,7 @@ abstract class E2ETestTask : DefaultTask() {
           }
         }
 
-        if (!keepAlive || !runSuccess) {
+        if (!keepAlive) {
           // 3. Stop App
           synchronized(getLockFor("ios")) {
             val stopArgs = mutableListOf(
@@ -1208,12 +1287,15 @@ abstract class E2ETestTask : DefaultTask() {
       "parikshan.wasm.bridgeReadyTimeoutMs",
       "parikshan.wasm.windowX",
       "parikshan.wasm.windowY",
-      "parikshan.wasm.appMode"
+      "parikshan.wasm.appMode",
+      "parikshan.projectRootDir"
     )
     propsToForward.forEach { prop ->
-      val v = System.getProperty(prop) ?: providers.gradleProperty(prop).orNull
-      if (!v.isNullOrEmpty()) {
-        pbArgs.add("-D$prop=$v")
+      if (!systemProperties.containsKey(prop)) {
+        val v = System.getProperty(prop) ?: providers.gradleProperty(prop).orNull
+        if (!v.isNullOrEmpty()) {
+          pbArgs.add("-D$prop=$v")
+        }
       }
     }
     if (keepAlive) {
@@ -1299,19 +1381,27 @@ abstract class E2ETestTask : DefaultTask() {
       "parikshan.wasm.headless",
       "parikshan.wasm.viewportWidth",
       "parikshan.wasm.viewportHeight",
-      "parikshan.wasm.bridgeReadyTimeoutMs"
+      "parikshan.wasm.bridgeReadyTimeoutMs",
+      "parikshan.wasm.windowX",
+      "parikshan.wasm.windowY",
+      "parikshan.wasm.appMode",
+      "parikshan.projectRootDir"
     )
     propsToForward.forEach { prop ->
-      val v = System.getProperty(prop) ?: providers.gradleProperty(prop).orNull
-      if (!v.isNullOrEmpty()) {
-        pbArgs.add("-D$prop=$v")
+      if (!systemProperties.containsKey(prop)) {
+        val v = System.getProperty(prop) ?: providers.gradleProperty(prop).orNull
+        if (!v.isNullOrEmpty()) {
+          pbArgs.add("-D$prop=$v")
+        }
       }
     }
     if (keepAlive) {
       pbArgs.add("-Dparikshan.keepAlive=true")
     }
 
-    val reportsDir = File(buildDir.get().asFile, "test-results/e2eTest/$target").absolutePath
+    val reportsDirFile = File(buildDir.get().asFile, "test-results/e2eTest/$target")
+    reportsDirFile.mkdirs()
+    val reportsDir = reportsDirFile.absolutePath
     pbArgs.add("-Dparikshan.video.outputDir=" + File(buildDir.get().asFile, "parikshan/videos/$target").absolutePath)
     pbArgs.add("org.junit.platform.console.ConsoleLauncher")
     pbArgs.add("--reports-dir")
@@ -1455,13 +1545,23 @@ abstract class E2ETestTask : DefaultTask() {
     }
   }
 
+  private fun parseFailedTestNames(target: String, classes: List<String>): List<String> {
+    val logsDir = File(buildDir.get().asFile, "parikshan/logs")
+    return WatchModeUtils.parseFailedTestNames(logsDir, target, classes)
+  }
+
+  private fun formatFailedNamesPatternA(names: List<String>, totalFailed: Int): String {
+    return WatchModeUtils.formatFailedNamesPatternA(names, totalFailed)
+  }
+
   private fun createTargetResult(target: String, success: Boolean, classes: List<String>, failureMessage: String? = null): TargetResult {
     var totalFound = 0
     var totalStarted = 0
     var totalSuccessful = 0
     var totalFailed = 0
+    val baseTarget = if (target.startsWith("sync")) "sync" else target
     classes.forEach { testClass ->
-      val metrics = parseTestMetrics(target, testClass)
+      val metrics = parseTestMetrics(baseTarget, testClass)
       if (metrics != null) {
         totalFound += metrics.found
         totalStarted += metrics.started
@@ -1478,7 +1578,9 @@ abstract class E2ETestTask : DefaultTask() {
         }
       } else {
         val testWord = if (totalFound == 1) "test" else "tests"
-        "$totalSuccessful/$totalFound $testWord passed ($totalFailed failed)."
+        val failedNames = parseFailedTestNames(target, classes)
+        val formattedFailures = formatFailedNamesPatternA(failedNames, totalFailed)
+        "$totalSuccessful/$totalFound $testWord passed $formattedFailures."
       }
     } else {
       if (success) {
@@ -1488,7 +1590,12 @@ abstract class E2ETestTask : DefaultTask() {
           "All ${classes.size} test classes executed successfully."
         }
       } else {
-        failureMessage ?: "Test execution failed."
+        val failedNames = parseFailedTestNames(target, classes)
+        if (failedNames.isNotEmpty()) {
+          "Test execution failed ${formatFailedNamesPatternA(failedNames, failedNames.size)}."
+        } else {
+          failureMessage ?: "Test execution failed."
+        }
       }
     }
     return TargetResult(target, success, detail)
@@ -1505,83 +1612,19 @@ abstract class E2ETestTask : DefaultTask() {
     }
   }
 
-  private data class TargetSession(
-    val token: String,
-    val port: Int,
-    val timestamp: Long
-  )
-
   private fun readSession(target: String): TargetSession? {
       val sessionFile = File(buildDir.get().asFile, "parikshan/active-session.json")
-      if (!sessionFile.exists()) return null
-      val text = runCatching { sessionFile.readText() }.getOrNull() ?: return null
-      val targetBlockRegex = Regex("\"$target\"\\s*:\\s*\\{([^}]+)}")
-      val blockMatch = targetBlockRegex.find(text) ?: return null
-      val blockContent = blockMatch.groupValues[1]
-      
-      val token = Regex("\"token\"\\s*:\\s*\"([^\"]+)\"").find(blockContent)?.groupValues?.get(1) ?: return null
-      val port = Regex("\"port\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toIntOrNull() ?: return null
-      val timestamp = Regex("\"timestamp\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toLongOrNull() ?: return null
-      
-      return TargetSession(token, port, timestamp)
+      return SessionStore.readSession(sessionFile, target)
   }
 
   private fun writeSession(target: String, session: TargetSession) {
       val sessionFile = File(buildDir.get().asFile, "parikshan/active-session.json")
-      val sessions = mutableMapOf<String, TargetSession>()
-      if (sessionFile.exists()) {
-          val text = runCatching { sessionFile.readText() }.getOrNull().orEmpty()
-          listOf("desktop", "wasm", "android", "ios").forEach { t ->
-              val targetBlockRegex = Regex("\"$t\"\\s*:\\s*\\{([^}]+)}")
-              val blockMatch = targetBlockRegex.find(text)
-              if (blockMatch != null) {
-                  val blockContent = blockMatch.groupValues[1]
-                  val token = Regex("\"token\"\\s*:\\s*\"([^\"]+)\"").find(blockContent)?.groupValues?.get(1)
-                  val port = Regex("\"port\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toIntOrNull()
-                  val timestamp = Regex("\"timestamp\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toLongOrNull()
-                  if (token != null && port != null && timestamp != null) {
-                      sessions[t] = TargetSession(token, port, timestamp)
-                  }
-              }
-          }
-      }
-      sessions[target] = session
-      
-      val json = sessions.entries.joinToString(prefix = "{", postfix = "}") { (t, s) ->
-          "\"$t\":{\"token\":\"${s.token}\",\"port\":${s.port},\"timestamp\":${s.timestamp}}"
-      }
-      runCatching {
-          sessionFile.parentFile.mkdirs()
-          sessionFile.writeText(json)
-      }
+      SessionStore.writeSession(sessionFile, target, session)
   }
 
   private fun clearSession(target: String) {
       val sessionFile = File(buildDir.get().asFile, "parikshan/active-session.json")
-      if (!sessionFile.exists()) return
-      val sessions = mutableMapOf<String, TargetSession>()
-      val text = runCatching { sessionFile.readText() }.getOrNull().orEmpty()
-      listOf("desktop", "wasm", "android", "ios").forEach { t ->
-          if (t == target) return@forEach
-          val targetBlockRegex = Regex("\"$t\"\\s*:\\s*\\{([^}]+)}")
-          val blockMatch = targetBlockRegex.find(text)
-          if (blockMatch != null) {
-              val blockContent = blockMatch.groupValues[1]
-              val token = Regex("\"token\"\\s*:\\s*\"([^\"]+)\"").find(blockContent)?.groupValues?.get(1)
-              val port = Regex("\"port\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toIntOrNull()
-              val timestamp = Regex("\"timestamp\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toLongOrNull()
-              if (token != null && port != null && timestamp != null) {
-                  sessions[t] = TargetSession(token, port, timestamp)
-              }
-          }
-      }
-      
-      val json = sessions.entries.joinToString(prefix = "{", postfix = "}") { (t, s) ->
-          "\"$t\":{\"token\":\"${s.token}\",\"port\":${s.port},\"timestamp\":${s.timestamp}}"
-      }
-      runCatching {
-          sessionFile.writeText(json)
-      }
+      SessionStore.clearSession(sessionFile, target)
   }
 
   private fun checkTargetHealth(host: String, port: Int, token: String): Boolean {
@@ -1649,11 +1692,11 @@ abstract class E2ETestTask : DefaultTask() {
       if (files.isEmpty()) return classesTime
       val filesTime = files.map { file ->
           if (file.isDirectory) {
-              file.walkTopDown().filter { it.isFile }.map { it.lastModified() }.minOrNull() ?: 0L
+              file.walkTopDown().filter { it.isFile }.map { it.lastModified() }.maxOrNull() ?: 0L
           } else {
               file.lastModified()
           }
-      }.minOrNull() ?: 0L
+      }.maxOrNull() ?: 0L
 
       return maxOf(filesTime, classesTime)
   }
@@ -1806,9 +1849,23 @@ abstract class E2ETestTask : DefaultTask() {
       val bundleId = iosBundleId.orNull ?: ""
 
       var bootSuccess = false
+      val bootProcesses = java.util.Collections.synchronizedList(mutableListOf<Process>())
+      val threads = mutableListOf<Thread>()
+      val cancelAndTeardownBoot = {
+        threads.forEach { runCatching { it.interrupt() } }
+        synchronized(bootProcesses) {
+          bootProcesses.forEach { proc ->
+            runCatching {
+              proc.toHandle()?.descendants()?.forEach { it.destroy() }
+              proc.destroy()
+            }
+          }
+          bootProcesses.clear()
+        }
+      }
+
       try {
         val gradleReclaimPorts = providers.gradleProperty("parikshan.reclaimPorts").orNull?.toBoolean() ?: false
-        val threads = mutableListOf<Thread>()
         val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
 
         if (activeTargets.contains("desktop") || activeTargets.contains("jvm")) {
@@ -1816,7 +1873,8 @@ abstract class E2ETestTask : DefaultTask() {
             try {
               val session = if (keepAlive) readSession("desktop") else null
               val minBinaryTimestamp = getTargetOutputTimestamp("desktop")
-              val healthy = session != null && checkTargetHealth(host.get(), session.port, session.token)
+              val expectedDesktopPort = originalDesktopPort.get()
+              val healthy = session != null && session.port == expectedDesktopPort && checkTargetHealth(host.get(), session.port, session.token)
               val fresh = isTargetFresh("desktop")
               val canReuse = session != null && healthy && fresh && session.timestamp >= minBinaryTimestamp
 
@@ -1886,7 +1944,9 @@ abstract class E2ETestTask : DefaultTask() {
             try {
               val session = if (keepAlive) readSession("wasm") else null
               val minBinaryTimestamp = getTargetOutputTimestamp("wasm")
+              val expectedWasmPort = originalWasmPort.get()
               val canReuse = session != null && 
+                             session.port == expectedWasmPort &&
                              checkTargetHealth("127.0.0.1", session.port, session.token) && 
                              isTargetFresh("wasm") && 
                              session.timestamp >= minBinaryTimestamp
@@ -1904,13 +1964,13 @@ abstract class E2ETestTask : DefaultTask() {
                   host = "127.0.0.1",
                   logger = logger
                 )
+                val boundPort = WasmServer.start(port, wasmOutputDir.get().asFile)
                 val portFile = wasmPortFile.get().asFile
                 portFile.parentFile.mkdirs()
-                portFile.writeText(port.toString())
+                portFile.writeText(boundPort.toString())
 
-                WasmServer.start(port, wasmOutputDir.get().asFile)
-                writeSession("wasm", TargetSession(token.get(), port, System.currentTimeMillis()))
-                port
+                writeSession("wasm", TargetSession(token.get(), boundPort, System.currentTimeMillis()))
+                boundPort
               }
 
               wasmToken.set(if (canReuse && session != null) session.token else token.get())
@@ -1927,9 +1987,10 @@ abstract class E2ETestTask : DefaultTask() {
               val serial = AndroidTargetConfigurer.AndroidRecorder.resolveDeviceSerial(logger, File(projectRootDir.get()), finalAndroidSerial)
               androidSerial.set(serial)
               val session = if (keepAlive) readSession("android") else null
-              val resolvedAndroidPort = session?.port ?: 9879
+              val defaultAndroidPort = 9879
+              val resolvedAndroidPort = session?.port ?: defaultAndroidPort
               val resolvedToken = session?.token ?: token.get()
-              val isHealthy = session != null && checkTargetHealth("127.0.0.1", resolvedAndroidPort, resolvedToken)
+              val isHealthy = session != null && session.port == defaultAndroidPort && checkTargetHealth("127.0.0.1", resolvedAndroidPort, resolvedToken)
               val isFresh = isTargetFresh("android")
               val minBinaryTimestamp = getTargetOutputTimestamp("android")
               val canReuse = isHealthy && isFresh && session!!.timestamp >= minBinaryTimestamp
@@ -2007,7 +2068,12 @@ abstract class E2ETestTask : DefaultTask() {
                   logF.parentFile.mkdirs()
                   redirectOutput(logF)
                 }.start()
-                val startExit = startProcess.waitFor()
+                bootProcesses.add(startProcess)
+                val startExit = try {
+                  startProcess.waitFor()
+                } finally {
+                  bootProcesses.remove(startProcess)
+                }
                 if (startExit != 0) {
                   throw GradleException("Failed to start Android app (exit code $startExit). Check build/parikshan/logs/android-start.log")
                 }
@@ -2015,6 +2081,7 @@ abstract class E2ETestTask : DefaultTask() {
               }
             } catch (e: Throwable) {
               errors.add(e)
+              cancelAndTeardownBoot()
             }
           }.apply { name = "parikshan-boot-android"; start() })
         }
@@ -2024,10 +2091,11 @@ abstract class E2ETestTask : DefaultTask() {
             try {
               val udid = getIosSimulatorUdid(finalIosDevice) ?: getBootedIosSimulatorUdid() ?: ""
               iosUdidVal.set(udid)
+              val defaultIosPort = iosPort.get()
               val session = if (keepAlive) readSession("ios") else null
-              val resolvedIosPort = session?.port ?: iosPort.get()
+              val resolvedIosPort = session?.port ?: defaultIosPort
               val resolvedToken = session?.token ?: token.get()
-              val isHealthy = session != null && checkTargetHealth("127.0.0.1", resolvedIosPort, resolvedToken)
+              val isHealthy = session != null && session.port == defaultIosPort && checkTargetHealth("127.0.0.1", resolvedIosPort, resolvedToken)
               val isFresh = isTargetFresh("ios")
               val minBinaryTimestamp = getTargetOutputTimestamp("ios")
               val canReuse = isHealthy && isFresh && session!!.timestamp >= minBinaryTimestamp
@@ -2091,7 +2159,8 @@ abstract class E2ETestTask : DefaultTask() {
                   ).apply {
                     cleanXcodeEnv(this)
                   }.start()
-                  stopProcess.waitFor()
+                  bootProcesses.add(stopProcess)
+                  try { stopProcess.waitFor() } finally { bootProcesses.remove(stopProcess) }
                 }
                 logger.lifecycle("Parikshan [ios]: Simulator target: '$finalIosDevice' ($udid). Starting E2E execution on port $activePort...")
                 // 1. Start App
@@ -2109,7 +2178,12 @@ abstract class E2ETestTask : DefaultTask() {
                   logF.parentFile.mkdirs()
                   redirectOutput(logF)
                 }.start()
-                val startExit = startProcess.waitFor()
+                bootProcesses.add(startProcess)
+                val startExit = try {
+                  startProcess.waitFor()
+                } finally {
+                  bootProcesses.remove(startProcess)
+                }
                 if (startExit != 0) {
                   throw GradleException("Failed to start iOS app (exit code $startExit). Check build/parikshan/logs/ios-start.log")
                 }
@@ -2117,6 +2191,7 @@ abstract class E2ETestTask : DefaultTask() {
               }
             } catch (e: Throwable) {
               errors.add(e)
+              cancelAndTeardownBoot()
             }
           }.apply { name = "parikshan-boot-ios"; start() })
         }
@@ -2125,23 +2200,27 @@ abstract class E2ETestTask : DefaultTask() {
         
         while (activeTargets.contains("android") && androidPort.get() == 0) {
           if (errors.isNotEmpty()) {
+            cancelAndTeardownBoot()
             throw errors.first()
           }
           Thread.sleep(10)
         }
         while (activeTargets.contains("ios") && iosPortVal.get() == 0) {
           if (errors.isNotEmpty()) {
+            cancelAndTeardownBoot()
             throw errors.first()
           }
           Thread.sleep(10)
         }
 
         if (errors.isNotEmpty()) {
+          cancelAndTeardownBoot()
           throw errors.first()
         }
 
         bootSuccess = true
       } catch (e: Throwable) {
+        cancelAndTeardownBoot()
         logger.error("Parikshan [sync]: Error during synchronization boot phase: ${e.message}", e)
         cleanupSyncTargets(
           activeTargets = activeTargets,
@@ -2242,11 +2321,8 @@ abstract class E2ETestTask : DefaultTask() {
         )
       }
 
-      if (testFailureMessage != null) {
-        TargetResult("sync", false, testFailureMessage!!)
-      } else {
-        TargetResult("sync", true, "All test classes passed")
-      }
+      val syncTargetLabel = "sync: ${activeTargets.joinToString(", ") { it.uppercase() }}"
+      createTargetResult(syncTargetLabel, runSuccess, classes, testFailureMessage)
     }
   }
 
@@ -2263,7 +2339,7 @@ abstract class E2ETestTask : DefaultTask() {
   ) {
     val logger = logger
     if (activeTargets.contains("desktop") || activeTargets.contains("jvm")) {
-      if (keepAlive && runSuccess) {
+      if (keepAlive) {
         val manifest = desktopLaunchManifestFile.get().asFile
         if (manifest.exists()) {
           val props = java.util.Properties()
@@ -2285,13 +2361,13 @@ abstract class E2ETestTask : DefaultTask() {
       }
     }
     if (activeTargets.contains("wasm")) {
-      if (!keepAlive || !runSuccess) {
+      if (!keepAlive) {
         WasmServer.stop()
         clearSession("wasm")
       }
     }
     if (activeTargets.contains("android")) {
-      if (!keepAlive || !runSuccess) {
+      if (!keepAlive) {
         val gradlew = getGradlewExecutable(File(projectRootDir.get()))
         val stopArgs = mutableListOf(gradlew, "$projectPathPrefix:stopParikshanAndroidApp")
         if (!androidSerial.isNullOrBlank()) {
@@ -2302,7 +2378,7 @@ abstract class E2ETestTask : DefaultTask() {
       }
     }
     if (activeTargets.contains("ios")) {
-      if (!keepAlive || !runSuccess) {
+      if (!keepAlive) {
         val gradlew = getGradlewExecutable(File(projectRootDir.get()))
         ProcessBuilder(
           gradlew, 
@@ -2360,11 +2436,16 @@ abstract class E2ETestTask : DefaultTask() {
       logger.lifecycle("   Parikshan WATCH Mode Initialized     ")
       logger.lifecycle("========================================")
 
+      runCatching {
+        File(projectRootDir.get(), "build/parikshan/wasm-session.properties").delete()
+      }
+
       val originalKeepAlive = keepAlive
       keepAlive = true
 
       var totalPassed = 0
       var totalFailed = 0
+      var fatalBootError: String? = null
 
       var compileJob: Process? = null
       val runLock = Any()
@@ -2381,19 +2462,60 @@ abstract class E2ETestTask : DefaultTask() {
 
               // On source change (not initial run), rebuild the project
               if (modifiedFile != null) {
+                  val staleTargets = activeTargets.filter { !isTargetFresh(it) }
+                  staleTargets.forEach { target ->
+                      when (target) {
+                          "desktop" -> {
+                              val session = readSession("desktop")
+                              if (session != null) {
+                                  DesktopProcess.stop(
+                                      host = host.get(),
+                                      port = session.port,
+                                      token = session.token,
+                                      manifestFile = desktopLaunchManifestFile.get().asFile
+                                  )
+                              }
+                          }
+                          "wasm" -> {
+                              val session = readSession("wasm")
+                              if (session != null) {
+                                  WasmServer.stop()
+                              }
+                          }
+                          "android" -> {
+                              val serial = AndroidTargetConfigurer.AndroidRecorder.resolveDeviceSerial(logger, File(projectRootDir.get()), finalAndroidSerial)
+                              runCatching {
+                                  ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", androidApplicationId.getOrElse("")).apply { cleanXcodeEnv(this) }.start().waitFor()
+                              }
+                              clearSession("android")
+                          }
+                          "ios" -> {
+                              val udid = getIosSimulatorUdid(finalIosDevice) ?: getBootedIosSimulatorUdid() ?: ""
+                              runCatching {
+                                  ProcessBuilder("xcrun", "simctl", "terminate", udid, iosBundleId.getOrElse("")).apply { cleanXcodeEnv(this) }.start().waitFor()
+                              }
+                              clearSession("ios")
+                          }
+                      }
+                  }
+
                   val buildCommand = if (!compileCommand.isBlank()) {
                       compileCommand
                   } else {
                       val gradlew = getGradlewExecutable(File(projectRootDir.get()))
-                      val packageTask = activeTargets.mapNotNull { target ->
+                      val packageTask = staleTargets.mapNotNull { target ->
                           when (target) {
                               "desktop" -> "${projectPath.get()}:packageUberJarForCurrentOS"
-                              "wasm" -> "${projectPath.get()}:compileKotlinWasmJs"
+                              "wasm" -> "${projectPath.get()}:prepareParikshanWasmAssets"
+                              "android" -> "${projectPath.get()}:startParikshanAndroidApp"
+                              "ios" -> "${projectPath.get()}:startIosApp"
                               else -> null
                           }
                       }.joinToString(" ")
+                      val targetsProp = "-Pparikshan.targets=${activeTargets.joinToString(",")}"
                       val testCompileTask = "${projectPath.get()}:compileTestKotlinJvm"
-                      "$gradlew $packageTask $testCompileTask -Pparikshan.e2e.active=true --no-daemon -q"
+                      val taskList = listOfNotNull(packageTask.takeIf { it.isNotBlank() }, testCompileTask).joinToString(" ")
+                      "$gradlew $taskList -Pparikshan.e2e.active=true $targetsProp --no-daemon"
                   }
 
                   logger.lifecycle("Rebuilding... ($buildCommand)")
@@ -2402,12 +2524,17 @@ abstract class E2ETestTask : DefaultTask() {
                   } else {
                       ProcessBuilder("sh", "-c", buildCommand)
                   }
+                  cleanXcodeEnv(pb)
                   pb.directory(File(projectRootDir.get()))
                   pb.redirectErrorStream(true)
-                  pb.inheritIO()
                   
                   val process = pb.start()
                   compileJob = process
+                  val reader = process.inputStream.bufferedReader()
+                  var line: String?
+                  while (runCatching { reader.readLine() }.getOrNull().also { line = it } != null) {
+                      logger.lifecycle(line)
+                  }
                   val exitCode = process.waitFor()
                   compileJob = null
 
@@ -2435,15 +2562,24 @@ abstract class E2ETestTask : DefaultTask() {
                   val duration = System.currentTimeMillis() - targetStartTime
                   results.add(result.copy(durationMs = duration))
               } else {
-                  activeTargets.forEach { target ->
-                      val targetStartTime = System.currentTimeMillis()
-                      val result = try {
-                          executeTarget(target, filteredClasses, activeProcesses, activeForwardedPorts, resolvedHost, finalAndroidSerial, finalIosDevice)
-                      } catch (e: Exception) {
-                          TargetResult(target, false, e.message ?: "Execution failed")
+                  val executor = java.util.concurrent.Executors.newFixedThreadPool(activeTargets.size)
+                  try {
+                      val futures = activeTargets.map { target ->
+                          executor.submit<TargetResult> {
+                              val targetStartTime = System.currentTimeMillis()
+                              try {
+                                  val result = executeTarget(target, filteredClasses, activeProcesses, activeForwardedPorts, resolvedHost, finalAndroidSerial, finalIosDevice)
+                                  val duration = System.currentTimeMillis() - targetStartTime
+                                  result.copy(durationMs = duration)
+                              } catch (e: Exception) {
+                                  val duration = System.currentTimeMillis() - targetStartTime
+                                  TargetResult(target, false, e.message ?: "Execution failed", duration)
+                              }
+                          }
                       }
-                      val duration = System.currentTimeMillis() - targetStartTime
-                      results.add(result.copy(durationMs = duration))
+                      results.addAll(futures.map { it.get() })
+                  } finally {
+                      executor.shutdown()
                   }
               }
 
@@ -2460,6 +2596,14 @@ abstract class E2ETestTask : DefaultTask() {
               val passedCount = results.count { it.success }
               val failedCount = results.count { !it.success }
               
+              val bootFailure = results.firstOrNull { WatchModeUtils.isBootFailure(it.message) }
+              if (bootFailure != null) {
+                  fatalBootError = bootFailure.message
+                  logger.error("\n[WATCH] Fatal boot / device setup failure: ${bootFailure.message}")
+                  logger.error("[WATCH] Terminating watch mode because device setup error cannot be resolved by watching file changes.")
+                  return
+              }
+
               if (anyFailure) {
                   logger.lifecycle("WATCHING: Waiting for file changes... (Latest: $passedCount PASSED, $failedCount FAILED) - Last run failed after $durationStr")
                   writeWatchResults(false, results)
@@ -2471,6 +2615,9 @@ abstract class E2ETestTask : DefaultTask() {
       }
 
       executeCycle(null)
+      if (fatalBootError != null) {
+          throw GradleException("Parikshan WATCH mode terminated due to fatal boot failure: $fatalBootError")
+      }
 
       val watchRoots = mutableListOf<File>()
       
@@ -2506,6 +2653,23 @@ abstract class E2ETestTask : DefaultTask() {
       try {
           while (true) {
               Thread.sleep(100)
+
+              val desktopClosed = activeTargets.contains("desktop") && !DesktopProcess.isProcessAlive(desktopLaunchManifestFile.orNull?.asFile)
+              val wasmClosed = activeTargets.contains("wasm") && isWasmSessionClosed(File(projectRootDir.get()))
+              val androidClosed = activeTargets.contains("android") && androidApplicationId.isPresent && !isAndroidAppAlive(logger, File(projectRootDir.get()), finalAndroidSerial, androidApplicationId.orNull)
+              val iosClosed = activeTargets.contains("ios") && iosBundleId.isPresent && !isIosAppAlive(finalIosDevice, iosBundleId.orNull)
+
+              if (desktopClosed || wasmClosed || androidClosed || iosClosed) {
+                  val targetName = when {
+                      desktopClosed -> "desktop"
+                      wasmClosed -> "wasm"
+                      androidClosed -> "android"
+                      else -> "ios"
+                  }
+                  logger.lifecycle("[WATCH] Target '$targetName' application closed by user. Exiting watch mode.")
+                  break
+              }
+
               val path = pendingChange.get()
               if (path != null && System.currentTimeMillis() - lastEventTime >= debounceMs) {
                   pendingChange.compareAndSet(path, null)
@@ -2513,6 +2677,9 @@ abstract class E2ETestTask : DefaultTask() {
                       executeCycle(path)
                   } catch (e: Exception) {
                       logger.lifecycle("[WATCH] Error in watch cycle: ${e.message}")
+                  }
+                  if (fatalBootError != null) {
+                      throw GradleException("Parikshan WATCH mode terminated due to fatal boot failure: $fatalBootError")
                   }
               }
           }
@@ -2536,6 +2703,7 @@ abstract class E2ETestTask : DefaultTask() {
                       "wasm" -> {
                           WasmServer.stop()
                           clearSession("wasm")
+                          cleanupWasmChromeProcess()
                       }
                       "android" -> {
                           val serial = AndroidTargetConfigurer.AndroidRecorder.resolveDeviceSerial(logger, File(projectRootDir.get()), finalAndroidSerial)
@@ -2565,6 +2733,97 @@ abstract class E2ETestTask : DefaultTask() {
       }
   }
 
+  /**
+   * Checks whether the active WASM testing browser session has closed.
+   *
+   * Verifies if the session status property in `wasm-session.properties` reads 'closed',
+   * if the CDP remote debugging port (9222) is no longer accessible,
+   * or if no active page target remains in the browser on CDP port 9222.
+   *
+   * @param projectRootDir The root directory of the Gradle project containing build artifacts.
+   * @return True if the browser session was terminated by the user, false otherwise.
+   */
+  private fun isWasmSessionClosed(projectRootDir: File): Boolean {
+    val sessionFile = File(projectRootDir, "build/parikshan/wasm-session.properties")
+    if (!sessionFile.exists()) return false
+    val isClosedProperty = runCatching {
+      val props = java.util.Properties()
+      sessionFile.inputStream().use(props::load)
+      props.getProperty("status") == "closed"
+    }.getOrDefault(false)
+
+    if (isClosedProperty) return true
+
+    val cdpPortOpen = runCatching {
+      java.net.Socket("127.0.0.1", 9222).use { true }
+    }.getOrDefault(false)
+
+    if (!cdpPortOpen) return true
+
+    val hasActivePageTarget = runCatching {
+      val url = java.net.URL("http://127.0.0.1:9222/json")
+      val conn = url.openConnection() as java.net.HttpURLConnection
+      conn.connectTimeout = 1000
+      conn.readTimeout = 1000
+      val json = conn.inputStream.bufferedReader().use { it.readText() }
+      json.contains("\"type\": \"page\"") || json.contains("\"type\":\"page\"")
+    }.getOrDefault(true)
+
+    if (!hasActivePageTarget) {
+      return true
+    }
+
+    return false
+  }
+
+  /**
+   * Terminates any detached Chromium process listening on CDP port 9222 without affecting client processes.
+   */
+  private fun cleanupWasmChromeProcess() {
+    runCatching {
+      val myPid = ProcessHandle.current().pid()
+      if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
+        val p = ProcessBuilder("cmd", "/c", "for /f \"tokens=5\" %a in ('netstat -aon ^| findstr :9222 ^| findstr LISTENING') do taskkill /f /pid %a").start()
+        p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
+      } else {
+        val p = ProcessBuilder("sh", "-c", "lsof -ti:9222 -sTCP:LISTEN").start()
+        if (p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) {
+          val pids = p.inputStream.bufferedReader().readText().lines()
+            .mapNotNull { it.trim().toLongOrNull() }
+            .filter { it != myPid }
+          pids.forEach { pid ->
+            runCatching { ProcessBuilder("kill", "-15", pid.toString()).start().waitFor() }
+          }
+        }
+      }
+    }
+  }
+
+  private fun isAndroidAppAlive(logger: org.gradle.api.logging.Logger, projectRootDir: File, serialSpec: String?, appId: String?): Boolean {
+    if (appId.isNullOrEmpty()) return true
+    val session = readSession("android") ?: return true
+    val serial = runCatching {
+      AndroidTargetConfigurer.AndroidRecorder.resolveDeviceSerial(logger, projectRootDir, serialSpec)
+    }.getOrNull() ?: return true
+    if (serial.isEmpty()) return true
+    return runCatching {
+      val p = ProcessBuilder("adb", "-s", serial, "shell", "pidof", appId).start()
+      p.waitFor(2, java.util.concurrent.TimeUnit.SECONDS) && p.exitValue() == 0 && p.inputStream.bufferedReader().readText().trim().isNotEmpty()
+    }.getOrDefault(true)
+  }
+
+  private fun isIosAppAlive(deviceSpec: String?, bundleId: String?): Boolean {
+    if (bundleId.isNullOrEmpty()) return true
+    val session = readSession("ios") ?: return true
+    val udid = getIosSimulatorUdid(deviceSpec ?: "") ?: getBootedIosSimulatorUdid() ?: return true
+    if (udid.isEmpty()) return true
+    return runCatching {
+      val p = ProcessBuilder("xcrun", "simctl", "spawn", udid, "launchctl", "list").start()
+      val output = if (p.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) p.inputStream.bufferedReader().readText() else ""
+      output.contains(bundleId)
+    }.getOrDefault(true)
+  }
+
   private companion object {
       val targetLocks = java.util.concurrent.ConcurrentHashMap<String, Any>()
 
@@ -2574,7 +2833,7 @@ abstract class E2ETestTask : DefaultTask() {
   }
 }
 
-private class PollingWatcher(
+internal class PollingWatcher(
     val roots: List<File>,
     val onEvent: (File) -> Unit
 ) : AutoCloseable {
@@ -2644,3 +2903,5 @@ private class PollingWatcher(
         thread.interrupt()
     }
 }
+
+

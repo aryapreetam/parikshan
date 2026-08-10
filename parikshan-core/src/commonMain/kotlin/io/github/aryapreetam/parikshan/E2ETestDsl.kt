@@ -43,6 +43,10 @@ interface TestDriver {
     "build/parikshan/${relativePath.trimStart('/', '\\')}"
 
   fun setRouteTarget(platform: String?) {}
+
+  suspend fun executeParallel(block: suspend (TestDriver) -> Unit) {
+    block(this)
+  }
 }
 
 /**
@@ -85,12 +89,55 @@ data class E2ETestConfig(
  *
  * @see Selector
  */
-class E2ETestScope internal constructor(
+class E2ETestScope @InternalParikshanApi constructor(
   private val driver: TestDriver,
   private val config: E2ETestConfig
 ) {
   /** The target execution platform string (e.g. "android", "ios", "desktop", "wasm"). */
   val targetPlatform: String get() = driver.targetPlatform
+
+  /**
+   * Executes the provided test [block] concurrently across each active target driver in parallel.
+   *
+   * Inside [block], `this` refers to a target-scoped [E2ETestScope] connected directly to an individual
+   * target driver (such as Desktop, Wasm, Android, or iOS). Actions dispatched within [block] run
+   * independently on each target without waiting for other target viewports to reach the same step.
+   *
+   * ### When to Use
+   * Use `executeParallel` when writing navigation or layout helpers for multi-target scenarios where
+   * different target viewports display different UI states (for example, a wide Desktop window displaying a
+   * persistent navigation rail vs a mobile screen displaying a compact hamburger button and modal drawer).
+   *
+   * ### When to Avoid
+   * Avoid using `executeParallel` inside standard end-to-end test scenarios. Standard test flows should use
+   * the top-level unified DSL (`click`, `input`, `assertVisible`), which enforces a strict step-barrier
+   * contract across all target platforms after every command.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * @OptIn(InternalParikshanApi::class)
+   * suspend fun E2ETestScope.openAppNavigation() {
+   *   executeParallel {
+   *     if (hasVisibleNode("hamburger_button")) {
+   *       if (!hasVisibleNode("navigation_drawer")) {
+   *         click("hamburger_button")
+   *         waitFor("navigation_drawer")
+   *       }
+   *     }
+   *   }
+   * }
+   * ```
+   *
+   * @param block The target-scoped test operations to execute independently on each active target.
+   * @see TestDriver.executeParallel
+   */
+  @InternalParikshanApi
+  suspend fun executeParallel(block: suspend E2ETestScope.() -> Unit) {
+    driver.executeParallel { targetDriver ->
+      val localScope = E2ETestScope(driver = targetDriver, config = config)
+      localScope.block()
+    }
+  }
 
   /**
    * Executes a physical tap or click on the UI element matching the provided string [tag] or text.
@@ -333,16 +380,19 @@ class E2ETestScope internal constructor(
     maxScrolls: Int = 30,
     stabilizationDelayMs: Long = 300
   ) {
-    for (i in 0 until maxScrolls) {
-      if (hasVisibleNode(targetSelector)) {
-        return
+    driver.executeParallel { targetDriver ->
+      val localScope = E2ETestScope(driver = targetDriver, config = config)
+      for (i in 0 until maxScrolls) {
+        if (localScope.hasVisibleNode(targetSelector)) {
+          return@executeParallel
+        }
+        localScope.scroll(selector = containerSelector, direction = direction)
+        delay(stabilizationDelayMs)
       }
-      scroll(selector = containerSelector, direction = direction)
-      delay(stabilizationDelayMs)
+      throw AssertionError(
+        "Timed out scrolling container '${containerSelector.raw}' to locate target element: '${targetSelector.raw}' after $maxScrolls scrolls."
+      )
     }
-    throw AssertionError(
-      "Timed out scrolling container '${containerSelector.raw}' to locate target element: '${targetSelector.raw}' after $maxScrolls scrolls."
-    )
   }
 
 
@@ -1187,6 +1237,7 @@ suspend fun e2eTest(
     if (pingResponse is Response.Error) {
       throw IllegalStateException("Failed to connect to Parikshan server: ${pingResponse.message}")
     }
+    runCatching { driver.reset() }
     scope.block()
   } catch (throwable: Throwable) {
     if (config.captureScreenshotOnFailure) {
@@ -1196,6 +1247,7 @@ suspend fun e2eTest(
     }
     throw throwable
   } finally {
+    runCatching { driver.reset() }
     driver.close()
   }
 }

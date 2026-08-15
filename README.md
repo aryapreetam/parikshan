@@ -1,8 +1,10 @@
-<h1 align="center">
-  <img src="docs/assets/logo.png" width="64" height="64" style="vertical-align: middle; margin-right: 14px;" alt="Parikshan Logo"/>
-  Parikshan
-</h1>
+<p align="center">                                                                                                                                                           
+      <img src="docs/assets/logo.png" width="44" height="44" alt="Parikshan Logo" align="absmiddle"/>                                                                            
+      <span style="font-size: 2.2em; font-weight: bold; vertical-align: middle; margin-left: 8px;">Parikshan</span>                                                              
+    </p>   
+
 <p align="center">End-to-End testing framework for Compose Multiplatform</p>
+
 <p align="center">
   <a href="https://github.com/aryapreetam/parikshan/actions/workflows/release.yml">
     <img src="https://github.com/aryapreetam/parikshan/actions/workflows/release.yml/badge.svg" alt="Release status">
@@ -24,22 +26,22 @@
 
 ### Features
 
-- Write test in Kotlin, run it on Android, iOS, Desktop, and Web (Wasm).
-- No test related dependencies OR code in the main app.
-- Built-in screenshot capture and video recording (including headless CI).
+- Write tests in Kotlin, execute and visually watch them run across Android, iOS, Desktop, and Web (Wasm).
+- Built-in [video recording](https://aryapreetam.github.io/parikshan/configuration/cli-options/#video-recording-options), screenshot capture, and [test reports](https://aryapreetam.github.io/parikshan/reports/test-reports).
+- [Window layout and positioning](https://aryapreetam.github.io/parikshan/configuration/cli-options/#layout-size-position-control), [synchronized execution](https://aryapreetam.github.io/parikshan/configuration/cli-options/#synchronized-multi-target-execution-sync), and continuous [watch mode](https://aryapreetam.github.io/parikshan/configuration/cli-options/#continuous-watch-mode-watch).
 
-[**📖 API Reference**](https://aryapreetam.github.io/parikshan/api/)
+[**API Reference**](https://aryapreetam.github.io/parikshan/api/) | [**Documentation**](https://aryapreetam.github.io/parikshan/)
 
 ---
 
-## 🛠️ Quick Start
+## Quick Start
 
 ### 1. Apply the Plugin
-In your **shared library** (e.g., `:composeApp`) `build.gradle.kts`:
+In your shared library module (e.g. `:shared`/`:composeApp`) `build.gradle.kts`:
 
 ```kotlin
 plugins {
-  id("io.github.aryapreetam.parikshan") version "0.0.6"
+  id("io.github.aryapreetam.parikshan") version "0.0.7"
 }
 ```
 
@@ -55,13 +57,13 @@ import kotlin.test.Test
 class SimpleGreetTest {
   @Test
   fun testSimpleGreeting() = e2eTest {
-    // Enter name
+    // enter in the input component tagged name_input
     input("name_input", "परिक्षण")
     
-    // Click Greet button
-    click("greet_button")
+    // click button with text 'Greet!'
+    click("Greet!")
     
-    // Check if greeting is displayed
+    // check if greeting is displayed
     assertVisible("Hello, परिक्षण!")
   }
 }
@@ -74,16 +76,15 @@ class SimpleGreetTest {
 ./gradlew e2eDesktopTest
 ./gradlew e2eWasmTest
 
-# OR many at once concurrently
-
-./gradlew e2eTest --targets=android,desktop,wasm
+# Run across multiple targets simultaneously
+./gradlew e2eTest --targets=desktop,wasm,android,ios
 ```
 
 ---
 
-## 📦 Examples
+## Examples
 
-See the [Examples Page](examples.md) for working samples and video demonstrations of the Parikshan DSL across all target platforms.
+See the [Examples Page](https://aryapreetam.github.io/parikshan/examples/) for working samples and video demonstrations across all supported platforms.
 
 ---
 

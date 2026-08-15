@@ -11,6 +11,8 @@
 
 ## Checklist
 
-- [ ] I have tested these changes locally across the affected platforms.
-- [ ] I have updated the documentation (README, KDoc) if applicable.
-- [ ] The code follows the existing formatting and style guidelines.
+- [ ] I have executed unit tests locally (`./gradlew :parikshan-core:jvmTest :parikshan-client:jvmTest :gradle-plugins:test`).
+- [ ] I have verified ABI binary compatibility (`./gradlew apiCheck`).
+- [ ] I have tested changes across the affected platform targets.
+- [ ] I have updated documentation or KDocs if applicable.
+- [ ] The code follows the repository formatting and style guidelines.

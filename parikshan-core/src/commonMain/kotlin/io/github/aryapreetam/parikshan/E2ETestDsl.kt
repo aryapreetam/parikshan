@@ -1205,8 +1205,48 @@ class E2ETestScope @InternalParikshanApi constructor(
   }
 
   /**
-   * Executes the given [block] only on the specified [target] platform during synchronized execution,
-   * or if the single active driver platform matches the specified [target].
+   * Executes the provided test [block] exclusively on the specified [target] platform.
+   *
+   * In synchronized execution mode (`--sync`), actions dispatched inside [block] are routed
+   * only to the driver matching [target], while other connected target drivers skip execution.
+   * In single-target execution, [block] executes if the active target matches [target], and is
+   * skipped otherwise.
+   *
+   * ### When to Use
+   * Use `onTarget` when handling platform-conditional UI divergences during synchronized multi-target
+   * tests (such as dismissing a platform-specific permission dialog, handling differing navigation
+   * structures like mobile drawers vs desktop sidebars, or validating target-specific layout elements).
+   *
+   * ### When Not to Use
+   * Do not use `onTarget` for common user flows or assertions that apply across all target platforms.
+   * Standard cross-platform assertions (`assertVisible`, `click`, `input`) should be called directly on
+   * the root [E2ETestScope] to ensure all targets execute in synchronized lockstep.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * @Test
+   * fun testPlatformAdaptiveFlow() = e2eTest {
+   *   // Common step across all targets
+   *   click("get_started_button")
+   *
+   *   // Platform-specific interaction during sync execution
+   *   onTarget(Target.Android) {
+   *     click("allow_notifications_button")
+   *   }
+   *
+   *   onTarget(Target.Desktop) {
+   *     click("maximize_window_button")
+   *   }
+   *
+   *   // Resumed common assertions across all targets
+   *   assertVisible("dashboard_header")
+   * }
+   * ```
+   *
+   * @param target The target platform on which to execute [block] (e.g. [Target.Desktop], [Target.Wasm], [Target.Android], [Target.Ios]).
+   * @param block The scoped test operations to execute on the specified target.
+   * @see Target
+   * @see executeParallel
    */
   suspend fun onTarget(target: Target, block: suspend E2ETestScope.() -> Unit) {
     if (driver.targetPlatform == "sync") {

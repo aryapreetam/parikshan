@@ -125,7 +125,12 @@ class PortConflictHandlerTest {
     }
 
     private fun findFreeLocalPort(): Int {
-        return ServerSocket(0).use { it.localPort }
+        val socket = ServerSocket()
+        socket.reuseAddress = true
+        socket.bind(java.net.InetSocketAddress("127.0.0.1", 0))
+        val port = socket.localPort
+        socket.close()
+        return port
     }
 }
 

@@ -63,6 +63,8 @@ echo "==> Verifying watch mode..."
 echo "==> Verifying watch mode with sync enabled..."
 "${PARIKSHAN_ROOT}/scripts/verify-watch-mode.sh" --sync
 
+run_gradle --stop
+
 echo "==> Step 2b: Testing cmp-latest..."
 verify_tasks_exist "-p samples/cmp-latest" ":app:shared" "e2eTest" "e2eJvmTest" "e2eWasmTest" "e2eAndroidTest"
 run_gradle -p samples/cmp-latest :app:shared:e2eTest
@@ -75,9 +77,15 @@ echo "==> Step 2d: Testing issue-playground..."
 verify_tasks_exist "-p samples/issue-playground" ":shared" "e2eTest" "e2eJvmTest" "e2eWasmTest" "e2eAndroidTest"
 run_gradle -p samples/issue-playground :shared:e2eTest
 
+run_gradle "-p samples/cmp-latest" --stop
+run_gradle "-p samples/composables-sample" --stop
+run_gradle "-p samples/issue-playground" --stop
+
 echo "==> Step 2e: Testing standalone-android..."
 verify_tasks_exist "-p samples/standalone-android" ":app" "e2eTest" "e2eAndroidTest"
 run_gradle -p samples/standalone-android :app:e2eTest
+
+run_gradle "-p samples/standalone-android" --stop
 
 # -------------------------------------------------------------
 # 3. Publish to Maven Local (Required ONLY for external kmp-mobile)
@@ -97,15 +105,23 @@ if [ -d "${KMP_MOBILE_DIR}" ]; then
   echo "==> Step 4a: Testing ~/projects/kmp-mobile [branch: main]..."
   cd "${KMP_MOBILE_DIR}"
   git checkout main
-  ./gradlew e2eTest --refresh-dependencies
-
+  if [ "${PUBLISH_MAVEN}" = true ]; then
+    ./gradlew e2eTest --refresh-dependencies
+  else
+    ./gradlew e2eTest
+  fi
   echo "==> Step 4b: Testing ~/projects/kmp-mobile [branch: check-cmp-1.10.1]..."
   git checkout check-cmp-1.10.1
   ./gradlew e2eTest
+  # cleanup
+  ./gradlew --stop
+
   cd "${PARIKSHAN_ROOT}"
 else
   echo "WARNING: ${KMP_MOBILE_DIR} directory not found; skipping external repo tests."
 fi
+                                                                                                                                                                  
+pkill -f '.*org.gradle.launcher.daemon.bootstrap.GradleDaemon.*' || true
 
 echo "============================================================="
 echo " SUCCESS: All library unit tests, sample project matrix E2E"

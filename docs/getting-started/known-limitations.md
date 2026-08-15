@@ -118,3 +118,24 @@ Ensure your execution targets a booted iOS Simulator UDID or device name:
 ./gradlew e2eTest --targets=ios --ios-device="YOUR_SIMULATOR_UDID"
 ```
 
+---
+
+## Kotlin/JS Target Support
+
+### Limitation
+E2E test execution on the legacy Kotlin/JS (`js`) target is not supported. Web-based E2E tests must target WebAssembly (`wasmJs`).
+
+### Cause
+Parikshan's web automation infrastructure relies on Playwright browser hooks and Wasm canvas rendering semantics compiled specifically for the Compose Multiplatform WebAssembly target.
+
+### Workaround
+Configure your web application target as `wasmJs` when running end-to-end tests:
+
+```bash
+# Target-specific task
+./gradlew :sample:composeApp:e2eWasmTest
+
+# Unified test runner
+./gradlew e2eTest --targets=wasm
+```
+

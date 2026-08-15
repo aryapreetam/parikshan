@@ -682,7 +682,7 @@ abstract class E2ETestTask : DefaultTask() {
         )
         val isAppModeActive = appMode || (layout == "side-by-side")
         systemProps["parikshan.wasm.appMode"] = isAppModeActive.toString()
-        val resolvedWasmSize = parseSize(wasmWindowSize.takeIf { it.isNotBlank() } ?: windowSize) ?: Pair(1280, 600)
+        val resolvedWasmSize = parseSize(wasmWindowSize.takeIf { it.isNotBlank() } ?: windowSize) ?: Pair(800, 600)
         systemProps["parikshan.wasm.viewportWidth"] = resolvedWasmSize.first.toString()
         systemProps["parikshan.wasm.viewportHeight"] = resolvedWasmSize.second.toString()
         val resolvedWasmPos = if (layout == "side-by-side") {
@@ -2261,7 +2261,7 @@ abstract class E2ETestTask : DefaultTask() {
           val isAppModeActive = appMode || (layout == "side-by-side")
           systemProps["parikshan.wasm.appMode"] = isAppModeActive.toString()
 
-          val resolvedWasmSize = parseSize(wasmWindowSize.takeIf { it.isNotBlank() } ?: windowSize) ?: Pair(1280, 600)
+          val resolvedWasmSize = parseSize(wasmWindowSize.takeIf { it.isNotBlank() } ?: windowSize) ?: Pair(800, 600)
           systemProps["parikshan.wasm.viewportWidth"] = resolvedWasmSize.first.toString()
           systemProps["parikshan.wasm.viewportHeight"] = resolvedWasmSize.second.toString()
 

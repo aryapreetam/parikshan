@@ -43,6 +43,11 @@ dependencies {
 
 dokka {
   moduleName.set("parikshan")
+  dokkaSourceSets.configureEach {
+    if (name == "jsMain") {
+      suppress.set(true)
+    }
+  }
   dokkaPublications.html {
     includes.from("src/commonMain/kotlin/Module.md")
   }

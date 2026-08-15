@@ -8,23 +8,9 @@ Add the plugin to your `shared` / `composeApp` `build.gradle.kts`:
 
 ```kotlin
 plugins {
-  id("io.github.aryapreetam.parikshan") version "0.0.6"
+  id("io.github.aryapreetam.parikshan") version "0.0.7"
 }
 ```
-
-=== "Old Structure"
-
-    ```text
-    OldStructure/
-    ├── composeApp/
-    |   └── build.gradle.kts  <- apply here
-    ├── gradle/
-    ├── iosApp/
-    ├── build.gradle.kts
-    ├── gradlew
-    ├── gradlew.bat
-    └── settings.gradle.kts
-    ```
 
 === "New Structure"
 
@@ -68,6 +54,20 @@ plugins {
     ├── core/
     ├── gradle/
     ├── server/
+    ├── build.gradle.kts
+    ├── gradlew
+    ├── gradlew.bat
+    └── settings.gradle.kts
+    ```
+
+=== "Old Structure"
+
+    ```text
+    OldStructure/
+    ├── composeApp/
+    |   └── build.gradle.kts  <- apply here
+    ├── gradle/
+    ├── iosApp/
     ├── build.gradle.kts
     ├── gradlew
     ├── gradlew.bat

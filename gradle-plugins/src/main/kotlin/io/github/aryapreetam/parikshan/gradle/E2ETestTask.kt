@@ -372,8 +372,13 @@ abstract class E2ETestTask : DefaultTask() {
     val activeForwardedPorts = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
     val shutdownHook = Thread {
       synchronized(activeProcesses) {
-        activeProcesses.forEach {
-          try { it.destroyForcibly() } catch (_: Exception) {}
+        activeProcesses.forEach { proc ->
+          try {
+            proc.toHandle()?.descendants()?.forEach { desc ->
+              try { desc.destroyForcibly() } catch (_: Exception) {}
+            }
+            proc.destroyForcibly()
+          } catch (_: Exception) {}
         }
       }
       try {
@@ -686,9 +691,10 @@ abstract class E2ETestTask : DefaultTask() {
         systemProps["parikshan.wasm.viewportWidth"] = resolvedWasmSize.first.toString()
         systemProps["parikshan.wasm.viewportHeight"] = resolvedWasmSize.second.toString()
         val resolvedWasmPos = if (layout == "side-by-side") {
-          val resolvedDesktopSize = parseSize(desktopWindowSize.takeIf { it.isNotBlank() } ?: windowSize) ?: Pair(800, 600)
           val resolvedDesktopPos = parsePosition(desktopWindowPosition) ?: Pair(10, 50)
-          Pair(resolvedDesktopPos.first + resolvedDesktopSize.first, resolvedDesktopPos.second)
+          val resolvedDesktopSize = parseSize(desktopWindowSize.takeIf { it.isNotBlank() } ?: windowSize) ?: Pair(800, 600)
+          val gap = 5
+          Pair(resolvedDesktopPos.first + resolvedDesktopSize.first + gap, resolvedDesktopPos.second)
         } else {
           parsePosition(wasmWindowPosition)
         }
@@ -1305,6 +1311,7 @@ abstract class E2ETestTask : DefaultTask() {
     val reportsDir = File(buildDir.get().asFile, "test-results/e2eTest/$target/$testClass").absolutePath
     pbArgs.add("-Dparikshan.video.outputDir=" + File(buildDir.get().asFile, "parikshan/videos/$target").absolutePath)
     pbArgs.add("org.junit.platform.console.ConsoleLauncher")
+    pbArgs.add("execute")
     pbArgs.add("--reports-dir")
     pbArgs.add(reportsDir)
     val lastDotIdx = testsPattern.lastIndexOf('.')
@@ -1404,6 +1411,7 @@ abstract class E2ETestTask : DefaultTask() {
     val reportsDir = reportsDirFile.absolutePath
     pbArgs.add("-Dparikshan.video.outputDir=" + File(buildDir.get().asFile, "parikshan/videos/$target").absolutePath)
     pbArgs.add("org.junit.platform.console.ConsoleLauncher")
+    pbArgs.add("execute")
     pbArgs.add("--reports-dir")
     pbArgs.add(reportsDir)
 
@@ -1482,10 +1490,6 @@ abstract class E2ETestTask : DefaultTask() {
       if (failureIndex >= 0) {
         logger.lifecycle("\n--- [$target] Test Failures for $testClass ---")
         lines.drop(failureIndex).forEach { logger.lifecycle(it) }
-        logger.lifecycle("--------------------------------------------------\n")
-      } else {
-        logger.lifecycle("\n--- [$target] Last 30 Log Lines for $testClass ---")
-        lines.takeLast(30).forEach { logger.lifecycle(it) }
         logger.lifecycle("--------------------------------------------------\n")
       }
     }
@@ -2266,9 +2270,10 @@ abstract class E2ETestTask : DefaultTask() {
           systemProps["parikshan.wasm.viewportHeight"] = resolvedWasmSize.second.toString()
 
           val resolvedWasmPos = if (layout == "side-by-side") {
-            val resolvedDesktopSize = parseSize(desktopWindowSize.takeIf { it.isNotBlank() } ?: windowSize) ?: Pair(800, 600)
             val resolvedDesktopPos = parsePosition(desktopWindowPosition) ?: Pair(10, 50)
-            Pair(resolvedDesktopPos.first + resolvedDesktopSize.first, resolvedDesktopPos.second)
+            val resolvedDesktopSize = parseSize(desktopWindowSize.takeIf { it.isNotBlank() } ?: windowSize) ?: Pair(800, 600)
+            val gap = 5
+            Pair(resolvedDesktopPos.first + resolvedDesktopSize.first + gap, resolvedDesktopPos.second)
           } else {
             parsePosition(wasmWindowPosition)
           }

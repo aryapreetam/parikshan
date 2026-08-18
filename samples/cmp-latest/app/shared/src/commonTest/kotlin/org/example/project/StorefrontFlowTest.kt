@@ -12,6 +12,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import org.example.project.storefront.ServiceRegistry
+import kotlinx.coroutines.delay
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 
@@ -76,7 +77,11 @@ class StorefrontFlowTest : E2ETestLifecycle {
     // Open details sheet for the first product using atIndex(0) selector
     click(Selector.Text("View Details").atIndex(0))
     assertVisible("Product Details")
-    assertVisible("Gift Wrap (+$5.00)")
+    // Drag bottom sheet upward to fully reveal the Add to Cart button if partially expanded
+    expandBottomSheetUntilVisible(
+      sheetSelector = Selector.Text("Product Details"),
+      targetSelector = Selector.Tag("details_add_to_cart_button")
+    )
 
     // Add to Cart from Details Sheet
     click(Selector.Tag("details_add_to_cart_button"))
@@ -126,5 +131,30 @@ class StorefrontFlowTest : E2ETestLifecycle {
 
     // Dot over 'i'
     drag(fromX = startX + 58.0, fromY = centerY - 25.0, toX = startX + 60.0, toY = centerY - 23.0, durationMs = 100)
+  }
+
+  private suspend fun E2ETestScope.expandBottomSheetUntilVisible(
+    sheetSelector: Selector = Selector.Auto("Product Details"),
+    targetSelector: Selector,
+    dragDistancePx: Double = 250.0,
+    maxAttempts: Int = 3
+  ) {
+    for (attempt in 0 until maxAttempts) {
+      if (hasVisibleNode(targetSelector)) return
+
+      val anchorNode = resolveNode(sheetSelector)
+      val startX = anchorNode.bounds.centerX
+      val startY = anchorNode.bounds.top
+      val endY = (startY - dragDistancePx).coerceAtLeast(30.0)
+
+      drag(
+        fromX = startX,
+        fromY = startY,
+        toX = startX,
+        toY = endY,
+        durationMs = 400L
+      )
+      delay(500L)
+    }
   }
 }

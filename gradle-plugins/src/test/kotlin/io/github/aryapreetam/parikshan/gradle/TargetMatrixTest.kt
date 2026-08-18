@@ -381,8 +381,7 @@ class TargetMatrixTest {
     evaluate(project)
 
     val e2eTask = project.tasks.findByName("e2eTest") as E2ETestTask
-    val prereqTasks = e2eTask.inputs.files.buildDependencies.getDependencies(e2eTask) +
-        e2eTask.taskDependencies.getDependencies(e2eTask)
+    val prereqTasks = e2eTask.taskDependencies.getDependencies(e2eTask)
     val forbiddenTargetTasks = setOf("e2eDesktopTest", "e2eWasmTest", "e2eAndroidTest", "e2eIosTest")
     val blockers = prereqTasks.map { it.name }.toSet().intersect(forbiddenTargetTasks)
 

@@ -47,6 +47,7 @@ class FormIntegrationTest : E2ETestLifecycle {
     // Input Short Password & Assert Error
     scrollUntilVisible(Selector.Tag("form_playground_screen"), Selector.Tag("form_password_input"))
     input("form_password_input", "123")
+    scrollUntilVisible(Selector.Tag("form_playground_screen"), Selector.Text("Password too short"))
     assertVisible("Password too short")
 
     // Complete Valid Password
@@ -54,10 +55,9 @@ class FormIntegrationTest : E2ETestLifecycle {
     assertNotVisible("Password too short")
 
     // Input Mismatched Confirm Password & Assert Error
-    scrollUntilVisible(Selector.Tag("form_playground_screen"), Selector.Tag("form_category_tags"))
+    scrollUntilVisible(Selector.Tag("form_playground_screen"), Selector.Tag("form_confirm_password_input"))
     input("form_confirm_password_input", "mypassword456")
-    // Scroll to the error text itself to bring it into the viewport                                                                                                                                                  
-    //scrollUntilVisible(Selector.Tag("form_playground_screen"), Selector.Text("Passwords do not match"))
+    scrollUntilVisible(Selector.Tag("form_playground_screen"), Selector.Text("Passwords do not match"))
     assertVisible("Passwords do not match")
     
 
@@ -98,8 +98,10 @@ class FormIntegrationTest : E2ETestLifecycle {
     // Drag slider to 80%
     dragSlider("form_slider", 0.8f)
     
-    // Verify value is updated to a reasonable range (75% to 85%) due to physical gesture Jitter across platforms
-    waitFor(Selector.Text("Range Selector:"))
+    // Wait for Compose to recompose away from the initial 50% value after the drag gesture
+    assertNotVisible("Range Selector: 50%")
+
+    // Read the updated label and verify the value is in the expected range (75-85%)
     val labelNode = resolveVisibleNode(Selector.Text("Range Selector:"))
     val labelText = labelNode.text ?: ""
     val match = Regex("Range Selector: (\\d+)%").find(labelText)

@@ -87,9 +87,6 @@ private class ParikshanSemanticsGrabberNode : Modifier.Node() {
     }
 
     override fun onDetach() {
-        try {
-            WasmSemanticsAccessor.removeOwner(requireOwner())
-        } catch (_: Throwable) {}
         super.onDetach()
     }
 }

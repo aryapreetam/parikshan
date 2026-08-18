@@ -10,7 +10,6 @@ fun main(args: Array<String>) = application {
     title = "sample",
     onCloseRequest = ::exitApplication,
   ) {
-    window.minimumSize = Dimension(350, 600)
     App()
   }
 }

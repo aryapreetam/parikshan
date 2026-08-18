@@ -146,10 +146,12 @@ private suspend fun E2ETestScope.selectDateViaInputNative(day: Int, month: Int, 
     delay(500)
     
     val tree = getTree()
+    val yyyyNode = tree.find { it.text?.contains("YYYY", ignoreCase = true) == true }
+    val enterDateNode = tree.find { it.text?.contains("Enter date", ignoreCase = true) == true }
     val inputSelector = when {
-        tree.any { it.text?.contains("Date", ignoreCase = true) == true } -> Selector.Auto("Date")
-        tree.any { it.text?.contains("Enter date", ignoreCase = true) == true } -> Selector.Auto("Enter date")
-        else -> Selector.Auto("Date")
+        yyyyNode?.text != null -> Selector.Auto(yyyyNode.text!!)
+        enterDateNode?.text != null -> Selector.Auto(enterDateNode.text!!)
+        else -> Selector.Text("Date").atIndex(-1)
     }
     
     val resolvedDate = resolveDateTextForLocale(day, month, year, tree)
@@ -159,9 +161,9 @@ private suspend fun E2ETestScope.selectDateViaInputNative(day: Int, month: Int, 
     
     val okSelector = when {
         getTree().any { it.tag == "date_picker_ok_button" } -> Selector.Tag("date_picker_ok_button")
-        else -> Selector.Text("OK")
+        else -> Selector.Text("OK").atIndex(-1)
     }
-    click(okSelector.atIndex(0))
+    click(okSelector)
 }
 
 private suspend fun E2ETestScope.selectDateViaInputWasm(day: Int, month: Int, year: Int) {
@@ -169,16 +171,12 @@ private suspend fun E2ETestScope.selectDateViaInputWasm(day: Int, month: Int, ye
     delay(1000)
 
     val tree = getTree()
+    val yyyyNode = tree.find { it.text?.contains("YYYY", ignoreCase = true) == true }
+    val enterDateNode = tree.find { it.text?.contains("Enter date", ignoreCase = true) == true }
     val inputSelector = when {
-        tree.any { it.text?.contains("YYYY", ignoreCase = true) == true } -> {
-            val text = tree.first { it.text?.contains("YYYY", ignoreCase = true) == true }.text!!
-            Selector.Auto(text)
-        }
-        tree.any { it.text?.contains("Date", ignoreCase = true) == true } -> {
-            val text = tree.first { it.text?.contains("Date", ignoreCase = true) == true }.text!!
-            Selector.Auto(text)
-        }
-        else -> Selector.Auto("YYYY")
+        yyyyNode?.text != null -> Selector.Auto(yyyyNode.text!!)
+        enterDateNode?.text != null -> Selector.Auto(enterDateNode.text!!)
+        else -> Selector.Text("Date").atIndex(-1)
     }
     
     waitFor(inputSelector)
@@ -191,7 +189,7 @@ private suspend fun E2ETestScope.selectDateViaInputWasm(day: Int, month: Int, ye
     val treeAfter = getTree()
     val okSelector = when {
         treeAfter.any { it.tag == "date_picker_ok_button" } -> Selector.Tag("date_picker_ok_button")
-        else -> Selector.Text("OK")
+        else -> Selector.Text("OK").atIndex(-1)
     }
     click(okSelector)
 }
@@ -201,10 +199,12 @@ private suspend fun E2ETestScope.selectDateViaInputNative(dateText: String) {
     delay(500)
     
     val tree = getTree()
+    val yyyyNode = tree.find { it.text?.contains("YYYY", ignoreCase = true) == true }
+    val enterDateNode = tree.find { it.text?.contains("Enter date", ignoreCase = true) == true }
     val inputSelector = when {
-        tree.any { it.text?.contains("Date", ignoreCase = true) == true } -> Selector.Auto("Date")
-        tree.any { it.text?.contains("Enter date", ignoreCase = true) == true } -> Selector.Auto("Enter date")
-        else -> Selector.Auto("Date")
+        yyyyNode?.text != null -> Selector.Auto(yyyyNode.text!!)
+        enterDateNode?.text != null -> Selector.Auto(enterDateNode.text!!)
+        else -> Selector.Text("Date").atIndex(-1)
     }
     
     val resolvedDate = resolveDateTextForLocale(dateText, tree)
@@ -214,9 +214,9 @@ private suspend fun E2ETestScope.selectDateViaInputNative(dateText: String) {
     
     val okSelector = when {
         getTree().any { it.tag == "date_picker_ok_button" } -> Selector.Tag("date_picker_ok_button")
-        else -> Selector.Text("OK")
+        else -> Selector.Text("OK").atIndex(-1)
     }
-    click(okSelector.atIndex(0))
+    click(okSelector)
 }
 
 private suspend fun E2ETestScope.selectDateViaInputWasm(dateText: String) {
@@ -224,16 +224,12 @@ private suspend fun E2ETestScope.selectDateViaInputWasm(dateText: String) {
     delay(1000)
 
     val tree = getTree()
+    val yyyyNode = tree.find { it.text?.contains("YYYY", ignoreCase = true) == true }
+    val enterDateNode = tree.find { it.text?.contains("Enter date", ignoreCase = true) == true }
     val inputSelector = when {
-        tree.any { it.text?.contains("YYYY", ignoreCase = true) == true } -> {
-            val text = tree.first { it.text?.contains("YYYY", ignoreCase = true) == true }.text!!
-            Selector.Auto(text)
-        }
-        tree.any { it.text?.contains("Date", ignoreCase = true) == true } -> {
-            val text = tree.first { it.text?.contains("Date", ignoreCase = true) == true }.text!!
-            Selector.Auto(text)
-        }
-        else -> Selector.Auto("YYYY")
+        yyyyNode?.text != null -> Selector.Auto(yyyyNode.text!!)
+        enterDateNode?.text != null -> Selector.Auto(enterDateNode.text!!)
+        else -> Selector.Text("Date").atIndex(-1)
     }
     
     waitFor(inputSelector)
@@ -246,7 +242,7 @@ private suspend fun E2ETestScope.selectDateViaInputWasm(dateText: String) {
     val treeAfter = getTree()
     val okSelector = when {
         treeAfter.any { it.tag == "date_picker_ok_button" } -> Selector.Tag("date_picker_ok_button")
-        else -> Selector.Text("OK")
+        else -> Selector.Text("OK").atIndex(-1)
     }
     click(okSelector)
 }

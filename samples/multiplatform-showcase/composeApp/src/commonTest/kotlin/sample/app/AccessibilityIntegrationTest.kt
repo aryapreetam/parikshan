@@ -49,9 +49,17 @@ class AccessibilityIntegrationTest : E2ETestLifecycle {
     click("duplicate_action_item_0")
     assertText("a11y_result_message", "Clicked Index 0")
 
+    scrollUntilVisible(
+        containerSelector = Selector.Tag("accessibility_playground_screen"),
+        targetSelector = Selector.Tag("duplicate_action_item_1")
+    )
     click("duplicate_action_item_1")
     assertText("a11y_result_message", "Clicked Index 1")
 
+    scrollUntilVisible(
+        containerSelector = Selector.Tag("accessibility_playground_screen"),
+        targetSelector = Selector.Tag("duplicate_action_item_2")
+    )
     click("duplicate_action_item_2")
     assertText("a11y_result_message", "Clicked Index 2")
   }

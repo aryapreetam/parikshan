@@ -55,6 +55,21 @@ class TargetMatrixTest {
     (project as ProjectInternal).evaluate()
   }
 
+  private fun configureAndroidDsl(project: Project) {
+    val kmp = project.extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return
+    val androidTarget = kmp.targets.findByName("android") ?: return
+
+    runCatching {
+      androidTarget.javaClass.getMethod("setCompileSdk", java.lang.Integer::class.java).invoke(androidTarget, 34)
+    }
+    runCatching {
+      androidTarget.javaClass.getMethod("setNamespace", String::class.java).invoke(androidTarget, "org.example.test")
+    }
+    runCatching {
+      androidTarget.javaClass.getMethod("setMinSdk", java.lang.Integer::class.java).invoke(androidTarget, 24)
+    }
+  }
+
   @Test
   fun `test Desktop JVM only project configuration`() {
     val project = createProject()
@@ -125,15 +140,8 @@ class TargetMatrixTest {
     val project = createProject()
     project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     project.pluginManager.apply("com.android.kotlin.multiplatform.library")
-
+    configureAndroidDsl(project)
     val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
-    val androidTarget = kmp.targets.findByName("android")
-    if (androidTarget != null) {
-      runCatching {
-        val setter = androidTarget.javaClass.methods.firstOrNull { it.name == "setCompileSdk" || it.name == "compileSdk" }
-        setter?.invoke(androidTarget, 34)
-      }
-    }
     kmp.iosSimulatorArm64()
 
     project.pluginManager.apply("io.github.aryapreetam.parikshan")
@@ -309,15 +317,8 @@ class TargetMatrixTest {
     val project = createProject()
     project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     project.pluginManager.apply("com.android.kotlin.multiplatform.library")
-
+    configureAndroidDsl(project)
     val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
-    val androidTarget = kmp.targets.findByName("android")
-    if (androidTarget != null) {
-      runCatching {
-        val setter = androidTarget.javaClass.methods.firstOrNull { it.name == "setCompileSdk" || it.name == "compileSdk" }
-        setter?.invoke(androidTarget, 34)
-      }
-    }
     kmp.iosSimulatorArm64()
 
     project.pluginManager.apply("io.github.aryapreetam.parikshan")
@@ -482,13 +483,7 @@ class TargetMatrixTest {
     project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     if (sdkEnv != null && File(sdkEnv).exists()) {
       project.pluginManager.apply("com.android.kotlin.multiplatform.library")
-      val androidTarget = project.extensions.getByType(KotlinMultiplatformExtension::class.java).targets.findByName("android")
-      if (androidTarget != null) {
-        runCatching {
-          val setter = androidTarget.javaClass.methods.firstOrNull { it.name == "setCompileSdk" || it.name == "compileSdk" }
-          setter?.invoke(androidTarget, 34)
-        }
-      }
+      configureAndroidDsl(project)
     }
     val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
     kmp.jvm()
@@ -519,13 +514,7 @@ class TargetMatrixTest {
     subProject.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     if (sdkEnv != null && File(sdkEnv).exists()) {
       subProject.pluginManager.apply("com.android.kotlin.multiplatform.library")
-      val androidTarget = subProject.extensions.getByType(KotlinMultiplatformExtension::class.java).targets.findByName("android")
-      if (androidTarget != null) {
-        runCatching {
-          val setter = androidTarget.javaClass.methods.firstOrNull { it.name == "setCompileSdk" || it.name == "compileSdk" }
-          setter?.invoke(androidTarget, 34)
-        }
-      }
+      configureAndroidDsl(subProject)
     }
     val kmp = subProject.extensions.getByType(KotlinMultiplatformExtension::class.java)
     kmp.jvm()
@@ -556,13 +545,7 @@ class TargetMatrixTest {
     subProject.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     if (sdkEnv != null && File(sdkEnv).exists()) {
       subProject.pluginManager.apply("com.android.kotlin.multiplatform.library")
-      val androidTarget = subProject.extensions.getByType(KotlinMultiplatformExtension::class.java).targets.findByName("android")
-      if (androidTarget != null) {
-        runCatching {
-          val setter = androidTarget.javaClass.methods.firstOrNull { it.name == "setCompileSdk" || it.name == "compileSdk" }
-          setter?.invoke(androidTarget, 34)
-        }
-      }
+      configureAndroidDsl(subProject)
     }
     val kmp = subProject.extensions.getByType(KotlinMultiplatformExtension::class.java)
     kmp.jvm()
@@ -593,13 +576,7 @@ class TargetMatrixTest {
     subProject.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     if (sdkEnv != null && File(sdkEnv).exists()) {
       subProject.pluginManager.apply("com.android.kotlin.multiplatform.library")
-      val androidTarget = subProject.extensions.getByType(KotlinMultiplatformExtension::class.java).targets.findByName("android")
-      if (androidTarget != null) {
-        runCatching {
-          val setter = androidTarget.javaClass.methods.firstOrNull { it.name == "setCompileSdk" || it.name == "compileSdk" }
-          setter?.invoke(androidTarget, 34)
-        }
-      }
+      configureAndroidDsl(subProject)
     }
     val kmp = subProject.extensions.getByType(KotlinMultiplatformExtension::class.java)
     kmp.iosSimulatorArm64()
@@ -671,13 +648,7 @@ class TargetMatrixTest {
     subProject.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     if (sdkEnv != null && File(sdkEnv).exists()) {
       subProject.pluginManager.apply("com.android.kotlin.multiplatform.library")
-      val androidTarget = subProject.extensions.getByType(KotlinMultiplatformExtension::class.java).targets.findByName("android")
-      if (androidTarget != null) {
-        runCatching {
-          val setter = androidTarget.javaClass.methods.firstOrNull { it.name == "setCompileSdk" || it.name == "compileSdk" }
-          setter?.invoke(androidTarget, 34)
-        }
-      }
+      configureAndroidDsl(subProject)
     }
     val kmp = subProject.extensions.getByType(KotlinMultiplatformExtension::class.java)
     kmp.jvm()

@@ -2662,7 +2662,7 @@ abstract class E2ETestTask : DefaultTask() {
               val desktopClosed = activeTargets.contains("desktop") && !DesktopProcess.isProcessAlive(desktopLaunchManifestFile.orNull?.asFile)
               val wasmClosed = activeTargets.contains("wasm") && isWasmSessionClosed(File(projectRootDir.get()))
               val androidClosed = activeTargets.contains("android") && androidApplicationId.isPresent && !isAndroidAppAlive(logger, File(projectRootDir.get()), finalAndroidSerial, androidApplicationId.orNull)
-              val iosClosed = activeTargets.contains("ios") && iosBundleId.isPresent && !isIosAppAlive(finalIosDevice, iosBundleId.orNull)
+              val iosClosed = activeTargets.contains("ios") && iosBundleId.isPresent && !isIosAppAlive(iosBundleId.orNull)
 
               if (desktopClosed || wasmClosed || androidClosed || iosClosed) {
                   val targetName = when {
@@ -2817,16 +2817,10 @@ abstract class E2ETestTask : DefaultTask() {
     }.getOrDefault(true)
   }
 
-  private fun isIosAppAlive(deviceSpec: String?, bundleId: String?): Boolean {
+  private fun isIosAppAlive(bundleId: String?): Boolean {
     if (bundleId.isNullOrEmpty()) return true
     val session = readSession("ios") ?: return true
-    val udid = getIosSimulatorUdid(deviceSpec ?: "") ?: getBootedIosSimulatorUdid() ?: return true
-    if (udid.isEmpty()) return true
-    return runCatching {
-      val p = ProcessBuilder("xcrun", "simctl", "spawn", udid, "launchctl", "list").start()
-      val output = if (p.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)) p.inputStream.bufferedReader().readText() else ""
-      output.contains(bundleId)
-    }.getOrDefault(true)
+    return checkTargetHealth("127.0.0.1", session.port, session.token)
   }
 
   private companion object {

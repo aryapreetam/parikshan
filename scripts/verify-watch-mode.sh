@@ -80,7 +80,7 @@ wait_for_log() {
 }
 
 # 2. Wait for Initial PASS
-wait_for_log "Latest: ([1-9][0-9]*|2) PASSED, 0 FAILED" "Initial run PASS status" 300
+wait_for_log "Latest: ([1-9][0-9]*|2) PASSED, 0 FAILED" "Initial run PASS status" 900
 
 # 3. Inject Failure into Test File
 echo "==> Step 3: Injecting failing assertion on line 68 of test file..."
@@ -88,14 +88,14 @@ sed -i '' 's/assertVisible("This is a sample text")/assertVisible("This text doe
 sed -i 's/assertVisible("This is a sample text")/assertVisible("This text does not exist anywhere")/' "${TEST_FILE}"
 
 # 4. Wait for FAIL Detection
-wait_for_log "Latest: 0 PASSED, ([1-9][0-9]*|2) FAILED" "Watch mode FAIL detection" 120
+wait_for_log "Latest: 0 PASSED, ([1-9][0-9]*|2) FAILED" "Watch mode FAIL detection" 360
 
 # 5. Revert Test Code
 echo "==> Step 5: Reverting test code back to clean state..."
 git checkout -- "${TEST_FILE}"
 
 # 6. Wait for Recovery PASS
-wait_for_log "Latest: ([1-9][0-9]*|2) PASSED, 0 FAILED" "Watch mode recovery PASS" 120
+wait_for_log "Latest: ([1-9][0-9]*|2) PASSED, 0 FAILED" "Watch mode recovery PASS" 360
 
 echo "============================================================="
 echo " SUCCESS: Watch mode verification script completed cleanly!"

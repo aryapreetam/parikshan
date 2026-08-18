@@ -13,6 +13,7 @@ import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.ProtocolJson
 import io.github.aryapreetam.parikshan.protocol.Response
 import io.github.aryapreetam.parikshan.protocol.resolvedSelector
+import com.google.gson.JsonObject
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -201,7 +202,17 @@ internal class WasmDriver private constructor(
       is Command.Drag -> {
         page.mouse().move(command.fromX, command.fromY)
         page.mouse().down()
-        page.mouse().move(command.toX, command.toY, com.microsoft.playwright.Mouse.MoveOptions().setSteps(20))
+        delay(30)
+        val steps = 20
+        val stepDelay = (command.durationMs / steps).coerceAtLeast(10L)
+        for (i in 1..steps) {
+          val progress = i.toDouble() / steps
+          val curX = command.fromX + (command.toX - command.fromX) * progress
+          val curY = command.fromY + (command.toY - command.fromY) * progress
+          page.mouse().move(curX, curY)
+          delay(stepDelay)
+        }
+        delay(30)
         page.mouse().up()
         Response.Ok(command.id)
       }
@@ -236,7 +247,7 @@ internal class WasmDriver private constructor(
               val videoObj = runCatching { sharedPage?.video() }.getOrNull()
               runCatching { sharedPage?.close() }
 
-              // Staff+ Deterministic Finalization: Poll for the file to exist and have size > 0
+              // Poll for the file to exist and have size > 0
               var rawVideoPath: Path? = null
               repeat(50) { attempt ->
                   rawVideoPath = runCatching { videoObj?.path() }.getOrNull()
@@ -597,7 +608,7 @@ internal class WasmDriver private constructor(
         chromiumArgs.add("--app=${config.appUrl}")
         chromiumArgs.add("--window-size=${config.viewportWidth},${config.viewportHeight}")
       } else {
-        chromiumArgs.add("--window-size=${config.viewportWidth + 50},${config.viewportHeight + 100}")
+        chromiumArgs.add("--window-size=${config.viewportWidth},${config.viewportHeight}")
       }
       if (!config.headless && config.windowX != null && config.windowY != null) {
         chromiumArgs.add("--window-position=${config.windowX},${config.windowY}")
@@ -648,7 +659,7 @@ internal class WasmDriver private constructor(
               args.add("--app=${config.appUrl}")
               args.add("--window-size=${config.viewportWidth},${config.viewportHeight}")
             } else {
-              args.add("--window-size=${config.viewportWidth + 50},${config.viewportHeight + 100}")
+              args.add("--window-size=${config.viewportWidth},${config.viewportHeight}")
             }
             if (!config.headless && config.windowX != null && config.windowY != null) {
               args.add("--window-position=${config.windowX},${config.windowY}")
@@ -688,36 +699,40 @@ internal class WasmDriver private constructor(
           sharedPlaywright = playwright
           val chromiumArgs = getChromiumArgs(config)
 
-          if (config.appMode) {
-            val userDataDir = Files.createTempDirectory("parikshan-wasm-appmode-user")
-            val videoConfig = ParikshanVideoConfig.fromSystemProperties()
-            val launchOptions = BrowserType.LaunchPersistentContextOptions()
-              .setHeadless(config.headless)
-              .setViewportSize(config.viewportWidth, config.viewportHeight - 28)
-              .setArgs(chromiumArgs)
+          val userDataDir = Files.createTempDirectory(if (config.appMode) "parikshan-wasm-appmode-user" else "parikshan-wasm-user")
+          val videoConfig = ParikshanVideoConfig.fromSystemProperties()
+          val launchOptions = BrowserType.LaunchPersistentContextOptions()
+            .setHeadless(config.headless)
+            .setArgs(chromiumArgs)
 
-            if (videoConfig.enabled) {
-              val tempDir = playwrightTempDir ?: Files.createTempDirectory("parikshan-wasm-video").also { playwrightTempDir = it }
-              launchOptions.setRecordVideoDir(tempDir)
-              if (videoConfig.videoWidth != null && videoConfig.videoHeight != null) {
-                launchOptions.setRecordVideoSize(videoConfig.videoWidth, videoConfig.videoHeight)
-              } else {
-                launchOptions.setRecordVideoSize(config.viewportWidth, config.viewportHeight)
-              }
-            }
-            val context = playwright.chromium().launchPersistentContext(userDataDir, launchOptions)
-            sharedContext = context
+          if (config.appMode) {
+            launchOptions.setViewportSize(config.viewportWidth, config.viewportHeight - 28)
           } else {
-            val launchOptions = BrowserType.LaunchOptions().setHeadless(config.headless).setArgs(chromiumArgs)
-            sharedBrowser = playwright.chromium().launch(launchOptions)
+            launchOptions.setViewportSize(null)
           }
+
+          if (videoConfig.enabled) {
+            val tempDir = playwrightTempDir ?: Files.createTempDirectory("parikshan-wasm-video").also { playwrightTempDir = it }
+            launchOptions.setRecordVideoDir(tempDir)
+            if (videoConfig.videoWidth != null && videoConfig.videoHeight != null) {
+              launchOptions.setRecordVideoSize(videoConfig.videoWidth, videoConfig.videoHeight)
+            } else {
+              launchOptions.setRecordVideoSize(config.viewportWidth, config.viewportHeight)
+            }
+          }
+          val context = playwright.chromium().launchPersistentContext(userDataDir, launchOptions)
+          sharedContext = context
         }
       }
 
       if (sharedPage == null || sharedPage!!.isClosed) {
         val videoConfig = ParikshanVideoConfig.fromSystemProperties()
         val contextOptions = Browser.NewContextOptions()
-        contextOptions.setViewportSize(config.viewportWidth, config.viewportHeight)
+        if (config.appMode) {
+          contextOptions.setViewportSize(config.viewportWidth, config.viewportHeight - 28)
+        } else {
+          contextOptions.setViewportSize(null)
+        }
 
         if (videoConfig.enabled) {
           val tempDir = playwrightTempDir ?: Files.createTempDirectory("parikshan-wasm-video").also { playwrightTempDir = it }
@@ -773,14 +788,39 @@ internal class WasmDriver private constructor(
         sharedPage = page
         markWasmSessionActive()
 
-        // Set viewport via CDP session for reliable override when connected over CDP
+        // Set viewport and window bounds via CDP for reliable override across platforms
         fun applyViewport() {
           runCatching {
             if (config.appMode) {
               page.setViewportSize(config.viewportWidth, config.viewportHeight - 28)
               page.evaluate("() => { window.resizeTo(${config.viewportWidth}, ${config.viewportHeight}); }")
-            } else {
-              page.setViewportSize(config.viewportWidth, config.viewportHeight)
+            } else if (!config.headless) {
+              // Non-app mode: use CDP Browser.setWindowBounds for reliable window
+              // positioning. CLI --window-position is ignored by macOS window manager;
+              // CDP is a programmatic override that works on macOS, Linux, and Windows.
+              val cdp = page.context().newCDPSession(page)
+              try {
+                val windowInfo = cdp.send("Browser.getWindowForTarget")
+                val windowId = windowInfo?.get("windowId")?.asInt
+                if (windowId != null) {
+                  val bounds = JsonObject().apply {
+                    if (config.windowX != null && config.windowY != null) {
+                      addProperty("left", config.windowX)
+                      addProperty("top", config.windowY)
+                    }
+                    addProperty("width", config.viewportWidth)
+                    addProperty("height", config.viewportHeight)
+                    addProperty("windowState", "normal")
+                  }
+                  val params = JsonObject().apply {
+                    addProperty("windowId", windowId)
+                    add("bounds", bounds)
+                  }
+                  cdp.send("Browser.setWindowBounds", params)
+                }
+              } finally {
+                cdp.detach()
+              }
             }
           }
         }

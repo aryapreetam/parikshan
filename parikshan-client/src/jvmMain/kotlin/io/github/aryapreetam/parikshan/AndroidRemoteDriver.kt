@@ -75,11 +75,13 @@ internal class AndroidRemoteDriver private constructor(
         try {
             // Try to find the PID of screenrecord on device
             val pidProcess = ProcessBuilder(adbPrefix + listOf("shell", "pidof", "screenrecord")).start()
-            val pid = pidProcess.inputStream.bufferedReader().readText().trim()
+            val pidOutput = pidProcess.inputStream.bufferedReader().readText().trim()
             
-            if (pid.isNotEmpty()) {
-                // Gracefully stop specifically that screenrecord process
-                ProcessBuilder(adbPrefix + listOf("shell", "kill", "-2", pid)).start().waitFor()
+            if (pidOutput.isNotEmpty()) {
+                // pidof may return multiple space-separated PIDs
+                pidOutput.split("\\s+".toRegex()).filter { it.isNotEmpty() }.forEach { pid ->
+                    ProcessBuilder(adbPrefix + listOf("shell", "kill", "-2", pid)).start().waitFor()
+                }
             } else {
                 // Fallback to pkill if pidof fails or returns nothing
                 ProcessBuilder(adbPrefix + listOf("shell", "pkill", "-2", "screenrecord")).start().waitFor()

@@ -110,26 +110,6 @@ private class DesktopBootstrapController(
               val targetW = w ?: window.width
               val targetH = h ?: window.height
               System.err.println("Parikshan: Registered new window '${window.title}' with target bounds: ($targetX, $targetY, $targetW, $targetH)")
-              
-              val listener = object : java.awt.event.ComponentAdapter() {
-                override fun componentResized(e: java.awt.event.ComponentEvent?) {
-                  onEdt {
-                    if (window.width != targetW || window.height != targetH) {
-                      System.err.println("Parikshan: Restoring window size to target bounds: width=$targetW, height=$targetH (was ${window.width}x${window.height})")
-                      window.setSize(targetW, targetH)
-                    }
-                  }
-                }
-                override fun componentMoved(e: java.awt.event.ComponentEvent?) {
-                  onEdt {
-                    if (window.x != targetX || window.y != targetY) {
-                      System.err.println("Parikshan: Restoring window position to target bounds: x=$targetX, y=$targetY (was ${window.x},${window.y})")
-                      window.setLocation(targetX, targetY)
-                    }
-                  }
-                }
-              }
-              window.addComponentListener(listener)
               window.setBounds(targetX, targetY, targetW, targetH)
             }
           }
@@ -188,29 +168,6 @@ private class DesktopBootstrapController(
             System.err.println("Parikshan: Applying focus prevention to window '${window.title}'")
             window.setFocusableWindowState(true)
             window.setAutoRequestFocus(false)
-          }
-        }
-      }
-    }
-  }
-
-  private fun applyWindowPosition() {
-    val x = System.getProperty("parikshan.desktop.windowX")?.toIntOrNull()
-    val y = System.getProperty("parikshan.desktop.windowY")?.toIntOrNull()
-    val w = System.getProperty("parikshan.desktop.windowWidth")?.toIntOrNull()
-    val h = System.getProperty("parikshan.desktop.windowHeight")?.toIntOrNull()
-    System.err.println("Parikshan window bounds loaded: x=$x, y=$y, w=$w, h=$h")
-
-    if (x != null || y != null || w != null || h != null) {
-      onEdt {
-        Window.getWindows().filterIsInstance<ComposeWindow>().forEach { window ->
-          val targetX = x ?: window.x
-          val targetY = y ?: window.y
-          val targetW = w ?: window.width
-          val targetH = h ?: window.height
-          if (window.x != targetX || window.y != targetY || window.width != targetW || window.height != targetH) {
-            System.err.println("Parikshan: Positioning new window to match bounds: ($targetX, $targetY, $targetW, $targetH)")
-            window.setBounds(targetX, targetY, targetW, targetH)
           }
         }
       }

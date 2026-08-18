@@ -220,14 +220,7 @@ jobs:
           command: 'echo "WASM environment setup complete."'
       - name: Run Parikshan Synchronized E2E tests
         run: |
-          xvfb-run ./gradlew :samples:multiplatform-showcase:composeApp:e2eTest --targets=jvm,wasm --tests="sample.app.FormIntegrationTest.testSliderDrag" --sync --window-size=360x720 --layout=side-by-side -Dparikshan.video.enabled=true --no-configuration-cache
-      - name: Upload Sync Videos
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: parikshan-sync-videos
-          path: samples/multiplatform-showcase/composeApp/build/parikshan/videos/
-          if-no-files-found: ignore
+          xvfb-run ./gradlew :samples:multiplatform-showcase:composeApp:e2eTest --targets=jvm,wasm --tests="sample.app.FormIntegrationTest.testSliderDrag" --sync --window-size=360x720 --layout=side-by-side --no-configuration-cache
 
   e2e-watch-script:
     name: E2E Watch Verification Script
@@ -252,6 +245,11 @@ jobs:
         uses: aryapreetam/parikshan-wasm-action@v1
         with:
           command: 'echo "WASM setup complete."'
+      - name: Pre-warm Watch Dependencies
+        run: |
+          ./gradlew :samples:multiplatform-showcase:composeApp:packageUberJarForCurrentOS \
+                    :samples:multiplatform-showcase:composeApp:wasmJsBrowserDevelopmentWebpack \
+                    :samples:multiplatform-showcase:composeApp:installPlaywrightBrowsers
       - name: Run Watch Mode Verification Script
         run: |
           xvfb-run ./scripts/verify-watch-mode.sh

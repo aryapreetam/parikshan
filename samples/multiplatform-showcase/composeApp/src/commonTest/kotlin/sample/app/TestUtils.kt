@@ -46,7 +46,8 @@ suspend fun E2ETestScope.navigateToSection(navTag: String) {
                 "nav_scroll_playground",
                 "nav_gesture_playground",
                 "nav_timing_playground",
-                "nav_accessibility_playground"
+                "nav_accessibility_playground",
+                "nav_selector_parity_playground"
             )
 
             val targetIndex = sectionOrder.indexOf(navTag)

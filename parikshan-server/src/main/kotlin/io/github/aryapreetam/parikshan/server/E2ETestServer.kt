@@ -259,7 +259,9 @@ private class RunningE2ETestServer(
               delay(50)
               robot.mouseRelease(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)
               delay(100)
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+              System.err.println("Parikshan: AWT Robot focus fallback failed: ${e.message}")
+            }
             
             // Re-try semantic set text after focus grab attempt
             if (!semantics.performSetText(sel, command.text)) {

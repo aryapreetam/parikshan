@@ -81,7 +81,10 @@ internal class BroadcastDriver(
                 toX = targetNode.bounds.left + (targetNode.bounds.width * normToX),
                 toY = targetNode.bounds.top + (targetNode.bounds.height * normToY)
               )
-            } else command
+            } else {
+              System.err.println("Parikshan: Drag coordinate mapping failed for ${driver.targetPlatform} — node '${primaryNode.tag}' not found in target tree. Using raw coordinates.")
+              command
+            }
           } else command
         }
       }.map { (driver, deferred) -> driver to deferred.await() }

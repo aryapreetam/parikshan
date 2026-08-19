@@ -2751,31 +2751,33 @@ abstract class E2ETestTask : DefaultTask() {
   private fun isWasmSessionClosed(projectRootDir: File): Boolean {
     val sessionFile = File(projectRootDir, "build/parikshan/wasm-session.properties")
     if (!sessionFile.exists()) return false
-    val isClosedProperty = runCatching {
+    val status = runCatching {
       val props = java.util.Properties()
       sessionFile.inputStream().use(props::load)
-      props.getProperty("status") == "closed"
-    }.getOrDefault(false)
+      props.getProperty("status")
+    }.getOrNull()
 
-    if (isClosedProperty) return true
+    if (status == "closed") return true
+    if (status == "active") {
+      val cdpPortOpen = runCatching {
+        java.net.Socket("127.0.0.1", 9222).use { true }
+      }.getOrDefault(false)
 
-    val cdpPortOpen = runCatching {
-      java.net.Socket("127.0.0.1", 9222).use { true }
-    }.getOrDefault(false)
+      if (cdpPortOpen) {
+        val hasActivePageTarget = runCatching {
+          val url = java.net.URL("http://127.0.0.1:9222/json")
+          val conn = url.openConnection() as java.net.HttpURLConnection
+          conn.connectTimeout = 1000
+          conn.readTimeout = 1000
+          val json = conn.inputStream.bufferedReader().use { it.readText() }
+          json.contains("\"type\": \"page\"") || json.contains("\"type\":\"page\"")
+        }.getOrDefault(true)
 
-    if (!cdpPortOpen) return true
-
-    val hasActivePageTarget = runCatching {
-      val url = java.net.URL("http://127.0.0.1:9222/json")
-      val conn = url.openConnection() as java.net.HttpURLConnection
-      conn.connectTimeout = 1000
-      conn.readTimeout = 1000
-      val json = conn.inputStream.bufferedReader().use { it.readText() }
-      json.contains("\"type\": \"page\"") || json.contains("\"type\":\"page\"")
-    }.getOrDefault(true)
-
-    if (!hasActivePageTarget) {
-      return true
+        if (!hasActivePageTarget) {
+          return true
+        }
+      }
+      return false
     }
 
     return false

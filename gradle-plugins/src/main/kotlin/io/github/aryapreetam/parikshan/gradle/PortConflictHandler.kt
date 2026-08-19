@@ -22,7 +22,7 @@ internal object PortConflictHandler {
                 logger.lifecycle("[Parikshan] Found stale process PID: $pid. Terminating...")
                 terminateProcess(pid)
                 var released = false
-                for (i in 1..20) {
+                for (i in 1..50) {
                     Thread.sleep(100)
                     if (isPortAvailable(host, originalPort)) {
                         released = true
@@ -134,33 +134,106 @@ internal object PortConflictHandler {
                     .filter { !excludeCurrentPid || it != currentPid }
                     .firstOrNull()
             } else {
-                val process = ProcessBuilder("lsof", "-t", "-i", ":$port").start()
-                val output = process.inputStream.bufferedReader().readText().trim()
-                output.lineSequence()
-                    .map { it.trim().toLongOrNull() }
-                    .filterNotNull()
-                    .filter { !excludeCurrentPid || it != currentPid }
-                    .firstOrNull()
+                val lsofPid = runCatching {
+                    val process = ProcessBuilder("lsof", "-t", "-i", ":$port").start()
+                    val output = process.inputStream.bufferedReader().readText().trim()
+                    output.lineSequence()
+                        .map { it.trim().toLongOrNull() }
+                        .filterNotNull()
+                        .filter { !excludeCurrentPid || it != currentPid }
+                        .firstOrNull()
+                }.getOrNull()
+
+                if (lsofPid != null) return lsofPid
+
+                // Fallback to Linux /proc filesystem scanning (rootless socket inode lookup)
+                val procPid = findLinuxProcPidForPort(port, currentPid, excludeCurrentPid)
+                if (procPid != null) return procPid
+
+                // Fallback to ss command for minimal Linux runners lacking lsof
+                runCatching {
+                    val process = ProcessBuilder("ss", "-tulpn").start()
+                    val output = process.inputStream.bufferedReader().readText()
+                    output.lineSequence()
+                        .filter { it.contains(":$port") }
+                        .mapNotNull { line ->
+                            Regex("""pid=(\d+)""").find(line)?.groupValues?.get(1)?.toLongOrNull()
+                        }
+                        .filter { !excludeCurrentPid || it != currentPid }
+                        .firstOrNull()
+                }.getOrNull()
             }
         } catch (_: Exception) {
             null
         }
     }
 
+    private fun findLinuxProcPidForPort(port: Int, currentPid: Long, excludeCurrentPid: Boolean): Long? {
+        return runCatching {
+            val hexPort = port.toString(16).uppercase().padStart(4, '0')
+            val tcpFiles = listOf(File("/proc/net/tcp"), File("/proc/net/tcp6"))
+            val socketInodes = tcpFiles.filter { it.exists() }.flatMap { file ->
+                file.useLines { lines ->
+                    lines.mapNotNull { line ->
+                        val tokens = line.trim().split(Regex("\\s+"))
+                        if (tokens.size > 9) {
+                            val localAddress = tokens[1]
+                            val state = tokens[3]
+                            val inode = tokens[9]
+                            if (localAddress.endsWith(":$hexPort") && state == "0A") inode else null
+                        } else null
+                    }.toList()
+                }
+            }.toSet()
+
+            if (socketInodes.isEmpty()) return null
+
+            val procDir = File("/proc")
+            if (!procDir.exists() || !procDir.isDirectory) return null
+
+            val pidsToScan = mutableListOf<Long>()
+            // Scan current pid first, then parent/other pids
+            pidsToScan.add(currentPid)
+            procDir.listFiles { _, name -> name.all { it.isDigit() } }?.forEach { f ->
+                f.name.toLongOrNull()?.let { pid ->
+                    if (pid != currentPid) pidsToScan.add(pid)
+                }
+            }
+
+            for (pid in pidsToScan) {
+                if (excludeCurrentPid && pid == currentPid) continue
+                val fdDir = File("/proc/$pid/fd")
+                if (!fdDir.exists()) continue
+                val fds = fdDir.listFiles() ?: continue
+                for (fd in fds) {
+                    val linkTarget = runCatching {
+                        java.nio.file.Files.readSymbolicLink(fd.toPath()).toString()
+                    }.getOrNull().orEmpty()
+                    if (socketInodes.any { inode -> linkTarget.contains("socket:[$inode]") }) {
+                        return pid
+                    }
+                }
+            }
+            null
+        }.getOrNull()
+    }
+
     internal fun terminateProcess(pid: Long) {
-        if (pid == ProcessHandle.current().pid()) {
+        val currentPid = ProcessHandle.current().pid()
+        val parentPid = ProcessHandle.current().parent().orElse(null)?.pid()
+        if (pid == currentPid || (parentPid != null && pid == parentPid)) {
             return
         }
         try {
             val handle = ProcessHandle.of(pid).orElse(null) ?: return
             if (!handle.isAlive) return
-            handle.destroy()
+            val cmd = handle.info().command().orElse("").lowercase()
+            if (cmd.contains("gradle")) {
+                return
+            }
+            handle.destroyForcibly()
             runCatching {
                 handle.onExit().get(2, TimeUnit.SECONDS)
-            }.onFailure {
-                if (handle.isAlive) {
-                    handle.destroyForcibly()
-                }
             }
         } catch (_: Exception) {
             // Ignore security or permission exceptions to let the port fallback happen gracefully

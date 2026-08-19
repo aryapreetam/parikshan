@@ -1,3 +1,5 @@
+@file:Suppress("NewApi")
+
 package io.github.aryapreetam.parikshan.gradle
 
 import org.gradle.api.DefaultTask
@@ -14,6 +16,7 @@ import org.gradle.api.tasks.options.Option
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.nio.file.*
 
 abstract class E2ETestTask : DefaultTask() {
 
@@ -31,6 +34,48 @@ abstract class E2ETestTask : DefaultTask() {
   @get:Input
   @set:Option(option = "keep-alive", description = "Keep application process alive to speed up subsequent E2E test runs.")
   var keepAlive: Boolean = false
+
+  @get:Input
+  @set:Option(option = "sync", description = "Execute E2E tests concurrently on all targets in synchronized lockstep mode.")
+  var sync: Boolean = false
+
+  @get:Input
+  @set:Option(option = "watch", description = "Run E2E tests continuously on file changes.")
+  var watch: Boolean = false
+
+  @get:Input
+  @get:Optional
+  @set:Option(option = "compile-command", description = "The shell command to re-compile tests when files change in watch mode.")
+  var compileCommand: String = ""
+
+  @get:Input
+  @set:Option(option = "layout", description = "Specifies the layout mode: default or side-by-side")
+  var layout: String = "default"
+
+  @get:Input
+  @set:Option(option = "window-size", description = "Global window width and height override (format: <width>x<height>, e.g. 360x800)")
+  var windowSize: String = ""
+
+  @get:Input
+  @set:Option(option = "desktop-window-size", description = "Desktop-specific size override (format: <width>x<height>)")
+  var desktopWindowSize: String = ""
+
+  @get:Input
+  @set:Option(option = "desktop-window-position", description = "Desktop-specific screen coordinates (format: <x>,<y> or <x>x<y>)")
+  var desktopWindowPosition: String = ""
+
+  @get:Input
+  @set:Option(option = "wasm-window-size", description = "Wasm-specific size override (format: <width>x<height>)")
+  var wasmWindowSize: String = ""
+
+  @get:Input
+  @set:Option(option = "wasm-window-position", description = "Wasm-specific screen coordinates (format: <x>,<y> or <x>x<y>)")
+  var wasmWindowPosition: String = ""
+
+  @get:Input
+  @set:Option(option = "app-mode", description = "Launches target client in standalone app mode (hiding browser chrome/toolbars for Wasm).")
+  var appMode: Boolean = false
+
 
   @get:Input
   @set:Option(option = "reclaim-ports", description = "Force terminate conflicting active sessions of other applications on default ports.")
@@ -154,6 +199,14 @@ abstract class E2ETestTask : DefaultTask() {
   @get:Optional
   abstract val productionSources: ConfigurableFileCollection
 
+  @get:InputFiles
+  @get:Optional
+  abstract val testSources: ConfigurableFileCollection
+
+  @get:InputFiles
+  @get:Optional
+  abstract val productionClassesDirs: ConfigurableFileCollection
+
   @get:Internal
   abstract val androidApkDir: DirectoryProperty
 
@@ -183,16 +236,48 @@ abstract class E2ETestTask : DefaultTask() {
       throw GradleException("No E2E test classes matched the filter pattern: '$testsPattern'")
     }
 
-    val activeTargets = targets.split(",")
+    val validLayouts = setOf("default", "side-by-side")
+    val rawLayout = layout.trim().lowercase()
+    if (rawLayout !in validLayouts) {
+      throw GradleException("Parikshan: Invalid layout option '$layout'. Valid options: ${validLayouts.joinToString()}")
+    }
+
+    val rawTargetTokens = targets.split(",")
       .map { it.trim().lowercase() }
       .filter { it.isNotEmpty() }
-      
+
+    val canonicalTokens = rawTargetTokens.map { when (it) { "jvm" -> "desktop"; "web" -> "wasm"; else -> it } }
+    val duplicates = rawTargetTokens.filter { token -> rawTargetTokens.count { it == token } > 1 }.distinct()
+    if (duplicates.isNotEmpty()) {
+      throw GradleException("Parikshan: Duplicate target(s) specified in --targets='$targets': ${duplicates.joinToString()}. Targets must be distinct.")
+    }
+
+    val activeTargets = canonicalTokens.distinct()
     if (activeTargets.isEmpty()) {
       throw GradleException("No execution targets specified in --targets")
     }
 
-    val hasAndroid = activeTargets.contains("android")
-    val hasIos = activeTargets.contains("ios")
+    val isMac = System.getProperty("os.name").lowercase().contains("mac")
+    val effectiveTargets = activeTargets.toMutableList()
+
+    if (effectiveTargets.contains("ios")) {
+      if (!isMac) {
+        val isExplicitIosOnly = (rawTargetTokens == listOf("ios"))
+        if (isExplicitIosOnly) {
+          throw GradleException("Parikshan iOS: Cannot run iOS E2E tests on non-macOS operating system '${System.getProperty("os.name")}'.")
+        } else {
+          logger.lifecycle("Parikshan: Host OS is not macOS. Skipping iOS target execution.")
+          effectiveTargets.remove("ios")
+        }
+      }
+    }
+
+    if (effectiveTargets.isEmpty()) {
+      throw GradleException("No runnable execution targets available for this operating system.")
+    }
+
+    val hasAndroid = effectiveTargets.contains("android")
+    val hasIos = effectiveTargets.contains("ios")
 
     var resolvedAndroidSerial: String? = null
     var resolvedIosDevice: String? = null
@@ -234,7 +319,7 @@ abstract class E2ETestTask : DefaultTask() {
       }
     }
 
-    val finalAndroidSerial = resolvedAndroidSerial
+    val initialAndroidSerial = resolvedAndroidSerial
       ?: gradleDevice.orNull?.takeIf { it.isNotBlank() }
       ?: gradleSerial.orNull?.takeIf { it.isNotBlank() }
       ?: gradleAndroidSerial.orNull?.takeIf { it.isNotBlank() }
@@ -242,30 +327,72 @@ abstract class E2ETestTask : DefaultTask() {
 
     val resolvedHost = host.getOrElse("127.0.0.1")
 
-    val finalIosDevice = resolvedIosDevice
+    var finalAndroidSerial: String? = null
+    if (hasAndroid) {
+      finalAndroidSerial = AndroidTargetConfigurer.AndroidRecorder.resolveDeviceSerial(
+        logger, File(projectRootDir.get()), initialAndroidSerial
+      )
+      logger.lifecycle("Parikshan Android: Pre-flight check passed for device '$finalAndroidSerial'.")
+    }
+
+    val initialIosDevice = resolvedIosDevice
       ?: gradleDevice.orNull?.takeIf { it.isNotBlank() }
       ?: gradleSerial.orNull?.takeIf { it.isNotBlank() }
       ?: gradleIosDevice.orNull?.takeIf { it.isNotBlank() }
       ?: System.getenv("PARIKSHAN_IOS_DEVICE")?.takeIf { it.isNotBlank() }
-      ?: getAvailableIosSimulators().firstOrNull { it.isBooted }?.name
-      ?: getAvailableIosSimulators().firstOrNull()?.name
-      ?: "iPhone 16"
+
+    var finalIosDevice: String = "iPhone 16"
+    if (hasIos) {
+      val availableSims = getAvailableIosSimulators()
+      if (availableSims.isEmpty()) {
+        throw GradleException("Parikshan iOS: No available iOS Simulators detected. Run `xcrun simctl list devices available` to check your environment.")
+      }
+      if (initialIosDevice != null && initialIosDevice.isNotBlank()) {
+        val matches = availableSims.any { it.name.equals(initialIosDevice, ignoreCase = true) || it.udid == initialIosDevice }
+        if (!matches) {
+          val simNames = availableSims.map { it.name }.distinct().joinToString()
+          throw GradleException("Parikshan iOS: Specified iOS simulator '$initialIosDevice' was not found in available simulators. Available simulators: $simNames.")
+        }
+        finalIosDevice = initialIosDevice
+      } else {
+        finalIosDevice = availableSims.firstOrNull { it.isBooted }?.name
+          ?: availableSims.firstOrNull()?.name
+          ?: "iPhone 16"
+      }
+      logger.lifecycle("Parikshan iOS: Pre-flight check passed for simulator '$finalIosDevice'.")
+    }
 
     val logDir = File(buildDir.get().asFile, "parikshan/logs")
     logDir.mkdirs()
 
-    logger.lifecycle("Parikshan: Starting parallel E2E runs for targets: ${activeTargets.joinToString()}")
+    logger.lifecycle("Parikshan: Starting parallel E2E runs for targets: ${effectiveTargets.joinToString()}")
     logger.lifecycle("Parikshan: Target test classes: ${filteredClasses.joinToString()}")
 
     val activeProcesses = mutableListOf<Process>()
     val activeForwardedPorts = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
     val shutdownHook = Thread {
       synchronized(activeProcesses) {
-        activeProcesses.forEach {
-          try { it.destroyForcibly() } catch (_: Exception) {}
+        activeProcesses.forEach { proc ->
+          try {
+            proc.toHandle()?.descendants()?.forEach { desc ->
+              try { desc.destroyForcibly() } catch (_: Exception) {}
+            }
+            proc.destroyForcibly()
+          } catch (_: Exception) {}
         }
       }
+      try {
+        val manifest = desktopLaunchManifestFile.orNull?.asFile
+        if (manifest != null && manifest.exists()) {
+          val props = java.util.Properties()
+          manifest.inputStream().use { props.load(it) }
+          val dPort = props.getProperty("port")?.toIntOrNull() ?: 9879
+          val dToken = props.getProperty("token") ?: ""
+          DesktopProcess.stop(host.getOrElse("127.0.0.1"), dPort, dToken, manifest)
+        }
+      } catch (_: Exception) {}
       try { WasmServer.stop() } catch (_: Exception) {}
+      try { cleanupWasmChromeProcess() } catch (_: Exception) {}
       synchronized(activeForwardedPorts) {
         activeForwardedPorts.forEach { port ->
           try {
@@ -273,33 +400,79 @@ abstract class E2ETestTask : DefaultTask() {
           } catch (_: Exception) {}
         }
       }
+      try {
+        if (effectiveTargets.contains("android")) {
+          val serial = finalAndroidSerial
+          val appId = androidApplicationId.orNull
+          if (appId != null) {
+            val stopCmd = if (!serial.isNullOrBlank()) listOf("adb", "-s", serial, "shell", "am", "force-stop", appId)
+                          else listOf("adb", "shell", "am", "force-stop", appId)
+            ProcessBuilder(stopCmd).start().waitFor()
+          }
+        }
+      } catch (_: Exception) {}
+      try {
+        if (effectiveTargets.contains("ios")) {
+          val udid = getIosSimulatorUdid(finalIosDevice) ?: getBootedIosSimulatorUdid()
+          val bundleId = iosBundleId.orNull
+          if (udid != null && bundleId != null) {
+            ProcessBuilder("xcrun", "simctl", "terminate", udid, bundleId).start().waitFor()
+          }
+        }
+      } catch (_: Exception) {}
+      try {
+        val sessionFile = File(buildDir.get().asFile, "parikshan/active-session.json")
+        sessionFile.delete()
+      } catch (_: Exception) {}
     }
     Runtime.getRuntime().addShutdownHook(shutdownHook)
 
-    val executor = Executors.newFixedThreadPool(activeTargets.size)
-    val futures = mutableListOf<Future<TargetResult>>()
-
-    activeTargets.forEach { target ->
-      val future = executor.submit<TargetResult> {
-        val targetStartTime = System.currentTimeMillis()
-        try {
-          val result = executeTarget(target, filteredClasses, activeProcesses, activeForwardedPorts, resolvedHost, finalAndroidSerial, finalIosDevice)
-          val duration = System.currentTimeMillis() - targetStartTime
-          result.copy(durationMs = duration)
-        } catch (e: Exception) {
-          val duration = System.currentTimeMillis() - targetStartTime
-          TargetResult(target, false, e.message ?: "Execution failed", duration)
-        }
+    val results = try {
+      if (watch) {
+        runWatchLoop(effectiveTargets, filteredClasses, activeProcesses, activeForwardedPorts, resolvedHost, finalAndroidSerial, finalIosDevice)
+        return
       }
-      futures.add(future)
-    }
 
-    val results = futures.map { it.get() }
-    executor.shutdown()
-    
-    try {
-      Runtime.getRuntime().removeShutdownHook(shutdownHook)
-    } catch (_: Exception) {}
+      if (sync) {
+        val targetStartTime = System.currentTimeMillis()
+        val result = try {
+          executeSyncTarget(effectiveTargets, filteredClasses, activeProcesses, finalAndroidSerial, finalIosDevice)
+        } catch (e: Exception) {
+          TargetResult("sync", false, e.message ?: "Sync execution failed")
+        }
+        val duration = System.currentTimeMillis() - targetStartTime
+        listOf(result.copy(durationMs = duration))
+      } else {
+        val executor = Executors.newFixedThreadPool(effectiveTargets.size)
+        val res = try {
+          val futures = mutableListOf<Future<TargetResult>>()
+
+          effectiveTargets.forEach { target ->
+            val future = executor.submit<TargetResult> {
+              val targetStartTime = System.currentTimeMillis()
+              try {
+                val result = executeTarget(target, filteredClasses, activeProcesses, activeForwardedPorts, resolvedHost, finalAndroidSerial, finalIosDevice)
+                val duration = System.currentTimeMillis() - targetStartTime
+                result.copy(durationMs = duration)
+              } catch (e: Exception) {
+                val duration = System.currentTimeMillis() - targetStartTime
+                TargetResult(target, false, e.message ?: "Execution failed", duration)
+              }
+            }
+            futures.add(future)
+          }
+
+          futures.map { it.get() }
+        } finally {
+          executor.shutdown()
+        }
+        res
+      }
+    } finally {
+      try {
+        Runtime.getRuntime().removeShutdownHook(shutdownHook)
+      } catch (_: Exception) {}
+    }
 
     logger.lifecycle("\n========================================")
     logger.lifecycle("      Parikshan E2E Test Results        ")
@@ -312,6 +485,8 @@ abstract class E2ETestTask : DefaultTask() {
     logger.lifecycle("========================================\n")
 
     val anyFailure = results.any { !it.success }
+    writeWatchResults(!anyFailure, results)
+    
     if (anyFailure) {
       throw GradleException("Parikshan E2E test execution failed for one or more targets.")
     }
@@ -343,10 +518,29 @@ abstract class E2ETestTask : DefaultTask() {
           val session = if (keepAlive) readSession(target) else null
           val minBinaryTimestamp = getTargetOutputTimestamp(target)
           val maxSourceTimestamp = getProductionSourceTimestamp()
-          val healthy = session != null && checkTargetHealth(host.get(), session.port, session.token)
+          val expectedDesktopPort = originalDesktopPort.get()
+          val healthy = session != null && session.port == expectedDesktopPort && checkTargetHealth(host.get(), session.port, session.token)
           val fresh = isTargetFresh(target)
           logger.debug("Parikshan [$target] keep-alive check: session=${session != null}, healthy=$healthy, fresh=$fresh, session.timestamp=${session?.timestamp}, minBinary=$minBinaryTimestamp, maxSource=$maxSourceTimestamp")
           val canReuse = session != null && healthy && fresh && session.timestamp >= minBinaryTimestamp
+
+          val optDesktopSize = desktopWindowSize.takeIf { it.isNotBlank() } ?: windowSize
+          val size = parseSize(optDesktopSize)
+          val pos = parsePosition(desktopWindowPosition) ?: if (layout == "side-by-side") Pair(10, 50) else null
+          if (size != null) {
+            System.setProperty("parikshan.desktop.windowWidth", size.first.toString())
+            System.setProperty("parikshan.desktop.windowHeight", size.second.toString())
+          } else {
+            System.clearProperty("parikshan.desktop.windowWidth")
+            System.clearProperty("parikshan.desktop.windowHeight")
+          }
+          if (pos != null) {
+            System.setProperty("parikshan.desktop.windowX", pos.first.toString())
+            System.setProperty("parikshan.desktop.windowY", pos.second.toString())
+          } else {
+            System.clearProperty("parikshan.desktop.windowX")
+            System.clearProperty("parikshan.desktop.windowY")
+          }
 
           val jarFile = appJarFile.orNull?.asFile
           val resolvedPort = if (canReuse && session != null) {
@@ -389,25 +583,41 @@ abstract class E2ETestTask : DefaultTask() {
           }
 
           val activeToken = if (canReuse && session != null) session.token else token.get()
-
+          val systemProps = mutableMapOf(
+            "parikshan.target" to target,
+            "parikshan.host" to host.get(),
+            "parikshan.port" to resolvedPort.toString(),
+            "parikshan.token" to activeToken,
+            "parikshan.desktop.launchManifest" to desktopLaunchManifestFile.get().asFile.absolutePath
+          )
+          System.getProperty("parikshan.desktop.windowX")?.let { systemProps["parikshan.desktop.windowX"] = it }
+          System.getProperty("parikshan.desktop.windowY")?.let { systemProps["parikshan.desktop.windowY"] = it }
+          System.getProperty("parikshan.desktop.windowWidth")?.let { systemProps["parikshan.desktop.windowWidth"] = it }
+          System.getProperty("parikshan.desktop.windowHeight")?.let { systemProps["parikshan.desktop.windowHeight"] = it }
+          if (System.getProperty("parikshan.background") == "true") {
+            systemProps["parikshan.background"] = "true"
+          }
           logger.lifecycle("Parikshan [$target]: Running test suite across ${classes.size} classes...")
           val exitCode = spawnTestJvmForClasses(
             target = target,
             testClasses = classes,
-            systemProperties = mapOf(
-              "parikshan.target" to target,
-              "parikshan.host" to host.get(),
-              "parikshan.port" to resolvedPort.toString(),
-              "parikshan.token" to activeToken,
-              "parikshan.desktop.launchManifest" to desktopLaunchManifestFile.get().asFile.absolutePath
-            ),
+            systemProperties = systemProps,
             activeProcesses = activeProcesses
           )
-          val failedClasses = if (exitCode != 0) classes else emptyList()
           if (exitCode != 0) {
             classes.forEach { testClass ->
               printTestFailures(target, testClass)
             }
+            if (!keepAlive) {
+              DesktopProcess.stop(
+                host = host.get(),
+                port = resolvedPort,
+                token = activeToken,
+                manifestFile = desktopLaunchManifestFile.get().asFile
+              )
+              clearSession("desktop")
+            }
+            return createTargetResult("desktop", false, classes, "Test class execution failed (exit code $exitCode). Check logs at build/parikshan/logs/desktop-*.log")
           }
 
           if (keepAlive) {
@@ -432,13 +642,15 @@ abstract class E2ETestTask : DefaultTask() {
               clearSession(target)
             }
           }
-          return@withTargetLock createTargetResult(target, failedClasses.isEmpty(), classes)
+          return@withTargetLock createTargetResult(target, true, classes)
         }
 
         target == "wasm" -> {
         val session = if (keepAlive) readSession("wasm") else null
         val minBinaryTimestamp = getTargetOutputTimestamp("wasm")
+        val expectedWasmPort = originalWasmPort.get()
         val canReuse = session != null && 
+                       session.port == expectedWasmPort &&
                        checkTargetHealth("127.0.0.1", session.port, session.token) && 
                        isTargetFresh("wasm") && 
                        session.timestamp >= minBinaryTimestamp
@@ -456,32 +668,56 @@ abstract class E2ETestTask : DefaultTask() {
             host = "127.0.0.1",
             logger = logger
           )
+          val boundPort = WasmServer.start(port, wasmOutputDir.get().asFile)
           val portFile = wasmPortFile.get().asFile
           portFile.parentFile.mkdirs()
-          portFile.writeText(port.toString())
+          portFile.writeText(boundPort.toString())
 
-          WasmServer.start(port, wasmOutputDir.get().asFile)
-          writeSession("wasm", TargetSession(token.get(), port, System.currentTimeMillis()))
-          port
+          writeSession("wasm", TargetSession(token.get(), boundPort, System.currentTimeMillis()))
+          boundPort
         }
 
         val activeToken = if (canReuse && session != null) session.token else token.get()
 
+        val systemProps = mutableMapOf(
+          "parikshan.target" to "wasm",
+          "parikshan.token" to activeToken,
+          "parikshan.wasm.url" to "http://127.0.0.1:$resolvedPort",
+          "parikshan.projectRootDir" to projectRootDir.get()
+        )
+        val isAppModeActive = appMode || (layout == "side-by-side")
+        systemProps["parikshan.wasm.appMode"] = isAppModeActive.toString()
+        val resolvedWasmSize = parseSize(wasmWindowSize.takeIf { it.isNotBlank() } ?: windowSize) ?: Pair(800, 600)
+        systemProps["parikshan.wasm.viewportWidth"] = resolvedWasmSize.first.toString()
+        systemProps["parikshan.wasm.viewportHeight"] = resolvedWasmSize.second.toString()
+        val resolvedWasmPos = if (layout == "side-by-side") {
+          val resolvedDesktopPos = parsePosition(desktopWindowPosition) ?: Pair(10, 50)
+          val resolvedDesktopSize = parseSize(desktopWindowSize.takeIf { it.isNotBlank() } ?: windowSize) ?: Pair(800, 600)
+          val gap = 5
+          Pair(resolvedDesktopPos.first + resolvedDesktopSize.first + gap, resolvedDesktopPos.second)
+        } else {
+          parsePosition(wasmWindowPosition)
+        }
+        if (resolvedWasmPos != null) {
+          systemProps["parikshan.wasm.windowX"] = resolvedWasmPos.first.toString()
+          systemProps["parikshan.wasm.windowY"] = resolvedWasmPos.second.toString()
+        }
         logger.lifecycle("Parikshan [wasm]: Running test suite across ${classes.size} classes in single browser window...")
         val exitCode = spawnTestJvmForClasses(
           target = "wasm",
           testClasses = classes,
-          systemProperties = mapOf(
-            "parikshan.target" to "wasm",
-            "parikshan.token" to activeToken,
-            "parikshan.wasm.url" to "http://127.0.0.1:$resolvedPort"
-          ),
+          systemProperties = systemProps,
           activeProcesses = activeProcesses
         )
         if (exitCode != 0) {
           classes.forEach { testClass ->
             printTestFailures("wasm", testClass)
           }
+          if (!keepAlive) {
+            WasmServer.stop()
+            clearSession("wasm")
+          }
+          return createTargetResult("wasm", false, classes, "Test class execution failed (exit code $exitCode). Check logs at build/parikshan/logs/wasm-*.log")
         }
 
         if (!keepAlive) {
@@ -506,7 +742,7 @@ abstract class E2ETestTask : DefaultTask() {
         val defaultAndroidPort = androidPort.orNull ?: 9879
         val resolvedAndroidPort = session?.port ?: defaultAndroidPort
         val resolvedToken = session?.token ?: token.get()
-        val isHealthy = session != null && checkTargetHealth(resolvedHost, resolvedAndroidPort, resolvedToken)
+        val isHealthy = session != null && session.port == defaultAndroidPort && checkTargetHealth(resolvedHost, resolvedAndroidPort, resolvedToken)
         val isFresh = isTargetFresh("android")
         val minBinaryTimestamp = getTargetOutputTimestamp("android")
         val canReuse = isHealthy && isFresh && session!!.timestamp >= minBinaryTimestamp
@@ -630,7 +866,7 @@ abstract class E2ETestTask : DefaultTask() {
           }
         }
 
-        if (!keepAlive || !runSuccess) {
+        if (!keepAlive) {
           // 3. Stop App
           synchronized(getLockFor("android")) {
             val stopArgs = mutableListOf(
@@ -660,12 +896,11 @@ abstract class E2ETestTask : DefaultTask() {
 
         target == "ios" -> {
         val isExplicit = targets.split(",").map { it.trim().lowercase() }.contains("ios")
-        val isIosE2EExplicit = isExplicit && targets != "desktop,wasm,android,ios"
-        val hasIosDeviceSpecified = iosDevice.isNotBlank() || device.isNotBlank() || gradleIosDevice.orNull?.isNotBlank() == true || gradleDevice.orNull?.isNotBlank() == true || gradleSerial.orNull?.isNotBlank() == true
-        val shouldExecuteIos = isIosE2EExplicit || hasIosDeviceSpecified || isIosSimulatorBooted(finalIosDevice)
+        val availableSims = getAvailableIosSimulators()
+        val shouldExecuteIos = isExplicit && availableSims.isNotEmpty()
 
         if (!shouldExecuteIos) {
-          logger.lifecycle("Parikshan: Skipping target 'ios' because no booted iOS simulator was detected and no explicit device was targeted.")
+          logger.lifecycle("Parikshan: Skipping target 'ios' because no available iOS simulator was detected.")
           return TargetResult("ios", true, "Skipped (no device detected)")
         }
 
@@ -676,7 +911,7 @@ abstract class E2ETestTask : DefaultTask() {
         val defaultIosPort = iosPort.orNull ?: 9878
         val resolvedIosPort = session?.port ?: defaultIosPort
         val resolvedToken = session?.token ?: token.get()
-        val isHealthy = session != null && checkTargetHealth(resolvedHost, resolvedIosPort, resolvedToken)
+        val isHealthy = session != null && session.port == defaultIosPort && checkTargetHealth(resolvedHost, resolvedIosPort, resolvedToken)
         val isFresh = isTargetFresh("ios")
         val minBinaryTimestamp = getTargetOutputTimestamp("ios")
         val canReuse = isHealthy && isFresh && session!!.timestamp >= minBinaryTimestamp
@@ -773,6 +1008,13 @@ abstract class E2ETestTask : DefaultTask() {
             if (startExit != 0) {
               return TargetResult("ios", false, "Failed to start iOS app (exit code $startExit). Check build/parikshan/logs/ios-start.log")
             }
+            val portFile = File(buildDir.get().asFile, "parikshan/ios-port.txt")
+            if (portFile.exists()) {
+              val actualPort = portFile.readText().trim().toIntOrNull()
+              if (actualPort != null) {
+                activePort = actualPort
+              }
+            }
             writeSession("ios", TargetSession(token.get(), activePort, System.currentTimeMillis()))
           }
         }
@@ -801,7 +1043,7 @@ abstract class E2ETestTask : DefaultTask() {
           }
         }
 
-        if (!keepAlive || !runSuccess) {
+        if (!keepAlive) {
           // 3. Stop App
           synchronized(getLockFor("ios")) {
             val stopArgs = mutableListOf(
@@ -1048,12 +1290,18 @@ abstract class E2ETestTask : DefaultTask() {
       "parikshan.wasm.headless",
       "parikshan.wasm.viewportWidth",
       "parikshan.wasm.viewportHeight",
-      "parikshan.wasm.bridgeReadyTimeoutMs"
+      "parikshan.wasm.bridgeReadyTimeoutMs",
+      "parikshan.wasm.windowX",
+      "parikshan.wasm.windowY",
+      "parikshan.wasm.appMode",
+      "parikshan.projectRootDir"
     )
     propsToForward.forEach { prop ->
-      val v = System.getProperty(prop) ?: providers.gradleProperty(prop).orNull
-      if (!v.isNullOrEmpty()) {
-        pbArgs.add("-D$prop=$v")
+      if (!systemProperties.containsKey(prop)) {
+        val v = System.getProperty(prop) ?: providers.gradleProperty(prop).orNull
+        if (!v.isNullOrEmpty()) {
+          pbArgs.add("-D$prop=$v")
+        }
       }
     }
     if (keepAlive) {
@@ -1063,6 +1311,7 @@ abstract class E2ETestTask : DefaultTask() {
     val reportsDir = File(buildDir.get().asFile, "test-results/e2eTest/$target/$testClass").absolutePath
     pbArgs.add("-Dparikshan.video.outputDir=" + File(buildDir.get().asFile, "parikshan/videos/$target").absolutePath)
     pbArgs.add("org.junit.platform.console.ConsoleLauncher")
+    pbArgs.add("execute")
     pbArgs.add("--reports-dir")
     pbArgs.add(reportsDir)
     val lastDotIdx = testsPattern.lastIndexOf('.')
@@ -1139,21 +1388,30 @@ abstract class E2ETestTask : DefaultTask() {
       "parikshan.wasm.headless",
       "parikshan.wasm.viewportWidth",
       "parikshan.wasm.viewportHeight",
-      "parikshan.wasm.bridgeReadyTimeoutMs"
+      "parikshan.wasm.bridgeReadyTimeoutMs",
+      "parikshan.wasm.windowX",
+      "parikshan.wasm.windowY",
+      "parikshan.wasm.appMode",
+      "parikshan.projectRootDir"
     )
     propsToForward.forEach { prop ->
-      val v = System.getProperty(prop) ?: providers.gradleProperty(prop).orNull
-      if (!v.isNullOrEmpty()) {
-        pbArgs.add("-D$prop=$v")
+      if (!systemProperties.containsKey(prop)) {
+        val v = System.getProperty(prop) ?: providers.gradleProperty(prop).orNull
+        if (!v.isNullOrEmpty()) {
+          pbArgs.add("-D$prop=$v")
+        }
       }
     }
     if (keepAlive) {
       pbArgs.add("-Dparikshan.keepAlive=true")
     }
 
-    val reportsDir = File(buildDir.get().asFile, "test-results/e2eTest/$target").absolutePath
+    val reportsDirFile = File(buildDir.get().asFile, "test-results/e2eTest/$target")
+    reportsDirFile.mkdirs()
+    val reportsDir = reportsDirFile.absolutePath
     pbArgs.add("-Dparikshan.video.outputDir=" + File(buildDir.get().asFile, "parikshan/videos/$target").absolutePath)
     pbArgs.add("org.junit.platform.console.ConsoleLauncher")
+    pbArgs.add("execute")
     pbArgs.add("--reports-dir")
     pbArgs.add(reportsDir)
 
@@ -1233,10 +1491,6 @@ abstract class E2ETestTask : DefaultTask() {
         logger.lifecycle("\n--- [$target] Test Failures for $testClass ---")
         lines.drop(failureIndex).forEach { logger.lifecycle(it) }
         logger.lifecycle("--------------------------------------------------\n")
-      } else {
-        logger.lifecycle("\n--- [$target] Last 30 Log Lines for $testClass ---")
-        lines.takeLast(30).forEach { logger.lifecycle(it) }
-        logger.lifecycle("--------------------------------------------------\n")
       }
     }
   }
@@ -1295,13 +1549,23 @@ abstract class E2ETestTask : DefaultTask() {
     }
   }
 
+  private fun parseFailedTestNames(target: String, classes: List<String>): List<String> {
+    val logsDir = File(buildDir.get().asFile, "parikshan/logs")
+    return WatchModeUtils.parseFailedTestNames(logsDir, target, classes)
+  }
+
+  private fun formatFailedNamesPatternA(names: List<String>, totalFailed: Int): String {
+    return WatchModeUtils.formatFailedNamesPatternA(names, totalFailed)
+  }
+
   private fun createTargetResult(target: String, success: Boolean, classes: List<String>, failureMessage: String? = null): TargetResult {
     var totalFound = 0
     var totalStarted = 0
     var totalSuccessful = 0
     var totalFailed = 0
+    val baseTarget = if (target.startsWith("sync")) "sync" else target
     classes.forEach { testClass ->
-      val metrics = parseTestMetrics(target, testClass)
+      val metrics = parseTestMetrics(baseTarget, testClass)
       if (metrics != null) {
         totalFound += metrics.found
         totalStarted += metrics.started
@@ -1318,7 +1582,9 @@ abstract class E2ETestTask : DefaultTask() {
         }
       } else {
         val testWord = if (totalFound == 1) "test" else "tests"
-        "$totalSuccessful/$totalFound $testWord passed ($totalFailed failed)."
+        val failedNames = parseFailedTestNames(target, classes)
+        val formattedFailures = formatFailedNamesPatternA(failedNames, totalFailed)
+        "$totalSuccessful/$totalFound $testWord passed $formattedFailures."
       }
     } else {
       if (success) {
@@ -1328,7 +1594,12 @@ abstract class E2ETestTask : DefaultTask() {
           "All ${classes.size} test classes executed successfully."
         }
       } else {
-        failureMessage ?: "Test execution failed."
+        val failedNames = parseFailedTestNames(target, classes)
+        if (failedNames.isNotEmpty()) {
+          "Test execution failed ${formatFailedNamesPatternA(failedNames, failedNames.size)}."
+        } else {
+          failureMessage ?: "Test execution failed."
+        }
       }
     }
     return TargetResult(target, success, detail)
@@ -1345,83 +1616,19 @@ abstract class E2ETestTask : DefaultTask() {
     }
   }
 
-  private data class TargetSession(
-    val token: String,
-    val port: Int,
-    val timestamp: Long
-  )
-
   private fun readSession(target: String): TargetSession? {
       val sessionFile = File(buildDir.get().asFile, "parikshan/active-session.json")
-      if (!sessionFile.exists()) return null
-      val text = runCatching { sessionFile.readText() }.getOrNull() ?: return null
-      val targetBlockRegex = Regex("\"$target\"\\s*:\\s*\\{([^}]+)}")
-      val blockMatch = targetBlockRegex.find(text) ?: return null
-      val blockContent = blockMatch.groupValues[1]
-      
-      val token = Regex("\"token\"\\s*:\\s*\"([^\"]+)\"").find(blockContent)?.groupValues?.get(1) ?: return null
-      val port = Regex("\"port\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toIntOrNull() ?: return null
-      val timestamp = Regex("\"timestamp\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toLongOrNull() ?: return null
-      
-      return TargetSession(token, port, timestamp)
+      return SessionStore.readSession(sessionFile, target)
   }
 
   private fun writeSession(target: String, session: TargetSession) {
       val sessionFile = File(buildDir.get().asFile, "parikshan/active-session.json")
-      val sessions = mutableMapOf<String, TargetSession>()
-      if (sessionFile.exists()) {
-          val text = runCatching { sessionFile.readText() }.getOrNull().orEmpty()
-          listOf("desktop", "wasm", "android", "ios").forEach { t ->
-              val targetBlockRegex = Regex("\"$t\"\\s*:\\s*\\{([^}]+)}")
-              val blockMatch = targetBlockRegex.find(text)
-              if (blockMatch != null) {
-                  val blockContent = blockMatch.groupValues[1]
-                  val token = Regex("\"token\"\\s*:\\s*\"([^\"]+)\"").find(blockContent)?.groupValues?.get(1)
-                  val port = Regex("\"port\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toIntOrNull()
-                  val timestamp = Regex("\"timestamp\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toLongOrNull()
-                  if (token != null && port != null && timestamp != null) {
-                      sessions[t] = TargetSession(token, port, timestamp)
-                  }
-              }
-          }
-      }
-      sessions[target] = session
-      
-      val json = sessions.entries.joinToString(prefix = "{", postfix = "}") { (t, s) ->
-          "\"$t\":{\"token\":\"${s.token}\",\"port\":${s.port},\"timestamp\":${s.timestamp}}"
-      }
-      runCatching {
-          sessionFile.parentFile.mkdirs()
-          sessionFile.writeText(json)
-      }
+      SessionStore.writeSession(sessionFile, target, session)
   }
 
   private fun clearSession(target: String) {
       val sessionFile = File(buildDir.get().asFile, "parikshan/active-session.json")
-      if (!sessionFile.exists()) return
-      val sessions = mutableMapOf<String, TargetSession>()
-      val text = runCatching { sessionFile.readText() }.getOrNull().orEmpty()
-      listOf("desktop", "wasm", "android", "ios").forEach { t ->
-          if (t == target) return@forEach
-          val targetBlockRegex = Regex("\"$t\"\\s*:\\s*\\{([^}]+)}")
-          val blockMatch = targetBlockRegex.find(text)
-          if (blockMatch != null) {
-              val blockContent = blockMatch.groupValues[1]
-              val token = Regex("\"token\"\\s*:\\s*\"([^\"]+)\"").find(blockContent)?.groupValues?.get(1)
-              val port = Regex("\"port\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toIntOrNull()
-              val timestamp = Regex("\"timestamp\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toLongOrNull()
-              if (token != null && port != null && timestamp != null) {
-                  sessions[t] = TargetSession(token, port, timestamp)
-              }
-          }
-      }
-      
-      val json = sessions.entries.joinToString(prefix = "{", postfix = "}") { (t, s) ->
-          "\"$t\":{\"token\":\"${s.token}\",\"port\":${s.port},\"timestamp\":${s.timestamp}}"
-      }
-      runCatching {
-          sessionFile.writeText(json)
-      }
+      SessionStore.clearSession(sessionFile, target)
   }
 
   private fun checkTargetHealth(host: String, port: Int, token: String): Boolean {
@@ -1478,14 +1685,24 @@ abstract class E2ETestTask : DefaultTask() {
 
   private fun getTargetOutputTimestamp(target: String): Long {
       val files = getTargetOutputFiles(target)
-      if (files.isEmpty()) return 0L
-      return files.map { file ->
+      val classesTime = if (target == "desktop" && !productionClassesDirs.isEmpty) {
+          productionClassesDirs.files.map { classDir ->
+              if (classDir.exists() && classDir.isDirectory) {
+                  classDir.walkTopDown().filter { it.isFile }.map { it.lastModified() }.maxOrNull() ?: 0L
+              } else 0L
+          }.maxOrNull() ?: 0L
+      } else 0L
+
+      if (files.isEmpty()) return classesTime
+      val filesTime = files.map { file ->
           if (file.isDirectory) {
-              file.walkTopDown().filter { it.isFile }.map { it.lastModified() }.minOrNull() ?: 0L
+              file.walkTopDown().filter { it.isFile }.map { it.lastModified() }.maxOrNull() ?: 0L
           } else {
               file.lastModified()
           }
-      }.minOrNull() ?: 0L
+      }.maxOrNull() ?: 0L
+
+      return maxOf(filesTime, classesTime)
   }
 
   private fun getTargetOutputFiles(target: String): List<File> {
@@ -1612,6 +1829,1002 @@ abstract class E2ETestTask : DefaultTask() {
       return DevicePortState(isBusy, appId)
   }
 
+  private fun executeSyncTarget(
+    activeTargets: List<String>,
+    classes: List<String>,
+    activeProcesses: MutableList<Process>,
+    finalAndroidSerial: String?,
+    finalIosDevice: String
+  ): TargetResult {
+    val logger = logger
+    logger.lifecycle("Parikshan [sync]: Starting synchronized E2E target execution for ${activeTargets.joinToString()}...")
+
+    return withTargetsLock(activeTargets) {
+      val desktopPort = java.util.concurrent.atomic.AtomicInteger(0)
+      val desktopToken = java.util.concurrent.atomic.AtomicReference("")
+      val wasmPort = java.util.concurrent.atomic.AtomicInteger(0)
+      val wasmToken = java.util.concurrent.atomic.AtomicReference("")
+      val androidPort = java.util.concurrent.atomic.AtomicInteger(0)
+      val androidToken = java.util.concurrent.atomic.AtomicReference("")
+      val androidSerial = java.util.concurrent.atomic.AtomicReference<String?>(null)
+      val iosPortVal = java.util.concurrent.atomic.AtomicInteger(0)
+      val iosTokenVal = java.util.concurrent.atomic.AtomicReference("")
+      val iosUdidVal = java.util.concurrent.atomic.AtomicReference("")
+      val bundleId = iosBundleId.orNull ?: ""
+
+      var bootSuccess = false
+      val bootProcesses = java.util.Collections.synchronizedList(mutableListOf<Process>())
+      val threads = mutableListOf<Thread>()
+      val cancelAndTeardownBoot = {
+        threads.forEach { runCatching { it.interrupt() } }
+        synchronized(bootProcesses) {
+          bootProcesses.forEach { proc ->
+            runCatching {
+              proc.toHandle()?.descendants()?.forEach { it.destroy() }
+              proc.destroy()
+            }
+          }
+          bootProcesses.clear()
+        }
+      }
+
+      try {
+        val gradleReclaimPorts = providers.gradleProperty("parikshan.reclaimPorts").orNull?.toBoolean() ?: false
+        val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+
+        if (activeTargets.contains("desktop") || activeTargets.contains("jvm")) {
+          threads.add(Thread {
+            try {
+              val session = if (keepAlive) readSession("desktop") else null
+              val minBinaryTimestamp = getTargetOutputTimestamp("desktop")
+              val expectedDesktopPort = originalDesktopPort.get()
+              val healthy = session != null && session.port == expectedDesktopPort && checkTargetHealth(host.get(), session.port, session.token)
+              val fresh = isTargetFresh("desktop")
+              val canReuse = session != null && healthy && fresh && session.timestamp >= minBinaryTimestamp
+
+              val optDesktopSize = desktopWindowSize.takeIf { it.isNotBlank() } ?: windowSize
+              val size = parseSize(optDesktopSize)
+              val pos = parsePosition(desktopWindowPosition) ?: if (layout == "side-by-side") Pair(10, 50) else null
+              if (size != null) {
+                System.setProperty("parikshan.desktop.windowWidth", size.first.toString())
+                System.setProperty("parikshan.desktop.windowHeight", size.second.toString())
+              } else {
+                System.clearProperty("parikshan.desktop.windowWidth")
+                System.clearProperty("parikshan.desktop.windowHeight")
+              }
+              if (pos != null) {
+                System.setProperty("parikshan.desktop.windowX", pos.first.toString())
+                System.setProperty("parikshan.desktop.windowY", pos.second.toString())
+              } else {
+                System.clearProperty("parikshan.desktop.windowX")
+                System.clearProperty("parikshan.desktop.windowY")
+              }
+
+              val resolvedPort = if (canReuse && session != null) {
+                logger.lifecycle("Parikshan [desktop]: Keeping active instance alive (skipping build/launch).")
+                session.port
+              } else {
+                if (session != null) {
+                  logger.lifecycle("Parikshan [desktop]: Active instance is stale or unhealthy. Relaunching...")
+                  DesktopProcess.stop(
+                    host = host.get(),
+                    port = session.port,
+                    token = session.token,
+                    manifestFile = desktopLaunchManifestFile.get().asFile
+                  )
+                }
+                val port = PortConflictHandler.resolvePortAndCleanStale(
+                  originalPort = originalDesktopPort.get(),
+                  host = host.get(),
+                  logger = logger
+                )
+                DesktopProcess.start(
+                  jar = appJarFile.get().asFile,
+                  token = token.get(),
+                  logFile = File(buildDir.get().asFile, "parikshan/desktop-app-logs.log"),
+                  manifestFile = desktopLaunchManifestFile.get().asFile,
+                  appArgs = appArgs.get(),
+                  host = host.get(),
+                  port = port,
+                  timeoutMs = 15000L,
+                  pollMs = 250L,
+                  title = title.orNull,
+                  background = true
+                )
+                writeSession("desktop", TargetSession(token.get(), port, System.currentTimeMillis()))
+                port
+              }
+
+              desktopToken.set(if (canReuse && session != null) session.token else token.get())
+              desktopPort.set(resolvedPort)
+            } catch (e: Throwable) {
+              errors.add(e)
+            }
+          }.apply { name = "parikshan-boot-desktop"; start() })
+        }
+
+        if (activeTargets.contains("wasm")) {
+          threads.add(Thread {
+            try {
+              val session = if (keepAlive) readSession("wasm") else null
+              val minBinaryTimestamp = getTargetOutputTimestamp("wasm")
+              val expectedWasmPort = originalWasmPort.get()
+              val canReuse = session != null && 
+                             session.port == expectedWasmPort &&
+                             checkTargetHealth("127.0.0.1", session.port, session.token) && 
+                             isTargetFresh("wasm") && 
+                             session.timestamp >= minBinaryTimestamp
+
+              val resolvedPort = if (canReuse && session != null) {
+                logger.lifecycle("Parikshan [wasm]: Keeping active instance alive (skipping build/launch).")
+                session.port
+              } else {
+                if (session != null) {
+                  logger.lifecycle("Parikshan [wasm]: Active instance is stale or unhealthy. Relaunching...")
+                  WasmServer.stop()
+                }
+                val port = PortConflictHandler.resolvePortAndCleanStale(
+                  originalPort = originalWasmPort.get(),
+                  host = "127.0.0.1",
+                  logger = logger
+                )
+                val boundPort = WasmServer.start(port, wasmOutputDir.get().asFile)
+                val portFile = wasmPortFile.get().asFile
+                portFile.parentFile.mkdirs()
+                portFile.writeText(boundPort.toString())
+
+                writeSession("wasm", TargetSession(token.get(), boundPort, System.currentTimeMillis()))
+                boundPort
+              }
+
+              wasmToken.set(if (canReuse && session != null) session.token else token.get())
+              wasmPort.set(resolvedPort)
+            } catch (e: Throwable) {
+              errors.add(e)
+            }
+          }.apply { name = "parikshan-boot-wasm"; start() })
+        }
+
+        if (activeTargets.contains("android")) {
+          threads.add(Thread {
+            try {
+              val serial = AndroidTargetConfigurer.AndroidRecorder.resolveDeviceSerial(logger, File(projectRootDir.get()), finalAndroidSerial)
+              androidSerial.set(serial)
+              val session = if (keepAlive) readSession("android") else null
+              val defaultAndroidPort = 9879
+              val resolvedAndroidPort = session?.port ?: defaultAndroidPort
+              val resolvedToken = session?.token ?: token.get()
+              val isHealthy = session != null && session.port == defaultAndroidPort && checkTargetHealth("127.0.0.1", resolvedAndroidPort, resolvedToken)
+              val isFresh = isTargetFresh("android")
+              val minBinaryTimestamp = getTargetOutputTimestamp("android")
+              val canReuse = isHealthy && isFresh && session!!.timestamp >= minBinaryTimestamp
+
+              val activeToken = if (canReuse && session != null) session.token else token.get()
+              var activePort = if (canReuse && session != null) session.port else 9879
+              val gradlew = getGradlewExecutable(File(projectRootDir.get()))
+
+              androidPort.set(activePort)
+              androidToken.set(activeToken)
+
+              if (canReuse) {
+                logger.lifecycle("Parikshan [android]: Keeping active instance alive (skipping build/launch).")
+              } else {
+                val reclaim = reclaimPorts || gradleReclaimPorts
+                val devicePortState = checkDevicePortState(serial, 9879)
+                if (devicePortState.isBusy || !PortConflictHandler.isPortAvailable("127.0.0.1", 9879)) {
+                  val activeAppId = devicePortState.parikshanAppId
+                  if (activeAppId != null) {
+                    if (activeAppId == androidApplicationId.get()) {
+                      ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", androidApplicationId.get()).start().waitFor()
+                      ProcessBuilder("adb", "-s", serial, "forward", "--remove", "tcp:9879").start().waitFor()
+                      Thread.sleep(500)
+                    } else if (reclaim) {
+                      logger.lifecycle("Parikshan [android]: Port 9879 was held by '${activeAppId}'. Reclaiming port via --reclaim-ports...")
+                      ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", activeAppId).start().waitFor()
+                      ProcessBuilder("adb", "-s", serial, "forward", "--remove", "tcp:9879").start().waitFor()
+                      Thread.sleep(500)
+                    } else {
+                      var fbPort = 9880
+                      while (fbPort <= 65535) {
+                        if (PortConflictHandler.isPortAvailable("127.0.0.1", fbPort) && !checkDevicePortState(serial, fbPort).isBusy) {
+                          break
+                        }
+                        fbPort++
+                      }
+                      logger.lifecycle("Parikshan [android]: Port 9879 is held by another active application '${activeAppId}'. Falling back to host port $fbPort.")
+                      activePort = fbPort
+                    }
+                  } else {
+                    var fbPort = 9880
+                    while (fbPort <= 65535) {
+                      if (PortConflictHandler.isPortAvailable("127.0.0.1", fbPort) && !checkDevicePortState(serial, fbPort).isBusy) {
+                        break
+                      }
+                      fbPort++
+                    }
+                    logger.lifecycle("Parikshan [android]: Port 9879 is occupied by a non-Parikshan process or busy on device. Falling back to host port $fbPort.")
+                    activePort = fbPort
+                  }
+                }
+
+                androidPort.set(activePort)
+
+                if (session != null) {
+                  logger.lifecycle("Parikshan [android]: Active instance is stale or unhealthy. Relaunching...")
+                  ProcessBuilder("adb", "-s", serial, "forward", "--remove", "tcp:${session.port}").start().waitFor()
+                  ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", androidApplicationId.get()).start().waitFor()
+                }
+                logger.lifecycle("Parikshan [android]: Device detected. Starting E2E execution on port $activePort...")
+                // 1. Start App
+                val startArgs = mutableListOf(
+                  gradlew, "$projectPathPrefix:startParikshanAndroidApp",
+                  "-Pparikshan.token=${token.get()}",
+                  "-Pparikshan.port=$activePort",
+                  "-Pparikshan.e2e.active=true"
+                )
+                if (!serial.isNullOrBlank()) {
+                  startArgs.add("-Pparikshan.android.serial=$serial")
+                }
+                val startProcess = ProcessBuilder(startArgs).apply {
+                  cleanXcodeEnv(this)
+                  redirectErrorStream(true)
+                  val logF = File(buildDir.get().asFile, "parikshan/logs/android-start.log")
+                  logF.parentFile.mkdirs()
+                  redirectOutput(logF)
+                }.start()
+                bootProcesses.add(startProcess)
+                val startExit = try {
+                  startProcess.waitFor()
+                } finally {
+                  bootProcesses.remove(startProcess)
+                }
+                if (startExit != 0) {
+                  throw GradleException("Failed to start Android app (exit code $startExit). Check build/parikshan/logs/android-start.log")
+                }
+                writeSession("android", TargetSession(token.get(), activePort, System.currentTimeMillis()))
+              }
+            } catch (e: Throwable) {
+              errors.add(e)
+              cancelAndTeardownBoot()
+            }
+          }.apply { name = "parikshan-boot-android"; start() })
+        }
+
+        if (activeTargets.contains("ios")) {
+          threads.add(Thread {
+            try {
+              val udid = getIosSimulatorUdid(finalIosDevice) ?: getBootedIosSimulatorUdid() ?: ""
+              iosUdidVal.set(udid)
+              val defaultIosPort = iosPort.get()
+              val session = if (keepAlive) readSession("ios") else null
+              val resolvedIosPort = session?.port ?: defaultIosPort
+              val resolvedToken = session?.token ?: token.get()
+              val isHealthy = session != null && session.port == defaultIosPort && checkTargetHealth("127.0.0.1", resolvedIosPort, resolvedToken)
+              val isFresh = isTargetFresh("ios")
+              val minBinaryTimestamp = getTargetOutputTimestamp("ios")
+              val canReuse = isHealthy && isFresh && session!!.timestamp >= minBinaryTimestamp
+
+              val activeToken = if (canReuse && session != null) session.token else token.get()
+              var activePort = if (canReuse && session != null) session.port else iosPort.get()
+              val gradlew = getGradlewExecutable(File(projectRootDir.get()))
+
+              iosPortVal.set(activePort)
+              iosTokenVal.set(activeToken)
+
+              if (canReuse) {
+                logger.lifecycle("Parikshan [ios]: Keeping active instance alive (skipping build/launch).")
+              } else {
+                val reclaim = reclaimPorts || gradleReclaimPorts
+                val defaultIosPort = iosPort.get()
+
+                if (!PortConflictHandler.isPortAvailable("127.0.0.1", defaultIosPort)) {
+                  val activeAppId = PortConflictHandler.queryApplicationId("127.0.0.1", defaultIosPort)
+                  if (activeAppId != null) {
+                    if (activeAppId == bundleId) {
+                      ProcessBuilder("xcrun", "simctl", "terminate", udid, bundleId).start().waitFor()
+                      Thread.sleep(500)
+                    } else if (reclaim) {
+                      logger.lifecycle("Parikshan [ios]: Port $defaultIosPort was held by '${activeAppId}'. Reclaiming port via --reclaim-ports...")
+                      ProcessBuilder("xcrun", "simctl", "terminate", udid, activeAppId).start().waitFor()
+                      Thread.sleep(500)
+                    } else {
+                      var fbPort = defaultIosPort + 3
+                      while (fbPort <= 65535) {
+                        if (PortConflictHandler.isPortAvailable("127.0.0.1", fbPort)) {
+                          break
+                        }
+                        fbPort++
+                      }
+                      logger.lifecycle("Parikshan [ios]: Port $defaultIosPort is held by another active application '${activeAppId}'. Falling back to host port $fbPort.")
+                      activePort = fbPort
+                    }
+                  } else {
+                    var fbPort = defaultIosPort + 3
+                    while (fbPort <= 65535) {
+                      if (PortConflictHandler.isPortAvailable("127.0.0.1", fbPort)) {
+                        break
+                      }
+                      fbPort++
+                    }
+                    logger.lifecycle("Parikshan [ios]: Port $defaultIosPort is occupied by a non-Parikshan process. Falling back to host port $fbPort.")
+                    activePort = fbPort
+                  }
+                }
+
+                iosPortVal.set(activePort)
+
+                if (session != null) {
+                  logger.lifecycle("Parikshan [ios]: Active instance is stale or unhealthy. Relaunching...")
+                  val stopProcess = ProcessBuilder(
+                    gradlew, 
+                    "$projectPathPrefix:stopIosApp",
+                    "-Pparikshan.ios.device=$finalIosDevice",
+                    "-Pparikshan.ios.port=${session.port}"
+                  ).apply {
+                    cleanXcodeEnv(this)
+                  }.start()
+                  bootProcesses.add(stopProcess)
+                  try { stopProcess.waitFor() } finally { bootProcesses.remove(stopProcess) }
+                }
+                logger.lifecycle("Parikshan [ios]: Simulator target: '$finalIosDevice' ($udid). Starting E2E execution on port $activePort...")
+                // 1. Start App
+                val startProcess = ProcessBuilder(
+                  gradlew, 
+                  "$projectPathPrefix:startIosApp", 
+                  "-Pparikshan.token=${token.get()}", 
+                  "-Pparikshan.ios.port=$activePort",
+                  "-Pparikshan.e2e.active=true",
+                  "-Pparikshan.ios.device=$finalIosDevice"
+                ).apply {
+                  cleanXcodeEnv(this)
+                  redirectErrorStream(true)
+                  val logF = File(buildDir.get().asFile, "parikshan/logs/ios-start.log")
+                  logF.parentFile.mkdirs()
+                  redirectOutput(logF)
+                }.start()
+                bootProcesses.add(startProcess)
+                val startExit = try {
+                  startProcess.waitFor()
+                } finally {
+                  bootProcesses.remove(startProcess)
+                }
+                if (startExit != 0) {
+                  throw GradleException("Failed to start iOS app (exit code $startExit). Check build/parikshan/logs/ios-start.log")
+                }
+                writeSession("ios", TargetSession(token.get(), activePort, System.currentTimeMillis()))
+              }
+            } catch (e: Throwable) {
+              errors.add(e)
+              cancelAndTeardownBoot()
+            }
+          }.apply { name = "parikshan-boot-ios"; start() })
+        }
+
+        threads.filter { it.name == "parikshan-boot-desktop" || it.name == "parikshan-boot-wasm" }.forEach { it.join() }
+        
+        while (activeTargets.contains("android") && androidPort.get() == 0) {
+          if (errors.isNotEmpty()) {
+            cancelAndTeardownBoot()
+            throw errors.first()
+          }
+          Thread.sleep(10)
+        }
+        while (activeTargets.contains("ios") && iosPortVal.get() == 0) {
+          if (errors.isNotEmpty()) {
+            cancelAndTeardownBoot()
+            throw errors.first()
+          }
+          Thread.sleep(10)
+        }
+
+        if (errors.isNotEmpty()) {
+          cancelAndTeardownBoot()
+          throw errors.first()
+        }
+
+        bootSuccess = true
+      } catch (e: Throwable) {
+        cancelAndTeardownBoot()
+        logger.error("Parikshan [sync]: Error during synchronization boot phase: ${e.message}", e)
+        cleanupSyncTargets(
+          activeTargets = activeTargets,
+          keepAlive = false,
+          runSuccess = false,
+          desktopPort = desktopPort.get(),
+          desktopToken = desktopToken.get(),
+          wasmPort = wasmPort.get(),
+          androidSerial = androidSerial.get(),
+          iosPortVal = iosPortVal.get(),
+          finalIosDevice = finalIosDevice
+        )
+        return@withTargetsLock TargetResult("sync", false, "Boot phase failed: ${e.message}")
+      }
+
+      var runSuccess = true
+      var testFailureMessage: String? = null
+
+      try {
+        val systemProps = mutableMapOf<String, String>()
+        systemProps["parikshan.target"] = "sync"
+        systemProps["parikshan.sync.targets"] = activeTargets.joinToString(",")
+        systemProps["parikshan.token"] = token.get()
+
+        if (activeTargets.contains("desktop") || activeTargets.contains("jvm")) {
+          systemProps["parikshan.desktop.host"] = host.get()
+          systemProps["parikshan.desktop.port"] = desktopPort.get().toString()
+          systemProps["parikshan.desktop.launchManifest"] = desktopLaunchManifestFile.get().asFile.absolutePath
+
+          System.getProperty("parikshan.desktop.windowX")?.let { systemProps["parikshan.desktop.windowX"] = it }
+          System.getProperty("parikshan.desktop.windowY")?.let { systemProps["parikshan.desktop.windowY"] = it }
+          System.getProperty("parikshan.desktop.windowWidth")?.let { systemProps["parikshan.desktop.windowWidth"] = it }
+          System.getProperty("parikshan.desktop.windowHeight")?.let { systemProps["parikshan.desktop.windowHeight"] = it }
+        }
+        if (activeTargets.contains("wasm")) {
+          systemProps["parikshan.wasm.url"] = "http://127.0.0.1:${wasmPort.get()}"
+
+          val isAppModeActive = appMode || (layout == "side-by-side")
+          systemProps["parikshan.wasm.appMode"] = isAppModeActive.toString()
+
+          val resolvedWasmSize = parseSize(wasmWindowSize.takeIf { it.isNotBlank() } ?: windowSize) ?: Pair(800, 600)
+          systemProps["parikshan.wasm.viewportWidth"] = resolvedWasmSize.first.toString()
+          systemProps["parikshan.wasm.viewportHeight"] = resolvedWasmSize.second.toString()
+
+          val resolvedWasmPos = if (layout == "side-by-side") {
+            val resolvedDesktopPos = parsePosition(desktopWindowPosition) ?: Pair(10, 50)
+            val resolvedDesktopSize = parseSize(desktopWindowSize.takeIf { it.isNotBlank() } ?: windowSize) ?: Pair(800, 600)
+            val gap = 5
+            Pair(resolvedDesktopPos.first + resolvedDesktopSize.first + gap, resolvedDesktopPos.second)
+          } else {
+            parsePosition(wasmWindowPosition)
+          }
+          if (resolvedWasmPos != null) {
+            systemProps["parikshan.wasm.windowX"] = resolvedWasmPos.first.toString()
+            systemProps["parikshan.wasm.windowY"] = resolvedWasmPos.second.toString()
+          }
+        }
+        if (activeTargets.contains("android")) {
+          systemProps["parikshan.android.host"] = "127.0.0.1"
+          systemProps["parikshan.android.port"] = androidPort.get().toString()
+          val serialVal = androidSerial.get()
+          if (!serialVal.isNullOrBlank()) {
+            systemProps["parikshan.android.serial"] = serialVal
+          }
+        }
+        if (activeTargets.contains("ios")) {
+          systemProps["parikshan.ios.host"] = "127.0.0.1"
+          systemProps["parikshan.ios.port"] = iosPortVal.get().toString()
+          systemProps["parikshan.ios.udid"] = iosUdidVal.get()
+          systemProps["parikshan.ios.bundleId"] = bundleId
+          systemProps["parikshan.ios.device"] = finalIosDevice
+        }
+
+        classes.forEach { testClass ->
+          logger.lifecycle("Parikshan [sync]: Running $testClass...")
+          val exitCode = spawnTestJvm(
+            target = "sync",
+            testClass = testClass,
+            systemProperties = systemProps,
+            activeProcesses = activeProcesses
+          )
+          if (exitCode != 0) {
+            runSuccess = false
+            printTestFailures("sync", testClass)
+            testFailureMessage = "Test class $testClass failed (exit code $exitCode). Check logs at build/parikshan/logs/sync-${testClass.substringAfterLast('.')}.log"
+          }
+        }
+      } finally {
+        cleanupSyncTargets(
+          activeTargets = activeTargets,
+          keepAlive = keepAlive,
+          runSuccess = runSuccess,
+          desktopPort = desktopPort.get(),
+          desktopToken = desktopToken.get(),
+          wasmPort = wasmPort.get(),
+          androidSerial = androidSerial.get(),
+          iosPortVal = iosPortVal.get(),
+          finalIosDevice = finalIosDevice
+        )
+      }
+
+      val syncTargetLabel = "sync: ${activeTargets.joinToString(", ") { it.uppercase() }}"
+      createTargetResult(syncTargetLabel, runSuccess, classes, testFailureMessage)
+    }
+  }
+
+  private fun cleanupSyncTargets(
+    activeTargets: List<String>,
+    keepAlive: Boolean,
+    runSuccess: Boolean,
+    desktopPort: Int,
+    desktopToken: String,
+    wasmPort: Int,
+    androidSerial: String?,
+    iosPortVal: Int,
+    finalIosDevice: String
+  ) {
+    val logger = logger
+    if (activeTargets.contains("desktop") || activeTargets.contains("jvm")) {
+      if (keepAlive) {
+        val manifest = desktopLaunchManifestFile.get().asFile
+        if (manifest.exists()) {
+          val props = java.util.Properties()
+          runCatching { manifest.inputStream().use { props.load(it) } }
+          val finalPort = props.getProperty("port")?.toIntOrNull() ?: desktopPort
+          val finalToken = props.getProperty("token") ?: desktopToken
+          writeSession("desktop", TargetSession(finalToken, finalPort, System.currentTimeMillis()))
+        } else {
+          writeSession("desktop", TargetSession(desktopToken, desktopPort, System.currentTimeMillis()))
+        }
+      } else {
+        DesktopProcess.stop(
+          host = host.get(),
+          port = desktopPort,
+          token = desktopToken,
+          manifestFile = desktopLaunchManifestFile.get().asFile
+        )
+        clearSession("desktop")
+      }
+    }
+    if (activeTargets.contains("wasm")) {
+      if (!keepAlive) {
+        WasmServer.stop()
+        clearSession("wasm")
+      }
+    }
+    if (activeTargets.contains("android")) {
+      if (!keepAlive) {
+        val gradlew = getGradlewExecutable(File(projectRootDir.get()))
+        val stopArgs = mutableListOf(gradlew, "$projectPathPrefix:stopParikshanAndroidApp")
+        if (!androidSerial.isNullOrBlank()) {
+          stopArgs.add("-Pparikshan.android.serial=$androidSerial")
+        }
+        ProcessBuilder(stopArgs).apply { cleanXcodeEnv(this) }.start().waitFor()
+        clearSession("android")
+      }
+    }
+    if (activeTargets.contains("ios")) {
+      if (!keepAlive) {
+        val gradlew = getGradlewExecutable(File(projectRootDir.get()))
+        ProcessBuilder(
+          gradlew, 
+          "$projectPathPrefix:stopIosApp",
+          "-Pparikshan.ios.device=$finalIosDevice",
+          "-Pparikshan.ios.port=$iosPortVal"
+        ).apply { cleanXcodeEnv(this) }.start().waitFor()
+        clearSession("ios")
+      }
+    }
+  }
+
+  private fun <T> withTargetsLock(targets: List<String>, index: Int = 0, block: () -> T): T {
+    val sortedTargets = targets.distinct().sorted()
+    return withTargetsLockSorted(sortedTargets, index, block)
+  }
+
+  private fun <T> withTargetsLockSorted(targets: List<String>, index: Int = 0, block: () -> T): T {
+    if (index >= targets.size) {
+      return block()
+    }
+    val target = targets[index]
+    val lockFile = File(buildDir.get().asFile, "parikshan/locks/$target.lock")
+    lockFile.parentFile.mkdirs()
+    val raf = java.io.RandomAccessFile(lockFile, "rw")
+    val channel = raf.channel
+    var lock: java.nio.channels.FileLock? = null
+    try {
+      while (true) {
+        try {
+          lock = channel.tryLock()
+          if (lock != null) break
+        } catch (_: java.nio.channels.OverlappingFileLockException) {}
+        Thread.sleep(100)
+      }
+      return withTargetsLockSorted(targets, index + 1, block)
+    } finally {
+      try { lock?.release() } catch (_: Exception) {}
+      try { channel.close() } catch (_: Exception) {}
+      try { raf.close() } catch (_: Exception) {}
+    }
+  }
+
+  private fun runWatchLoop(
+    activeTargets: List<String>,
+    filteredClasses: List<String>,
+    activeProcesses: MutableList<Process>,
+    activeForwardedPorts: MutableSet<Int>,
+    resolvedHost: String,
+    finalAndroidSerial: String?,
+    finalIosDevice: String
+  ) {
+      val logger = logger
+      logger.lifecycle("\n========================================")
+      logger.lifecycle("   Parikshan WATCH Mode Initialized     ")
+      logger.lifecycle("========================================")
+
+      runCatching {
+        File(projectRootDir.get(), "build/parikshan/wasm-session.properties").delete()
+      }
+
+      val originalKeepAlive = keepAlive
+      keepAlive = true
+
+      var totalPassed = 0
+      var totalFailed = 0
+      var fatalBootError: String? = null
+
+      var compileJob: Process? = null
+      val runLock = Any()
+
+      fun executeCycle(modifiedFile: Path?) {
+          synchronized(runLock) {
+              val startTime = System.currentTimeMillis()
+              logger.lifecycle("\n========================================")
+              if (modifiedFile != null) {
+                  logger.lifecycle("[WATCH] Change detected: ${modifiedFile.fileName}")
+              } else {
+                  logger.lifecycle("[WATCH] Running initial test suite...")
+              }
+
+              // On source change (not initial run), rebuild the project
+              if (modifiedFile != null) {
+                  val staleTargets = activeTargets.filter { !isTargetFresh(it) }
+                  staleTargets.forEach { target ->
+                      when (target) {
+                          "desktop" -> {
+                              val session = readSession("desktop")
+                              if (session != null) {
+                                  DesktopProcess.stop(
+                                      host = host.get(),
+                                      port = session.port,
+                                      token = session.token,
+                                      manifestFile = desktopLaunchManifestFile.get().asFile
+                                  )
+                              }
+                          }
+                          "wasm" -> {
+                              val session = readSession("wasm")
+                              if (session != null) {
+                                  WasmServer.stop()
+                              }
+                          }
+                          "android" -> {
+                              val serial = AndroidTargetConfigurer.AndroidRecorder.resolveDeviceSerial(logger, File(projectRootDir.get()), finalAndroidSerial)
+                              runCatching {
+                                  ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", androidApplicationId.getOrElse("")).apply { cleanXcodeEnv(this) }.start().waitFor()
+                              }
+                              clearSession("android")
+                          }
+                          "ios" -> {
+                              val udid = getIosSimulatorUdid(finalIosDevice) ?: getBootedIosSimulatorUdid() ?: ""
+                              runCatching {
+                                  ProcessBuilder("xcrun", "simctl", "terminate", udid, iosBundleId.getOrElse("")).apply { cleanXcodeEnv(this) }.start().waitFor()
+                              }
+                              clearSession("ios")
+                          }
+                      }
+                  }
+
+                  val buildCommand = if (!compileCommand.isBlank()) {
+                      compileCommand
+                  } else {
+                      val gradlew = getGradlewExecutable(File(projectRootDir.get()))
+                      val packageTask = staleTargets.mapNotNull { target ->
+                          when (target) {
+                              "desktop" -> "${projectPath.get()}:packageUberJarForCurrentOS"
+                              "wasm" -> "${projectPath.get()}:prepareParikshanWasmAssets"
+                              "android" -> "${projectPath.get()}:startParikshanAndroidApp"
+                              "ios" -> "${projectPath.get()}:startIosApp"
+                              else -> null
+                          }
+                      }.joinToString(" ")
+                      val targetsProp = "-Pparikshan.targets=${activeTargets.joinToString(",")}"
+                      val testCompileTask = "${projectPath.get()}:compileTestKotlinJvm"
+                      val taskList = listOfNotNull(packageTask.takeIf { it.isNotBlank() }, testCompileTask).joinToString(" ")
+                      "$gradlew $taskList -Pparikshan.e2e.active=true $targetsProp --no-daemon"
+                  }
+
+                  logger.lifecycle("Rebuilding... ($buildCommand)")
+                  val pb = if (System.getProperty("os.name").lowercase().contains("win")) {
+                      ProcessBuilder("cmd.exe", "/c", buildCommand)
+                  } else {
+                      ProcessBuilder("sh", "-c", buildCommand)
+                  }
+                  cleanXcodeEnv(pb)
+                  pb.directory(File(projectRootDir.get()))
+                  pb.redirectErrorStream(true)
+                  
+                  val process = pb.start()
+                  compileJob = process
+                  val reader = process.inputStream.bufferedReader()
+                  var line: String?
+                  while (runCatching { reader.readLine() }.getOrNull().also { line = it } != null) {
+                      logger.lifecycle(line)
+                  }
+                  val exitCode = process.waitFor()
+                  compileJob = null
+
+                  if (exitCode != 0) {
+                      logger.lifecycle("[ERROR] Build failed (Exit code: $exitCode)")
+                      logger.lifecycle("========================================")
+                      logger.lifecycle("WATCHING: Waiting for file changes... (Total: $totalPassed PASSED, $totalFailed FAILED)")
+                      writeWatchResults(false, listOf(TargetResult("build", false, "Build failed (exit code $exitCode)")))
+                      return
+                  }
+                  logger.lifecycle("Build successful.")
+              }
+
+              logger.lifecycle("Executing E2E tests for targets: ${activeTargets.joinToString()}...")
+              
+              val results = mutableListOf<TargetResult>()
+              
+              if (sync) {
+                  val targetStartTime = System.currentTimeMillis()
+                  val result = try {
+                      executeSyncTarget(activeTargets, filteredClasses, activeProcesses, finalAndroidSerial, finalIosDevice)
+                  } catch (e: Exception) {
+                      TargetResult("sync", false, e.message ?: "Sync execution failed")
+                  }
+                  val duration = System.currentTimeMillis() - targetStartTime
+                  results.add(result.copy(durationMs = duration))
+              } else {
+                  val executor = java.util.concurrent.Executors.newFixedThreadPool(activeTargets.size)
+                  try {
+                      val futures = activeTargets.map { target ->
+                          executor.submit<TargetResult> {
+                              val targetStartTime = System.currentTimeMillis()
+                              try {
+                                  val result = executeTarget(target, filteredClasses, activeProcesses, activeForwardedPorts, resolvedHost, finalAndroidSerial, finalIosDevice)
+                                  val duration = System.currentTimeMillis() - targetStartTime
+                                  result.copy(durationMs = duration)
+                              } catch (e: Exception) {
+                                  val duration = System.currentTimeMillis() - targetStartTime
+                                  TargetResult(target, false, e.message ?: "Execution failed", duration)
+                              }
+                          }
+                      }
+                      results.addAll(futures.map { it.get() })
+                  } finally {
+                      executor.shutdown()
+                  }
+              }
+
+              val anyFailure = results.any { !it.success }
+              val durationStr = formatDuration(System.currentTimeMillis() - startTime)
+
+              logger.lifecycle("----------------------------------------")
+              results.forEach { res ->
+                  val status = if (res.success) "SUCCESS" else "FAILED"
+                  logger.lifecycle("[${res.target.uppercase()}] $status - ${res.message}")
+              }
+              logger.lifecycle("========================================")
+              
+              val passedCount = results.count { it.success }
+              val failedCount = results.count { !it.success }
+              
+              val bootFailure = results.firstOrNull { WatchModeUtils.isBootFailure(it.message) }
+              if (bootFailure != null) {
+                  fatalBootError = bootFailure.message
+                  logger.error("\n[WATCH] Fatal boot / device setup failure: ${bootFailure.message}")
+                  logger.error("[WATCH] Terminating watch mode because device setup error cannot be resolved by watching file changes.")
+                  return
+              }
+
+              if (anyFailure) {
+                  logger.lifecycle("WATCHING: Waiting for file changes... (Latest: $passedCount PASSED, $failedCount FAILED) - Last run failed after $durationStr")
+                  writeWatchResults(false, results)
+              } else {
+                  logger.lifecycle("WATCHING: Waiting for file changes... (Latest: $passedCount PASSED, $failedCount FAILED) - Last run succeeded in $durationStr")
+                  writeWatchResults(true, results)
+              }
+          }
+      }
+
+      executeCycle(null)
+      if (fatalBootError != null) {
+          throw GradleException("Parikshan WATCH mode terminated due to fatal boot failure: $fatalBootError")
+      }
+
+      val watchRoots = mutableListOf<File>()
+      
+      // Always watch source files — compile externally on change
+      watchRoots.addAll(productionSources.files)
+      watchRoots.addAll(testSources.files)
+      logger.lifecycle("[WATCH] Monitoring source files for changes...")
+
+      var lastEventTime = 0L
+      val debounceMs = 500L
+      val pendingChange = java.util.concurrent.atomic.AtomicReference<Path?>(null)
+
+      val watcher = PollingWatcher(watchRoots) { file ->
+          val now = System.currentTimeMillis()
+          pendingChange.set(file.toPath())
+          
+          synchronized(activeProcesses) {
+              runCatching {
+                  compileJob?.toHandle()?.descendants()?.forEach { it.destroy() }
+                  compileJob?.destroy()
+              }
+              activeProcesses.forEach { proc ->
+                  runCatching {
+                      proc.toHandle()?.descendants()?.forEach { it.destroy() }
+                      proc.destroy()
+                  }
+              }
+          }
+
+          lastEventTime = now
+      }
+
+      try {
+          while (true) {
+              Thread.sleep(100)
+
+              val desktopClosed = activeTargets.contains("desktop") && !DesktopProcess.isProcessAlive(desktopLaunchManifestFile.orNull?.asFile)
+              val wasmClosed = activeTargets.contains("wasm") && isWasmSessionClosed(File(projectRootDir.get()))
+              val androidClosed = activeTargets.contains("android") && androidApplicationId.isPresent && !isAndroidAppAlive(logger, File(projectRootDir.get()), finalAndroidSerial, androidApplicationId.orNull)
+              val iosClosed = activeTargets.contains("ios") && iosBundleId.isPresent && !isIosAppAlive(iosBundleId.orNull)
+
+              if (desktopClosed || wasmClosed || androidClosed || iosClosed) {
+                  val targetName = when {
+                      desktopClosed -> "desktop"
+                      wasmClosed -> "wasm"
+                      androidClosed -> "android"
+                      else -> "ios"
+                  }
+                  logger.lifecycle("[WATCH] Target '$targetName' application closed by user. Exiting watch mode.")
+                  break
+              }
+
+              val path = pendingChange.get()
+              if (path != null && System.currentTimeMillis() - lastEventTime >= debounceMs) {
+                  pendingChange.compareAndSet(path, null)
+                  try {
+                      executeCycle(path)
+                  } catch (e: Exception) {
+                      logger.lifecycle("[WATCH] Error in watch cycle: ${e.message}")
+                  }
+                  if (fatalBootError != null) {
+                      throw GradleException("Parikshan WATCH mode terminated due to fatal boot failure: $fatalBootError")
+                  }
+              }
+          }
+      } catch (e: InterruptedException) {
+          logger.lifecycle("Watch mode interrupted.")
+      } finally {
+          watcher.close()
+          keepAlive = originalKeepAlive
+          
+          if (!keepAlive) {
+              logger.lifecycle("Watch mode shutting down. Stopping target applications...")
+              activeTargets.forEach { target ->
+                  when (target) {
+                      "desktop" -> {
+                          val session = readSession("desktop")
+                          if (session != null) {
+                              DesktopProcess.stop(host.get(), session.port, session.token, desktopLaunchManifestFile.get().asFile)
+                              clearSession("desktop")
+                          }
+                      }
+                      "wasm" -> {
+                          WasmServer.stop()
+                          clearSession("wasm")
+                          cleanupWasmChromeProcess()
+                      }
+                      "android" -> {
+                          val serial = AndroidTargetConfigurer.AndroidRecorder.resolveDeviceSerial(logger, File(projectRootDir.get()), finalAndroidSerial)
+                          ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", androidApplicationId.get()).start().waitFor()
+                          clearSession("android")
+                      }
+                      "ios" -> {
+                          val udid = getIosSimulatorUdid(finalIosDevice) ?: getBootedIosSimulatorUdid() ?: ""
+                          ProcessBuilder("xcrun", "simctl", "terminate", udid, iosBundleId.getOrElse("")).start().waitFor()
+                          clearSession("ios")
+                      }
+                  }
+              }
+          }
+      }
+  }
+
+  private fun writeWatchResults(success: Boolean, targets: List<TargetResult>) {
+      val resultsFile = File(buildDir.get().asFile, "parikshan/watch-results.json")
+      resultsFile.parentFile.mkdirs()
+      val targetsJson = targets.joinToString(prefix = "[", postfix = "]") { res ->
+          "{\"target\":\"${res.target}\",\"success\":${res.success},\"message\":\"${res.message.replace("\"", "\\\"")}\",\"durationMs\":${res.durationMs}}"
+      }
+      val json = "{\"timestamp\":${System.currentTimeMillis()},\"success\":$success,\"targets\":$targetsJson}"
+      runCatching {
+          resultsFile.writeText(json)
+      }
+  }
+
+  /**
+   * Checks whether the active WASM testing browser session has closed.
+   *
+   * Verifies if the session status property in `wasm-session.properties` reads 'closed',
+   * if the CDP remote debugging port (9222) is no longer accessible,
+   * or if no active page target remains in the browser on CDP port 9222.
+   *
+   * @param projectRootDir The root directory of the Gradle project containing build artifacts.
+   * @return True if the browser session was terminated by the user, false otherwise.
+   */
+  private fun isWasmSessionClosed(projectRootDir: File): Boolean {
+    val sessionFile = File(projectRootDir, "build/parikshan/wasm-session.properties")
+    if (!sessionFile.exists()) return false
+    val status = runCatching {
+      val props = java.util.Properties()
+      sessionFile.inputStream().use(props::load)
+      props.getProperty("status")
+    }.getOrNull()
+
+    if (status == "closed") return true
+    if (status == "active") {
+      val cdpPortOpen = runCatching {
+        java.net.Socket("127.0.0.1", 9222).use { true }
+      }.getOrDefault(false)
+
+      if (cdpPortOpen) {
+        val hasActivePageTarget = runCatching {
+          val url = java.net.URL("http://127.0.0.1:9222/json")
+          val conn = url.openConnection() as java.net.HttpURLConnection
+          conn.connectTimeout = 1000
+          conn.readTimeout = 1000
+          val json = conn.inputStream.bufferedReader().use { it.readText() }
+          json.contains("\"type\": \"page\"") || json.contains("\"type\":\"page\"")
+        }.getOrDefault(true)
+
+        if (!hasActivePageTarget) {
+          return true
+        }
+      }
+      return false
+    }
+
+    return false
+  }
+
+  /**
+   * Terminates any detached Chromium process listening on CDP port 9222 without affecting client processes.
+   */
+  private fun cleanupWasmChromeProcess() {
+    runCatching {
+      val myPid = ProcessHandle.current().pid()
+      if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
+        val p = ProcessBuilder("cmd", "/c", "for /f \"tokens=5\" %a in ('netstat -aon ^| findstr :9222 ^| findstr LISTENING') do taskkill /f /pid %a").start()
+        p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)
+      } else {
+        val p = ProcessBuilder("sh", "-c", "lsof -ti:9222 -sTCP:LISTEN").start()
+        if (p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) {
+          val pids = p.inputStream.bufferedReader().readText().lines()
+            .mapNotNull { it.trim().toLongOrNull() }
+            .filter { it != myPid }
+          pids.forEach { pid ->
+            runCatching { ProcessBuilder("kill", "-15", pid.toString()).start().waitFor() }
+          }
+        }
+      }
+    }
+  }
+
+  private fun isAndroidAppAlive(logger: org.gradle.api.logging.Logger, projectRootDir: File, serialSpec: String?, appId: String?): Boolean {
+    if (appId.isNullOrEmpty()) return true
+    val session = readSession("android") ?: return true
+    val serial = runCatching {
+      AndroidTargetConfigurer.AndroidRecorder.resolveDeviceSerial(logger, projectRootDir, serialSpec)
+    }.getOrNull() ?: return true
+    if (serial.isEmpty()) return true
+    return runCatching {
+      val p = ProcessBuilder("adb", "-s", serial, "shell", "pidof", appId).start()
+      p.waitFor(2, java.util.concurrent.TimeUnit.SECONDS) && p.exitValue() == 0 && p.inputStream.bufferedReader().readText().trim().isNotEmpty()
+    }.getOrDefault(true)
+  }
+
+  private fun isIosAppAlive(bundleId: String?): Boolean {
+    if (bundleId.isNullOrEmpty()) return true
+    val session = readSession("ios") ?: return true
+    return checkTargetHealth("127.0.0.1", session.port, session.token)
+  }
+
   private companion object {
       val targetLocks = java.util.concurrent.ConcurrentHashMap<String, Any>()
 
@@ -1620,3 +2833,76 @@ abstract class E2ETestTask : DefaultTask() {
       }
   }
 }
+
+internal class PollingWatcher(
+    val roots: List<File>,
+    val onEvent: (File) -> Unit
+) : AutoCloseable {
+    private var closed = false
+    private val thread: Thread
+
+    init {
+        thread = Thread {
+            var lastMaxTimestamp = getCurrentMaxTimestamp()
+
+            try {
+                while (!closed) {
+                    Thread.sleep(500)
+                    val current = getCurrentMaxTimestamp()
+                    if (current.second > lastMaxTimestamp.second) {
+                        lastMaxTimestamp = current
+                        if (current.first != null) {
+                            onEvent(current.first!!)
+                        }
+                    }
+                }
+            } catch (_: InterruptedException) {
+            } catch (_: Exception) {
+            }
+        }
+        thread.isDaemon = true
+        thread.name = "Parikshan-PollingWatcher"
+        thread.start()
+    }
+
+    private fun getCurrentMaxTimestamp(): Pair<File?, Long> {
+        var maxTime = 0L
+        var maxFile: File? = null
+        roots.forEach { root ->
+            if (root.exists()) {
+                if (root.isDirectory) {
+                    root.walkTopDown().forEach { file ->
+                        if (file.isFile && isInteresting(file)) {
+                            val t = file.lastModified()
+                            if (t > maxTime) {
+                                maxTime = t
+                                maxFile = file
+                            }
+                        }
+                    }
+                } else {
+                    if (isInteresting(root)) {
+                        val t = root.lastModified()
+                        if (t > maxTime) {
+                            maxTime = t
+                            maxFile = root
+                        }
+                    }
+                }
+            }
+        }
+        return Pair(maxFile, maxTime)
+    }
+
+    private fun isInteresting(file: File): Boolean {
+        val extension = file.extension.lowercase()
+        return extension in setOf("kt", "kts")
+    }
+
+    override fun close() {
+        closed = true
+        thread.interrupt()
+    }
+}
+
+

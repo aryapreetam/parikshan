@@ -28,8 +28,14 @@ group = rootProps.getProperty("libGroup")?.let { "$it.parikshan" } ?: "io.github
 version = rootProps.getProperty("libVersion") ?: "0.0.1"
 
 dependencies {
+  compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin:${libs.versions.kotlin.get()}")
+  compileOnly("com.android.tools.build:gradle:${libs.versions.agp.get()}")
+
   implementation(libs.maven.publish.gradle.plugin)
   testImplementation(kotlin("test"))
+  testImplementation(gradleTestKit())
+  testImplementation("org.jetbrains.kotlin:kotlin-gradle-plugin:${libs.versions.kotlin.get()}")
+  testImplementation("com.android.tools.build:gradle:${libs.versions.agp.get()}")
 }
 
 tasks.withType<Jar> {

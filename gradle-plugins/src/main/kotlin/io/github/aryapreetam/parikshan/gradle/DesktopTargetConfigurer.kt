@@ -50,6 +50,14 @@ internal object DesktopTargetConfigurer {
       null
     }
 
+    val optWindowSize = project.providers.gradleProperty("parikshan.windowSize")
+      .orElse(project.providers.systemProperty("parikshan.windowSize"))
+    val optDesktopSize = project.providers.gradleProperty("parikshan.desktop.windowSize")
+      .orElse(project.providers.systemProperty("parikshan.desktop.windowSize"))
+      .orElse(optWindowSize)
+    val optDesktopPos = project.providers.gradleProperty("parikshan.desktop.windowPosition")
+      .orElse(project.providers.systemProperty("parikshan.desktop.windowPosition"))
+
     val startDesktopTask = project.tasks.register(startTaskName) {
       group = "verification"
       if (appJarFileProvider != null) {
@@ -67,6 +75,20 @@ internal object DesktopTargetConfigurer {
           host = hostVal,
           logger = logger
         )
+        val sizeStr = optDesktopSize.orNull
+        val posStr = optDesktopPos.orNull
+
+        val size = parseSize(sizeStr)
+        val pos = parsePosition(posStr)
+        if (size != null) {
+          System.setProperty("parikshan.desktop.windowWidth", size.first.toString())
+          System.setProperty("parikshan.desktop.windowHeight", size.second.toString())
+        }
+        if (pos != null) {
+          System.setProperty("parikshan.desktop.windowX", pos.first.toString())
+          System.setProperty("parikshan.desktop.windowY", pos.second.toString())
+        }
+
         DesktopProcess.start(
           jar = jar,
           token = tokenVal,
@@ -112,11 +134,10 @@ internal object DesktopTargetConfigurer {
       finalizedBy(stopTaskName)
 
       configureE2eHostTestExecution(
-        hostTestClassesDirs = hostTestTask.get().testClassesDirs,
-        hostTestClasspath = hostTestTask.get().classpath,
+        hostTestTaskProvider = hostTestTask,
         e2eTestClasses = e2eTestClasses,
         target = capitalizedTarget,
-        logger = project.logger
+        logger = logger
       )
       systemProperty("parikshan.host", hostVal)
       doFirst {
@@ -129,6 +150,20 @@ internal object DesktopTargetConfigurer {
           portVal.toString()
         }
         systemProperty("parikshan.port", port)
+
+        val sizeStr = optDesktopSize.orNull
+        val posStr = optDesktopPos.orNull
+
+        val size = parseSize(sizeStr)
+        val pos = parsePosition(posStr)
+        if (size != null) {
+          systemProperty("parikshan.desktop.windowWidth", size.first.toString())
+          systemProperty("parikshan.desktop.windowHeight", size.second.toString())
+        }
+        if (pos != null) {
+          systemProperty("parikshan.desktop.windowX", pos.first.toString())
+          systemProperty("parikshan.desktop.windowY", pos.second.toString())
+        }
       }
       systemProperty("parikshan.target", targetName.lowercase())
       systemProperty("parikshan.token", tokenVal)
@@ -173,6 +208,14 @@ internal object DesktopProcess {
       if (background) {
         add("-Dparikshan.background=true")
       }
+      val wX = System.getProperty("parikshan.desktop.windowX")
+      val wY = System.getProperty("parikshan.desktop.windowY")
+      val wW = System.getProperty("parikshan.desktop.windowWidth")
+      val wH = System.getProperty("parikshan.desktop.windowHeight")
+      if (!wX.isNullOrEmpty()) add("-Dparikshan.desktop.windowX=$wX")
+      if (!wY.isNullOrEmpty()) add("-Dparikshan.desktop.windowY=$wY")
+      if (!wW.isNullOrEmpty()) add("-Dparikshan.desktop.windowWidth=$wW")
+      if (!wH.isNullOrEmpty()) add("-Dparikshan.desktop.windowHeight=$wH")
       title?.let { add("-Dparikshan.desktop.windowTitle=$it") }
       add("-cp")
       add(jar.absolutePath)
@@ -230,6 +273,19 @@ internal object DesktopProcess {
     }
     manifestFile?.let { destroyManifestProcess(it) }
     process = null
+  }
+
+  fun isProcessAlive(manifestFile: File?): Boolean {
+    if (process != null) {
+      return process?.isAlive == true
+    }
+    if (manifestFile == null || !manifestFile.exists()) {
+      return false
+    }
+    val pid = runCatching {
+      Properties().apply { manifestFile.inputStream().use(::load) }.getProperty("pid")?.toLongOrNull()
+    }.getOrNull() ?: return false
+    return ProcessHandle.of(pid).map { it.isAlive }.orElse(false)
   }
 
   private fun writeLaunchManifest(

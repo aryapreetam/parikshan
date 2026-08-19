@@ -14,6 +14,11 @@ import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
+import org.gradle.api.file.ConfigurableFileCollection
+import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
+import org.gradle.api.tasks.IgnoreEmptyDirectories
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -57,10 +62,26 @@ abstract class ParikshanStopIosTask : DefaultTask() {
 
   @TaskAction
   fun run() {
-    val udid = simulatorUdid.orNull
-    if (!udid.isNullOrBlank()) {
-      ProcessBuilder("xcrun", "simctl", "terminate", udid, bundleId.get()).start().waitFor()
-      logger.lifecycle("Parikshan iOS: App terminated")
+    val bId = bundleId.orNull
+    if (bId.isNullOrBlank()) return
+
+    val rawDevice = simulatorUdid.orNull ?: "booted"
+    val udid = resolveUdid(rawDevice) ?: "booted"
+
+    runCatching {
+      ProcessBuilder("xcrun", "simctl", "terminate", udid, bId).start().waitFor()
+      logger.lifecycle("Parikshan iOS: App '$bId' terminated")
+    }
+  }
+
+  private fun resolveUdid(rawDevice: String): String? {
+    if (rawDevice.contains("-") && rawDevice.length >= 30) return rawDevice
+    return try {
+      val activeSdkVersion = ParikshanStartIosTask.IosSimulatorResolver.getActiveIosSdkVersion()
+      val devices = ParikshanStartIosTask.IosSimulatorResolver.listAvailableIosDevices()
+      ParikshanStartIosTask.IosSimulatorResolver.selectBestDevice(rawDevice, devices, activeSdkVersion).udid
+    } catch (_: Throwable) {
+      "booted"
     }
   }
 }
@@ -99,6 +120,111 @@ abstract class ParikshanStartIosTask : DefaultTask() {
   @get:Internal
   abstract val buildDir: DirectoryProperty
 
+  internal data class DiscoveredIosDevice(
+    val name: String,
+    val udid: String,
+    val isBooted: Boolean,
+    val runtimeName: String,
+    val runtimeVersion: String
+  )
+
+  internal object IosSimulatorResolver {
+    fun getActiveIosSdkVersion(): String {
+      return runCatching {
+        val process = ProcessBuilder("xcrun", "xcodebuild", "-version", "-sdk", "iphonesimulator", "SDKVersion").start()
+        val out = process.inputStream.bufferedReader().readText().trim()
+        process.waitFor()
+        out
+      }.getOrDefault("")
+    }
+
+    fun listAvailableIosDevices(projectDir: File? = null): List<DiscoveredIosDevice> {
+      val pb = if (projectDir != null) {
+        ProcessBuilder("xcrun", "simctl", "list", "devices", "available").directory(projectDir)
+      } else {
+        ProcessBuilder("xcrun", "simctl", "list", "devices", "available")
+      }
+      val process = pb.start()
+      val output = process.inputStream.bufferedReader().readText()
+      process.waitFor()
+
+      val devices = mutableListOf<DiscoveredIosDevice>()
+      var currentRuntime = ""
+      var currentRuntimeVersion = ""
+
+      output.lineSequence().forEach { line ->
+        val trimmed = line.trim()
+        if (trimmed.startsWith("-- ") && trimmed.endsWith(" --")) {
+          val header = trimmed.removeSurrounding("-- ", " --").trim()
+          if (header.startsWith("iOS", ignoreCase = true)) {
+            currentRuntime = header
+            currentRuntimeVersion = header.substringAfter("iOS", "").trim()
+          } else {
+            currentRuntime = ""
+            currentRuntimeVersion = ""
+          }
+        } else if (currentRuntime.isNotEmpty() && trimmed.contains("(")) {
+          val name = trimmed.substringBefore("(").trim()
+          val udid = trimmed.substringAfter("(").substringBefore(")")
+          val state = trimmed.substringAfterLast("(").substringBefore(")")
+          if (name.isNotEmpty() && udid.contains("-")) {
+            devices += DiscoveredIosDevice(
+              name = name,
+              udid = udid,
+              isBooted = state.contains("Booted", ignoreCase = true),
+              runtimeName = currentRuntime,
+              runtimeVersion = currentRuntimeVersion
+            )
+          }
+        }
+      }
+      return devices
+    }
+
+    fun selectBestDevice(
+      requestedDevice: String,
+      availableDevices: List<DiscoveredIosDevice>,
+      activeSdkVersion: String
+    ): DiscoveredIosDevice {
+      if (availableDevices.isEmpty()) {
+        throw GradleException("Parikshan iOS: No available iOS Simulators detected.")
+      }
+
+      if (requestedDevice.equals("booted", ignoreCase = true)) {
+        val booted = availableDevices.firstOrNull { it.isBooted }
+        if (booted != null) return booted
+      }
+
+      val byUdid = availableDevices.firstOrNull { it.udid.equals(requestedDevice, ignoreCase = true) }
+      if (byUdid != null) return byUdid
+
+      val activeDevices = if (activeSdkVersion.isNotBlank()) {
+        availableDevices.filter { it.runtimeVersion.startsWith(activeSdkVersion) || activeSdkVersion.startsWith(it.runtimeVersion) }
+      } else {
+        emptyList()
+      }.ifEmpty { availableDevices }
+
+      val exactNameInActive = activeDevices.firstOrNull { it.name.equals(requestedDevice, ignoreCase = true) }
+      if (exactNameInActive != null) return exactNameInActive
+
+      val exactNameAnywhere = availableDevices.firstOrNull { it.name.equals(requestedDevice, ignoreCase = true) }
+      if (exactNameAnywhere != null) return exactNameAnywhere
+
+      val bootedInActive = activeDevices.firstOrNull { it.isBooted }
+        ?: availableDevices.firstOrNull { it.isBooted }
+      if (bootedInActive != null) return bootedInActive
+
+      val preferredModels = listOf("iPhone 17", "iPhone 17 Pro", "iPhone 16", "iPhone 16 Pro", "iPhone 15", "iPhone 15 Pro", "iPhone 14")
+      for (model in preferredModels) {
+        val found = activeDevices.firstOrNull { it.name.equals(model, ignoreCase = true) }
+        if (found != null) return found
+      }
+
+      return activeDevices.firstOrNull { it.name.startsWith("iPhone", ignoreCase = true) }
+        ?: activeDevices.first()
+    }
+  }
+
   @TaskAction
   fun run() {
     val projectDirFile = projectDir.get().asFile
@@ -114,43 +240,15 @@ abstract class ParikshanStartIosTask : DefaultTask() {
     val bundleIdVal = bundleId.get()
 
     val isCi = System.getenv("CI") == "true"
-    if (isCi) {
-      logger.lifecycle("Parikshan iOS: Running pre-run simulator cleanup (CI environment)...")
-      runCatching { ProcessBuilder("killall", "Simulator").start().waitFor() }
-      runCatching { ProcessBuilder("xcrun", "simctl", "shutdown", "all").start().waitFor() }
-    }
+    val activeSdkVersion = IosSimulatorResolver.getActiveIosSdkVersion()
+    val availableDevices = IosSimulatorResolver.listAvailableIosDevices(projectDirFile)
+    val targetDevice = IosSimulatorResolver.selectBestDevice(deviceVal, availableDevices, activeSdkVersion)
 
-    val process = ProcessBuilder("xcrun", "simctl", "list", "devices", "available").directory(projectDirFile).start()
-    val output = process.inputStream.bufferedReader().readText()
-    process.waitFor()
+    val selectedName = targetDevice.name
+    val selectedUdid = targetDevice.udid
+    val isBooted = targetDevice.isBooted
 
-    val allDevices = mutableListOf<Triple<String, String, Boolean>>()
-    output.lineSequence().forEach { line ->
-      if (line.contains("(")) {
-        val name = line.substringBefore("(").trim()
-        val udid = line.substringAfter("(").substringBefore(")")
-        val state = line.substringAfterLast("(").substringBefore(")")
-        if (name.isNotEmpty() && udid.isNotEmpty() && udid.contains("-")) {
-          allDevices += Triple(name, udid, state.contains("Booted", ignoreCase = true))
-        }
-      }
-    }
-
-    val exactMatch = allDevices.filter {
-      (deviceVal == "booted" && it.third) || deviceVal == it.first || deviceVal == it.second
-    }
-    val targetDevice = exactMatch.firstOrNull { it.third }
-      ?: exactMatch.firstOrNull()
-      ?: allDevices.firstOrNull { it.third }
-      ?: allDevices.firstOrNull { it.first.startsWith("iPhone", ignoreCase = true) }
-      ?: allDevices.firstOrNull()
-      ?: throw GradleException("Parikshan iOS: No available iOS Simulators detected.")
-
-    val selectedName = targetDevice.first
-    val selectedUdid = targetDevice.second
-    val isBooted = targetDevice.third
-
-    logger.lifecycle("Parikshan iOS: Using simulator '$selectedName' ($selectedUdid)")
+    logger.lifecycle("Parikshan iOS: Using simulator '$selectedName' ($selectedUdid) [${targetDevice.runtimeName}]")
 
     if (!isBooted) {
       logger.lifecycle("Parikshan iOS: Booting simulator...")
@@ -162,7 +260,19 @@ abstract class ParikshanStartIosTask : DefaultTask() {
     val originalIosAppDir = File(projVal).parentFile
     val generatedIosAppDir = File(buildDirFile, "parikshan/ios-host")
     generatedIosAppDir.deleteRecursively()
-    originalIosAppDir.copyRecursively(generatedIosAppDir)
+    generatedIosAppDir.mkdirs()
+
+    originalIosAppDir.walkTopDown()
+      .onEnter { dir -> dir.name != "build" && dir.name != ".gradle" && dir.name != "DerivedData" }
+      .forEach { file ->
+        val relativePath = file.relativeTo(originalIosAppDir)
+        val targetFile = File(generatedIosAppDir, relativePath.path)
+        if (file.isDirectory) {
+          targetFile.mkdirs()
+        } else {
+          runCatching { file.copyTo(targetFile, overwrite = true) }
+        }
+      }
 
     val absoluteGradlew = File(rootDirFile, "gradlew").absolutePath
     val javaHomeVal = System.getProperty("java.home") ?: System.getenv("JAVA_HOME") ?: ""
@@ -170,7 +280,7 @@ abstract class ParikshanStartIosTask : DefaultTask() {
     val gradlewShim = File(generatedIosAppDir, "gradlew")
     val shimContent = """
         #!/bin/sh
-        $javaHomeExport exec "$absoluteGradlew" -p "${rootDirFile.absolutePath}" --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.token=$tokenVal "${'$'}@"
+        $javaHomeExport exec "$absoluteGradlew" -p "${rootDirFile.absolutePath}" --no-daemon --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.targets=ios -Pparikshan.token=$tokenVal "${'$'}@"
         """.trimIndent()
     gradlewShim.writeText(shimContent)
     gradlewShim.setExecutable(true)
@@ -251,6 +361,7 @@ abstract class ParikshanStartIosTask : DefaultTask() {
     logger.lifecycle("Parikshan iOS: Waiting for server on port $activePort...")
     val deadline = System.currentTimeMillis() + 90_000
     var serverReady = false
+    val workingPort = activePort
     while (System.currentTimeMillis() <= deadline) {
       if (postPing(activePort, tokenVal)) {
         serverReady = true
@@ -258,6 +369,10 @@ abstract class ParikshanStartIosTask : DefaultTask() {
       }
       Thread.sleep(500)
     }
+
+    val portFile = File(buildDirFile, "parikshan/ios-port.txt")
+    portFile.parentFile.mkdirs()
+    portFile.writeText(workingPort.toString())
 
     if (!serverReady) {
       val processName = appBundle.nameWithoutExtension
@@ -408,6 +523,10 @@ abstract class ParikshanPrepareIosSourceTask : DefaultTask() {
   @get:Internal
   abstract val iosProjectDir: DirectoryProperty
 
+  @get:InputDirectory
+  @get:Optional
+  abstract val iosMainDir: DirectoryProperty
+
   @get:OutputDirectory
   abstract val generatedDir: DirectoryProperty
 
@@ -471,32 +590,29 @@ abstract class ParikshanPrepareWasmSourceTask : DefaultTask() {
   @get:Internal
   abstract val projectDir: DirectoryProperty
 
+  @get:InputFiles
+  @get:PathSensitive(PathSensitivity.RELATIVE)
+  @get:IgnoreEmptyDirectories
+  @get:Optional
+  abstract val sourceFiles: ConfigurableFileCollection
+
   @get:OutputDirectory
   abstract val generatedDir: DirectoryProperty
 
   @TaskAction
   fun run() {
     val genDirFile = generatedDir.get().asFile
-    val projectDirFile = projectDir.get().asFile
     genDirFile.deleteRecursively()
     genDirFile.mkdirs()
-    val sourceDirs = listOf(
-      File(projectDirFile, "src/webMain/kotlin"),
-      File(projectDirFile, "src/wasmJsMain/kotlin"),
-      File(projectDirFile, "src/jsMain/kotlin"),
-      File(projectDirFile, "src/commonMain/kotlin")
-    )
+    
     var copiedAny = false
-    for (srcDir in sourceDirs) {
-      if (srcDir.exists()) {
-        srcDir.copyRecursively(genDirFile, overwrite = true)
-        logger.lifecycle("Parikshan Wasm: Found source directory at ${srcDir.absolutePath}")
-        copiedAny = true
-        break
-      }
+    sourceFiles.files.filter { it.exists() }.forEach { srcDir ->
+      srcDir.copyRecursively(genDirFile, overwrite = true)
+      logger.lifecycle("Parikshan Wasm: Found and copied source directory at ${srcDir.absolutePath}")
+      copiedAny = true
     }
     if (!copiedAny) {
-      logger.warn("Parikshan Wasm: No source directories found in ${projectDirFile.absolutePath}")
+      logger.warn("Parikshan Wasm: No source directories found to copy.")
     }
     genDirFile.walkTopDown()
       .filter { it.isFile && it.extension == "kt" }

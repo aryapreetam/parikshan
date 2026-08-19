@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Parikshan Documentation & Guides
+    url: https://aryapreetam.github.io/parikshan/
+    about: Read installation guides, CLI options, and architecture overviews.
+  - name: API Reference (Dokka)
+    url: https://aryapreetam.github.io/parikshan/api/
+    about: Explore the complete API reference for the Parikshan DSL.
+  - name: GitHub Discussions
+    url: https://github.com/aryapreetam/parikshan/discussions
+    about: Ask questions, share ideas, and connect with other developers.

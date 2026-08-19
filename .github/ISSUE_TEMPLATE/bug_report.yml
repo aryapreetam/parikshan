@@ -1,0 +1,68 @@
+name: Bug Report
+description: Report an issue or unexpected behavior in Parikshan
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue with Parikshan. Please provide clear details and minimal repro steps.
+  - type: input
+    id: version
+    attributes:
+      label: Parikshan Version
+      description: The version of Parikshan you are using (e.g. 0.0.7).
+      placeholder: "0.0.7"
+    validations:
+      required: true
+  - type: dropdown
+    id: target
+    attributes:
+      label: Affected Target Platform(s)
+      description: Which platform targets did the issue occur on?
+      multiple: true
+      options:
+        - Desktop (JVM)
+        - Web (WasmJs)
+        - Android
+        - iOS
+        - Gradle Plugin / Tooling
+    validations:
+      required: true
+  - type: input
+    id: cmp_version
+    attributes:
+      label: Compose Multiplatform Version & Kotlin Version
+      placeholder: "CMP 1.7.3, Kotlin 2.1.0"
+    validations:
+      required: true
+  - type: input
+    id: host_os
+    attributes:
+      label: Host Operating System
+      placeholder: "macOS Sonoma (M-series), Ubuntu 24.04, Windows 11"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the Bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Steps or minimal test case to reproduce the behavior.
+      placeholder: |
+        1. Run './gradlew e2eTest --targets=desktop,wasm --sync'
+        2. Execute test case '...'
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs or Stack Traces
+      description: Paste any terminal or test execution logs here.
+      render: shell

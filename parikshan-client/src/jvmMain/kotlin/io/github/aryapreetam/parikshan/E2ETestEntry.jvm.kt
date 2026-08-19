@@ -1,6 +1,10 @@
 package io.github.aryapreetam.parikshan
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import io.github.aryapreetam.parikshan.client.ParikshanVideoConfig
 import io.github.aryapreetam.parikshan.client.ParikshanVideoSessionManager
 import kotlin.math.max
@@ -13,6 +17,46 @@ actual fun e2eTest(
     val targetProperty = System.getProperty("parikshan.target")?.lowercase()
     val driver =
       when (targetProperty) {
+        "sync" -> {
+          val activeTargets = System.getProperty("parikshan.sync.targets")
+            ?.split(",")
+            ?.map { it.trim().lowercase() }
+            ?.filter { it.isNotEmpty() }
+            ?: listOf("desktop", "wasm")
+          val drivers = withContext(Dispatchers.IO) {
+            activeTargets.map { t ->
+              async {
+                when (t) {
+                  "desktop", "jvm" -> DesktopDriver(
+                    host = System.getProperty("parikshan.desktop.host") ?: System.getProperty("parikshan.host") ?: "127.0.0.1",
+                    port = System.getProperty("parikshan.desktop.port")?.toIntOrNull() ?: System.getProperty("parikshan.port")?.toIntOrNull() ?: 9877
+                  )
+                  "wasm", "web" -> WasmDriver.connect()
+                  "android" -> {
+                    val androidHost = System.getProperty("parikshan.android.host") ?: System.getProperty("parikshan.host") ?: "127.0.0.1"
+                    val androidPort = System.getProperty("parikshan.android.port")?.toIntOrNull() ?: System.getProperty("parikshan.port")?.toIntOrNull() ?: 9879
+                    AndroidRemoteDriver.connect(
+                      io.github.aryapreetam.parikshan.client.ParikshanClientConfig(
+                        host = androidHost,
+                        port = androidPort
+                      )
+                    )
+                  }
+                  "ios" -> {
+                    IosRemoteDriver.connect(
+                      IosDriverConfig(
+                        host = System.getProperty("parikshan.ios.host") ?: System.getProperty("parikshan.host") ?: "127.0.0.1",
+                        port = System.getProperty("parikshan.ios.port")?.toIntOrNull() ?: System.getProperty("parikshan.port")?.toIntOrNull() ?: 9878
+                      )
+                    )
+                  }
+                  else -> error("Unsupported target in sync mode: $t")
+                }
+              }
+            }.awaitAll()
+          }
+          BroadcastDriver(drivers)
+        }
         "android" -> AndroidRemoteDriver.connect()
         "ios" ->
           IosRemoteDriver.connect(
@@ -45,11 +89,16 @@ actual fun e2eTest(
       methodName = callerMethodName
     )
 
-    val defaultDelay = if (targetProperty == "wasm" || targetProperty == "web") {
+    val target = System.getProperty("parikshan.target")?.lowercase()
+    val isWasmActive = target == "wasm" || target == "web" || (target == "sync" && System.getProperty("parikshan.sync.targets")?.contains("wasm") == true)
+    val isIosActive = target == "ios" || (target == "sync" && System.getProperty("parikshan.sync.targets")?.contains("ios") == true)
+    val isDesktopActive = target == "desktop" || target == null || target == "" || (target == "sync" && System.getProperty("parikshan.sync.targets")?.contains("desktop") == true)
+
+    val defaultDelay = if (isWasmActive) {
       max(config.commandDelayMs, 150L)
-    } else if (targetProperty == "ios") {
+    } else if (isIosActive) {
       max(config.commandDelayMs, 300L)
-    } else if (targetProperty != "android" && videoConfig.enabled) {
+    } else if (isDesktopActive && videoConfig.enabled) {
       max(config.commandDelayMs, 10L)
     } else {
       config.commandDelayMs

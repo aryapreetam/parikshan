@@ -82,38 +82,23 @@ npx playwright install --with-deps chromium
 
 If your PR introduces a new public API (e.g., a new selector or DSL command), you must include KDoc comments explaining its *intent*.
 
-To verify how your documentation will look on the live site:
-```bash
-./gradlew :parikshan:dokkaGeneratePublicationHtml
-```
-Open `parikshan/build/dokka/html/index.html` in your browser.
-
-If you want to test any other part of documentation(site, api, demo):
+To build and verify the complete documentation distribution (MkDocs site, Dokka API reference, and Wasm showcase demo):
 
 ```bash
-# 1. Build MkDocs, create .nojekyll, and create subdirectories
-mkdocs build --clean
-touch site/.nojekyll
-mkdir -p site/api site/demo
+# Build and verify all documentation outputs
+./scripts/verify-docs-local.sh
 
-# 2. Build and copy Dokka API Reference
-./gradlew :parikshan:dokkaGeneratePublicationHtml
-cp -r parikshan/build/dokka/html/* site/api/
-
-# 3. Build and copy Wasm Demo
-./gradlew :samples:multiplatform-showcase:composeApp:wasmJsBrowserDistribution
-cp -r samples/multiplatform-showcase/composeApp/build/dist/wasmJs/productionExecutable/* site/demo/
-
-# 4. Serve locally on port 8000
-python3 -m http.server 8000 --directory site
+# Build and start a local preview server on port 8000
+./scripts/verify-docs-local.sh --serve
 ```
-Once running, navigate in your browser:
 
-Landing & Docs: http://localhost:8000/
-API Reference: http://localhost:8000/api/
-Live Wasm Demo: http://localhost:8000/demo/
+Once the preview server is running, navigate in your browser:
+* **Landing & Docs**: `http://localhost:8000/`
+* **API Reference**: `http://localhost:8000/api/`
+* **Live Wasm Demo**: `http://localhost:8000/demo/`
 
-Note: If you use `mkdocs serve`, the `/demo` & `/api` will return `404`. Use # 4. 
+> [!NOTE]
+> Running standard `mkdocs serve` serves only the markdown site and will return `404` for `/api/` and `/demo/`. Use `./scripts/verify-docs-local.sh --serve` for the full integrated preview. 
 
 ---
 

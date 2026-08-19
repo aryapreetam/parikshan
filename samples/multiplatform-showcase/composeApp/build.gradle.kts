@@ -10,6 +10,9 @@ plugins {
   alias(libs.plugins.android.library)
   id("io.github.aryapreetam.parikshan")
 }
+
+group = "sample.app"
+
 kotlin {
   jvmToolchain(17)
 

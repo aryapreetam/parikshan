@@ -30,7 +30,7 @@ This sample demonstrates how to use Parikshan to test different UI components an
 
 ### Video & Visual Demos
 
-<table>
+<table class="demo-table">
   <thead>
     <tr>
       <th width="38%">Desktop &amp; Web (WasmJs)</th>
@@ -41,19 +41,19 @@ This sample demonstrates how to use Parikshan to test different UI components an
   <tbody>
     <tr>
       <td>
-        <img src="../assets/mps-jvm.webp" width="280" alt="Desktop Demo" />
-        <br/><br/>
-        <video autoplay loop muted playsinline width="280">
+        <img src="../assets/mps-jvm.webp" alt="Desktop Demo" />
+        <br/>
+        <video autoplay loop muted playsinline>
           <source src="../assets/mps-wasm.mp4" type="video/mp4" />
         </video>
       </td>
       <td align="center" valign="middle">
-        <video autoplay loop muted playsinline width="200">
+        <video autoplay loop muted playsinline>
           <source src="../assets/mps-android.mp4" type="video/mp4" />
         </video>
       </td>
       <td align="center" valign="middle">
-        <video autoplay loop muted playsinline width="200">
+        <video autoplay loop muted playsinline>
           <source src="../assets/mps-ios.mp4" type="video/mp4" />
         </video>
       </td>
@@ -79,7 +79,7 @@ A real-world full-stack Compose Multiplatform application (**StorefrontApp**) co
 
 ### Visual Demos
 
-<table>
+<table class="demo-table">
   <thead>
     <tr>
       <th width="38%">Desktop &amp; Web (WasmJs)</th>
@@ -90,15 +90,15 @@ A real-world full-stack Compose Multiplatform application (**StorefrontApp**) co
   <tbody>
     <tr>
       <td>
-        <img src="../assets/storefront-jvm.webp" width="280" alt="Storefront Desktop" />
-        <br/><br/>
-        <img src="../assets/storefront-wasm.webp" width="280" alt="Storefront Wasm" />
+        <img src="../assets/storefront-jvm.webp" alt="Storefront Desktop" />
+        <br/>
+        <img src="../assets/storefront-wasm.webp" alt="Storefront Wasm" />
       </td>
       <td align="center" valign="middle">
-        <img src="../assets/storefront-android.webp" width="200" alt="Storefront Android" />
+        <img src="../assets/storefront-android.webp" alt="Storefront Android" />
       </td>
       <td align="center" valign="middle">
-        <img src="../assets/storefront-ios.webp" width="200" alt="Storefront iOS" />
+        <img src="../assets/storefront-ios.webp" alt="Storefront iOS" />
       </td>
     </tr>
   </tbody>
@@ -123,7 +123,7 @@ Generated using the [Composables CLI](https://github.com/composablehorizons/comp
 
 ### Visual Demos
 
-<table>
+<table class="demo-table">
   <thead>
     <tr>
       <th width="38%">Desktop &amp; Web (WasmJs)</th>
@@ -134,15 +134,15 @@ Generated using the [Composables CLI](https://github.com/composablehorizons/comp
   <tbody>
     <tr>
       <td>
-        <img src="../assets/composables-sample-jvm.gif" width="280" alt="Composables Desktop" />
-        <br/><br/>
-        <img src="../assets/composables-sample-wasm.gif" width="280" alt="Composables Wasm" />
+        <img src="../assets/composables-sample-jvm.gif" alt="Composables Desktop" />
+        <br/>
+        <img src="../assets/composables-sample-wasm.gif" alt="Composables Wasm" />
       </td>
       <td align="center" valign="middle">
-        <img src="../assets/composables-sample-android.gif" width="200" alt="Composables Android" />
+        <img src="../assets/composables-sample-android.gif" alt="Composables Android" />
       </td>
       <td align="center" valign="middle">
-        <img src="../assets/composables-sample-ios.gif" width="200" alt="Composables iOS" />
+        <img src="../assets/composables-sample-ios.gif" alt="Composables iOS" />
       </td>
     </tr>
   </tbody>
@@ -167,5 +167,5 @@ Demonstrates integrating Parikshan into a standalone, single-module Android proj
 ### Visual Demo
 
 <p align="center">
-  <img src="../assets/standalone-android.gif" width="200" alt="Standalone Android Demo" />
+  <img src="../assets/standalone-android.gif" style="max-width: 240px; width: 100%; border-radius: 8px;" alt="Standalone Android Demo" />
 </p>

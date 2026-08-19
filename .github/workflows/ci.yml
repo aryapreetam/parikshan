@@ -2,6 +2,12 @@ name: Reusable CI (lint, build+tests, e2e)
 
 on:
   workflow_call:
+    inputs:
+      target_job:
+        description: 'Target CI job to run'
+        required: false
+        type: string
+        default: 'all'
 
 permissions:
   contents: read
@@ -12,6 +18,7 @@ env:
 jobs:
   lint:
     name: Lint and code style
+    if: "inputs.target_job == 'all' || inputs.target_job == ''"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -39,6 +46,7 @@ jobs:
   unit-tests:
     name: Unit Tests (${{ matrix.target }})
     needs: [ lint ]
+    if: "inputs.target_job == 'all' || inputs.target_job == ''"
     strategy:
       fail-fast: true
       matrix:
@@ -74,7 +82,7 @@ jobs:
           set -e
           case "${{ matrix.target }}" in
             jvm)
-              ./gradlew :parikshan-server:test :parikshan-core:jvmTest :parikshan-client:jvmTest :samples:multiplatform-showcase:composeApp:jvmTest :parikshan-core:koverHtmlReport :parikshan-core:koverXmlReport
+              ./gradlew :gradle-plugins:test :parikshan-server:test :parikshan-core:jvmTest :parikshan-client:jvmTest :samples:multiplatform-showcase:composeApp:jvmTest :parikshan-core:koverHtmlReport :parikshan-core:koverXmlReport
               ;;
             ios)
               ./gradlew :parikshan-core:iosSimulatorArm64Test :parikshan-client:iosSimulatorArm64Test :samples:multiplatform-showcase:composeApp:iosSimulatorArm64Test
@@ -101,6 +109,7 @@ jobs:
     name: E2E Android (emulator)
     runs-on: ubuntu-latest
     needs: [ unit-tests ]
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'android')"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -136,6 +145,7 @@ jobs:
     name: E2E Desktop
     runs-on: ubuntu-latest
     needs: [ unit-tests ]
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'desktop')"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -162,6 +172,7 @@ jobs:
     name: E2E Wasm
     runs-on: ubuntu-latest
     needs: [ unit-tests ]
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'wasm')"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -184,10 +195,77 @@ jobs:
           path: samples/multiplatform-showcase/composeApp/build/parikshan/videos/wasm/
           if-no-files-found: ignore
 
+  e2e-sync:
+    name: E2E Sync (JVM + Wasm)
+    runs-on: ubuntu-latest
+    needs: [ unit-tests ]
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'sync')"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+      - name: Setup Desktop E2E Environment
+        uses: aryapreetam/parikshan-desktop-action@v1
+        with:
+          command: 'echo "Desktop environment setup complete."'
+      - name: Setup WASM E2E Environment
+        uses: aryapreetam/parikshan-wasm-action@v1
+        with:
+          command: 'echo "WASM environment setup complete."'
+      - name: Run Parikshan Synchronized E2E tests
+        run: |
+          xvfb-run ./gradlew :samples:multiplatform-showcase:composeApp:e2eTest --targets=jvm,wasm --tests="sample.app.FormIntegrationTest.testSliderDrag" --sync --window-size=360x720 --layout=side-by-side --no-configuration-cache
+
+  e2e-watch-script:
+    name: E2E Watch Verification Script
+    runs-on: ubuntu-latest
+    needs: [ unit-tests ]
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'watch-script')"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+      - name: Setup Desktop E2E Environment
+        uses: aryapreetam/parikshan-desktop-action@v1
+        with:
+          command: 'echo "Desktop setup complete."'
+      - name: Setup WASM E2E Environment
+        uses: aryapreetam/parikshan-wasm-action@v1
+        with:
+          command: 'echo "WASM setup complete."'
+      - name: Pre-warm Watch Dependencies
+        run: |
+          ./gradlew :samples:multiplatform-showcase:composeApp:packageUberJarForCurrentOS \
+                    :samples:multiplatform-showcase:composeApp:wasmJsBrowserDevelopmentWebpack \
+                    :samples:multiplatform-showcase:composeApp:installPlaywrightBrowsers
+      - name: Run Watch Mode Verification Script
+        run: |
+          xvfb-run ./scripts/verify-watch-mode.sh
+      - name: Upload Watch Script Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parikshan-watch-script-logs
+          path: build/parikshan/logs/
+          if-no-files-found: ignore
+
   e2e-ios-showcase:
     name: E2E iOS Showcase
     runs-on: macos-latest
     needs: [ unit-tests ]
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'ios-showcase')"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -204,10 +282,9 @@ jobs:
           restore-keys: konan-${{ runner.os }}-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-      - name: Pre-boot Simulator
+      - name: List Available Simulators
         run: |
-          xcrun simctl list devices
-          xcrun simctl boot "iPhone 15" || true
+          xcrun simctl list devices available
       - name: Pre-compile Kotlin Native Framework
         run: |
           ./gradlew :samples:multiplatform-showcase:composeApp:linkDebugFrameworkIosSimulatorArm64 -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
@@ -228,6 +305,7 @@ jobs:
     name: E2E iOS cmp-latest
     runs-on: macos-latest
     needs: [ unit-tests ]
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'ios-cmp-latest')"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -244,10 +322,9 @@ jobs:
           restore-keys: konan-${{ runner.os }}-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-      - name: Pre-boot Simulator
+      - name: List Available Simulators
         run: |
-          xcrun simctl list devices
-          xcrun simctl boot "iPhone 15" || true
+          xcrun simctl list devices available
       - name: Pre-compile Kotlin Native Framework
         working-directory: samples/cmp-latest
         run: |
@@ -266,10 +343,11 @@ jobs:
             samples/cmp-latest/app/shared/build/reports/
           if-no-files-found: ignore
 
-  e2e-ios-composables:
-    name: E2E iOS composables-sample
+  e2e-ios-issue-playground:
+    name: E2E iOS issue-playground
     runs-on: macos-latest
     needs: [ unit-tests ]
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'ios-issue-playground')"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -286,10 +364,51 @@ jobs:
           restore-keys: konan-${{ runner.os }}-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-      - name: Pre-boot Simulator
+      - name: List Available Simulators
         run: |
-          xcrun simctl list devices
-          xcrun simctl boot "iPhone 15" || true
+          xcrun simctl list devices available
+      - name: Pre-compile Kotlin Native Framework
+        working-directory: samples/issue-playground
+        run: |
+          ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
+      - name: Run issue-playground iOS E2E tests
+        working-directory: samples/issue-playground
+        run: |
+          ./gradlew :shared:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Dparikshan.xcodebuild.timeout=1800
+      - name: Upload iOS E2E Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parikshan-ios-issue-playground-results
+          path: |
+            samples/issue-playground/shared/build/parikshan/
+            samples/issue-playground/shared/build/reports/
+          if-no-files-found: ignore
+
+  e2e-ios-composables:
+    name: E2E iOS composables-sample
+    runs-on: macos-latest
+    needs: [ unit-tests ]
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'ios-composables')"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml', '**/gradle-wrapper.properties') }}
+          restore-keys: konan-${{ runner.os }}-
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+      - name: List Available Simulators
+        run: |
+          xcrun simctl list devices available
       - name: Pre-compile Kotlin Native Framework
         working-directory: samples/composables-sample
         run: |
@@ -312,6 +431,7 @@ jobs:
     name: DEX Footprint Audit
     runs-on: ubuntu-latest
     needs: [ lint ]
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'dex-pollution-audit')"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -346,6 +466,33 @@ jobs:
           else
             echo "Success: Zero-pollution audit passed. No Parikshan classes found in release APK."
           fi
+
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - lint
+      - unit-tests
+      - e2e-android
+      - e2e-desktop
+      - e2e-wasm
+      - e2e-ios-showcase
+      - e2e-ios-cmp-latest
+      - e2e-ios-issue-playground
+      - e2e-ios-composables
+      - dex-pollution-audit
+    steps:
+      - name: Verify all required jobs passed
+        run: |
+          needs_json='${{ toJson(needs) }}'
+          echo "Job statuses: $needs_json"
+          if echo "$needs_json" | grep -q '"result": "failure"\|"result": "cancelled"'; then
+            echo "❌ One or more required CI jobs failed or were cancelled!"
+            exit 1
+          fi
+          echo "✅ All required CI jobs completed successfully!"
+
 
 #  compatibility-matrix-non-ios:
 #    name: Compatibility Matrix Non-iOS (Kotlin ${{ matrix.kotlin }}, Compose ${{ matrix.compose }})

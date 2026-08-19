@@ -32,7 +32,7 @@ fun OverlayPlayground() {
       .verticalScroll(scrollState)
       .padding(16.dp)
       .testTag("overlay_playground_screen"),
-    verticalArrangement = Arrangement.spacedBy(16.dp),
+    verticalArrangement = Arrangement.spacedBy(8.dp),
     horizontalAlignment = Alignment.Start
   ) {
     Text("Overlays Playground", style = MaterialTheme.typography.titleSmall)
@@ -215,35 +215,28 @@ fun OverlayPlayground() {
     if (showTimePicker) {
       val timePickerState = rememberTimePickerState(is24Hour = use24HourTime)
       var isInputMode by remember { mutableStateOf(false) }
-      AlertDialog(
+      androidx.compose.ui.window.Dialog(
         onDismissRequest = { showTimePicker = false },
-        modifier = Modifier.testTag("time_picker_dialog"),
-        confirmButton = {
-          TextButton(
-            onClick = {
-              val formattedHour = timePickerState.hour.toString().padStart(2, '0')
-              val formattedMinute = timePickerState.minute.toString().padStart(2, '0')
-              overlayMessage = "Time Selected: $formattedHour:$formattedMinute"
-              showTimePicker = false
-            },
-            modifier = Modifier.testTag("time_picker_ok_button")
-          ) {
-            Text("OK")
-          }
-        },
-        dismissButton = {
-          TextButton(
-            onClick = { showTimePicker = false },
-            modifier = Modifier.testTag("time_picker_dismiss_button")
-          ) {
-            Text("Cancel")
-          }
-        },
-        text = {
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+      ) {
+        Surface(
+          shape = MaterialTheme.shapes.extraLarge,
+          tonalElevation = 6.dp,
+          modifier = Modifier
+            .width(IntrinsicSize.Min)
+            .height(IntrinsicSize.Min)
+            .testTag("time_picker_dialog")
+        ) {
           Column(
+            modifier = Modifier.padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp)
           ) {
+            Text(
+              text = "Select Time",
+              style = MaterialTheme.typography.labelMedium,
+              modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+            )
             if (isInputMode) {
               TimeInput(state = timePickerState)
               TextButton(
@@ -261,12 +254,35 @@ fun OverlayPlayground() {
                 Text("Switch to text input mode")
               }
             }
+            Row(
+              modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+              horizontalArrangement = Arrangement.End,
+              verticalAlignment = Alignment.CenterVertically
+            ) {
+              TextButton(
+                onClick = { showTimePicker = false },
+                modifier = Modifier.testTag("time_picker_dismiss_button")
+              ) {
+                Text("Cancel")
+              }
+              TextButton(
+                onClick = {
+                  val formattedHour = timePickerState.hour.toString().padStart(2, '0')
+                  val formattedMinute = timePickerState.minute.toString().padStart(2, '0')
+                  overlayMessage = "Time Selected: $formattedHour:$formattedMinute"
+                  showTimePicker = false
+                },
+                modifier = Modifier.testTag("time_picker_ok_button")
+              ) {
+                Text("OK")
+              }
+            }
           }
         }
-      )
+      }
     }
 
-    Spacer(modifier = Modifier.height(24.dp))
+    Spacer(modifier = Modifier.height(16.dp))
 
     // Results Label
     Card(

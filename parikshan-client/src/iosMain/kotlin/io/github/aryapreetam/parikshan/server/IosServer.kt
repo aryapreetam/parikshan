@@ -105,50 +105,59 @@ object IosServer {
     }
   }
 
-  private fun runServer(port: Int) {
+  private fun runServer(initialPort: Int) {
     memScoped {
-      val fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
-      if (fd < 0) {
-        logIosServer("[IosServer] Failed to create socket")
+      var activeFd = -1
+      var activePort = initialPort
+
+      for (candidatePort in initialPort..(initialPort + 20)) {
+        val fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
+        if (fd < 0) continue
+
+        val reuseVal = alloc<platform.posix.int32_tVar>()
+        reuseVal.value = 1
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, reuseVal.ptr, sizeOf<platform.posix.int32_tVar>().convert())
+
+        val addr = alloc<sockaddr_in>()
+        addr.sin_family = AF_INET.convert()
+        val p = candidatePort.toUShort()
+        addr.sin_port = ((p.toInt() shr 8) or ((p.toInt() and 0xFF) shl 8)).toUShort()
+        addr.sin_addr.s_addr = 0u // INADDR_ANY
+
+        if (bind(fd, addr.ptr.reinterpret(), sizeOf<sockaddr_in>().convert()) == 0) {
+          activeFd = fd
+          activePort = candidatePort
+          break
+        } else {
+          close(fd)
+        }
+      }
+
+      if (activeFd < 0) {
+        logIosServer("[IosServer] Failed to bind to any port in range $initialPort..${initialPort + 20}")
         running.value = 0
         return
       }
-      serverFd.value = fd
 
-      val reuseVal = alloc<platform.posix.int32_tVar>()
-      reuseVal.value = 1
-      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, reuseVal.ptr, sizeOf<platform.posix.int32_tVar>().convert())
+      serverFd.value = activeFd
 
-      val addr = alloc<sockaddr_in>()
-      addr.sin_family = AF_INET.convert()
-      val p = port.toUShort()
-      addr.sin_port = ((p.toInt() shr 8) or ((p.toInt() and 0xFF) shl 8)).toUShort()
-      addr.sin_addr.s_addr = 0u // INADDR_ANY
-
-      if (bind(fd, addr.ptr.reinterpret(), sizeOf<sockaddr_in>().convert()) < 0) {
-        logIosServer("[IosServer] Failed to bind to port $port")
-        close(fd)
+      if (listen(activeFd, 5) < 0) {
+        close(activeFd)
         running.value = 0
         return
       }
 
-      if (listen(fd, 5) < 0) {
-        close(fd)
-        running.value = 0
-        return
-      }
-
-      logIosServer("[IosServer] Securely listening on port $port")
+      logIosServer("[IosServer] Securely listening on port $activePort")
 
       while (running.value == 1) {
-        val clientFd = accept(fd, null, null)
+        val clientFd = accept(activeFd, null, null)
         if (clientFd < 0) {
           if (running.value == 0) break
           continue
         }
         handleConnection(clientFd)
       }
-      close(fd)
+      close(activeFd)
     }
   }
 
@@ -304,7 +313,8 @@ object IosServer {
       is Command.Shutdown -> Response.Ok(command.id)
       is Command.Ping -> Response.Ok(command.id)
       is Command.Reset -> {
-          Response.Ok(command.id)
+        pumpRunLoop(iterations = 10, intervalSeconds = 0.05)
+        Response.Ok(command.id)
       }
       else -> Response.Ok(command.id)
     }

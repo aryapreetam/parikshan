@@ -8,7 +8,7 @@ plugins {
   alias(libs.plugins.jetbrains.compose)
   alias(libs.plugins.jetbrains.compose.compiler)
   alias(libs.plugins.android.kotlin.multiplatform.library)
-  id("io.github.aryapreetam.parikshan") version "0.0.6"
+  id("io.github.aryapreetam.parikshan") version "0.0.7"
 }
 
 kotlin {

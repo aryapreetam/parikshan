@@ -1,0 +1,48 @@
+name: Feature Request
+description: Propose a new feature, API addition, or platform capability
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe the proposed feature and why it is useful for Compose Multiplatform testing.
+  - type: dropdown
+    id: target
+    attributes:
+      label: Applicable Platform Targets
+      multiple: true
+      options:
+        - Common / DSL
+        - Desktop (JVM)
+        - Web (WasmJs)
+        - Android
+        - iOS
+        - Gradle Plugin / Tooling
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What limitation or problem does this feature solve?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution / API
+      description: Describe the proposed API or behavior, including code examples if applicable.
+      placeholder: |
+        ```kotlin
+        @Test
+        fun testFeature() = e2eTest {
+          // Proposed DSL
+        }
+        ```
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative solutions or workarounds you have considered.

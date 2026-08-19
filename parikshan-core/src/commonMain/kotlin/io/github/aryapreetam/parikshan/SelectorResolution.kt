@@ -4,9 +4,14 @@ import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.protocol.Bounds
 
+private const val MIN_VISIBLE_SIZE_PX = 0.1
+private const val BOUNDS_OVERLAP_TOLERANCE_PX = 0.5
+private const val SPATIAL_GRID_SNAP_PX = 10.0
+
 /**
  * @suppress
  */
+@InternalParikshanApi
 data class ResolvedSelector(
   val selector: Selector,
   val matchType: MatchType,
@@ -34,6 +39,7 @@ internal fun String.asAutoSelector(): Selector = Selector.Auto(this)
 /**
  * @suppress
  */
+@InternalParikshanApi
 fun Selector.ambiguousTextMessage(matches: List<NodeSnapshot>): String {
   val matchSummary = matches.joinToString(separator = "\n") { node ->
       "  - node[tag='${node.tag}', text='${node.text}', visible=${node.visible}, bounds=${node.bounds}]"
@@ -56,14 +62,14 @@ internal fun Selector.Text.resolveText(nodes: List<NodeSnapshot>, requireVisible
 private fun Selector.matchingTagNodes(nodes: List<NodeSnapshot>, requireVisible: Boolean): List<NodeSnapshot> {
   val normalized = raw.trim()
   return nodes.filter { node ->
-    node.tag == normalized && (!requireVisible || (node.visible && node.width > 0.1 && node.height > 0.1))
+    node.tag == normalized && (!requireVisible || (node.visible && node.width > MIN_VISIBLE_SIZE_PX && node.height > MIN_VISIBLE_SIZE_PX))
   }
 }
 
 private fun matchingTextNodes(raw: String, nodes: List<NodeSnapshot>, requireVisible: Boolean): List<NodeSnapshot> {
   val normalized = raw.trim()
   val allMatches = nodes.filter { node ->
-    val isSane = !requireVisible || (node.visible && node.width > 0.1 && node.height > 0.1)
+    val isSane = !requireVisible || (node.visible && node.width > MIN_VISIBLE_SIZE_PX && node.height > MIN_VISIBLE_SIZE_PX)
     isSane && node.normalizedText()?.contains(normalized, ignoreCase = true) == true
   }
   if (allMatches.isEmpty()) return emptyList()
@@ -84,18 +90,18 @@ private fun matchingTextNodes(raw: String, nodes: List<NodeSnapshot>, requireVis
     while (iterator.hasNext()) {
       val existing = iterator.next()
       if (node.text == existing.text) {
-        if (node.bounds.left <= existing.bounds.left + 0.5 && node.bounds.top <= existing.bounds.top + 0.5 &&
-            node.bounds.right >= existing.bounds.right - 0.5 && node.bounds.bottom >= existing.bounds.bottom - 0.5) {
+        if (node.bounds.left <= existing.bounds.left + BOUNDS_OVERLAP_TOLERANCE_PX && node.bounds.top <= existing.bounds.top + BOUNDS_OVERLAP_TOLERANCE_PX &&
+            node.bounds.right >= existing.bounds.right - BOUNDS_OVERLAP_TOLERANCE_PX && node.bounds.bottom >= existing.bounds.bottom - BOUNDS_OVERLAP_TOLERANCE_PX) {
           isDuplicate = true; break
-        } else if (existing.bounds.left <= node.bounds.left + 0.5 && existing.bounds.top <= node.bounds.top + 0.5 &&
-                   existing.bounds.right >= node.bounds.right - 0.5 && existing.bounds.bottom >= node.bounds.bottom - 0.5) {
+        } else if (existing.bounds.left <= node.bounds.left + BOUNDS_OVERLAP_TOLERANCE_PX && existing.bounds.top <= node.bounds.top + BOUNDS_OVERLAP_TOLERANCE_PX &&
+                   existing.bounds.right >= node.bounds.right - BOUNDS_OVERLAP_TOLERANCE_PX && existing.bounds.bottom >= node.bounds.bottom - BOUNDS_OVERLAP_TOLERANCE_PX) {
           iterator.remove()
         }
       }
     }
     if (!isDuplicate) deduplicated.add(node)
   }
-  return deduplicated.sortedWith(compareBy<NodeSnapshot>{ (it.bounds.top / 10.0).toInt() }.thenBy{ (it.bounds.left / 10.0).toInt() })
+  return deduplicated.sortedWith(compareBy<NodeSnapshot>{ (it.bounds.top / SPATIAL_GRID_SNAP_PX).toInt() }.thenBy{ (it.bounds.left / SPATIAL_GRID_SNAP_PX).toInt() })
 }
 
 private fun resolveByText(selector: Selector, nodes: List<NodeSnapshot>, requireVisible: Boolean): ResolvedSelector {
@@ -113,7 +119,7 @@ private fun resolveByText(selector: Selector, nodes: List<NodeSnapshot>, require
 
 private fun Selector.resolveSingleTagMatch(tagMatches: List<NodeSnapshot>, requireVisible: Boolean, selector: Selector): ResolvedSelector {
   if (tagMatches.isEmpty()) throw SelectorResolutionException(tagNotFoundMessage(selector))
-  val sortedMatches = tagMatches.sortedWith(compareByDescending<NodeSnapshot>{ it.zOrder }.thenBy{ (it.bounds.top / 10.0).toInt() }.thenBy{ (it.bounds.left / 10.0).toInt() })
+  val sortedMatches = tagMatches.sortedWith(compareByDescending<NodeSnapshot>{ it.zOrder }.thenBy{ (it.bounds.top / SPATIAL_GRID_SNAP_PX).toInt() }.thenBy{ (it.bounds.left / SPATIAL_GRID_SNAP_PX).toInt() })
   val targetIndex = when {
     selector.index != null && selector.index!! >= 0 -> selector.index!!
     selector.index != null && selector.index!! < 0 -> sortedMatches.size + selector.index!!
@@ -144,4 +150,5 @@ private fun NodeSnapshot.normalizedText(): String? = text?.trim()
 /**
  * @suppress
  */
+@InternalParikshanApi
 class SelectorResolutionException(message: String) : IllegalArgumentException(message)

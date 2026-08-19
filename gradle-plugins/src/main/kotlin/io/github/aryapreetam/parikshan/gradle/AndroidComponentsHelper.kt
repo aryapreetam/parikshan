@@ -54,7 +54,7 @@ internal object AndroidComponentsHelper {
                     }
                   }
                 }
-              } catch (e: Exception) {
+              } catch (e: Throwable) {
                 project.logger.debug("Parikshan AndroidComponentsHelper: Error resolving merged manifest inside onVariants", e)
               }
             }
@@ -72,7 +72,7 @@ internal object AndroidComponentsHelper {
             return mergedManifestDirectory
           }
         }
-      } catch (e: Exception) {
+      } catch (e: Throwable) {
         project.logger.debug("Parikshan AndroidComponentsHelper: Error registering onVariants listener", e)
       }
     }

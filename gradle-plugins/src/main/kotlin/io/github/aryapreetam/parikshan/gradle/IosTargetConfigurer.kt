@@ -46,7 +46,7 @@ internal object IosTargetConfigurer {
         parameters.scheme.set(iosXcodeSchemeVal)
       }
       val extracted = provider.orNull
-      project.logger.lifecycle("Parikshan iOS: Extracted bundle ID: $extracted")
+      project.logger.info("Parikshan iOS: Extracted bundle ID: $extracted")
       return extracted ?: "sample.app.ios"
     }
     val iosBundleIdProvider = project.provider { getIosBundleId() }
@@ -74,6 +74,9 @@ internal object IosTargetConfigurer {
     stopIosAppTask.configure {
       group = "verification"
       bundleId.set(iosBundleIdProvider)
+      simulatorUdid.set(project.provider {
+        resolveIosRuntimeProperty("device") ?: resolveIosRuntimeProperty("serial") ?: resolveIosRuntimeProperty("parikshan.ios.device") ?: "booted"
+      })
     }
 
     val startIosAppTask = project.tasks.register("startIosApp", ParikshanStartIosTask::class.java)
@@ -101,20 +104,35 @@ internal object IosTargetConfigurer {
       dependsOn(startIosAppTask)
       finalizedBy(stopIosAppTask)
       configureE2eHostTestExecution(
-        hostTestClassesDirs = hostTestTask.get().testClassesDirs,
-        hostTestClasspath = hostTestTask.get().classpath,
+        hostTestTaskProvider = hostTestTask,
         e2eTestClasses = e2eTestClasses,
         target = "iOS",
-        logger = project.logger
+        logger = logger
       )
       systemProperty("parikshan.target", "ios")
       systemProperty("parikshan.host", "127.0.0.1")
       systemProperty("parikshan.port", iosPortVal.toString())
       systemProperty("parikshan.token", sessionTokenVal)
+      val iosPortFileVal = project.layout.buildDirectory.file("parikshan/ios-port.txt").get().asFile
       doFirst {
+        val osName = System.getProperty("os.name").orEmpty().lowercase()
+        if (!osName.contains("mac")) {
+          throw GradleException(
+            "Parikshan iOS: Running iOS E2E tests requires macOS host OS with Xcode tools installed. " +
+            "Current OS: ${System.getProperty("os.name")}"
+          )
+        }
         val simulator = resolveIosSimulatorDevice(iosDeviceVal, iosProjectDirVal)
         systemProperty("parikshan.ios.udid", simulator.udid)
         systemProperty("parikshan.ios.bundleId", iosBundleIdProvider.get())
+
+        val portFile = iosPortFileVal
+        if (portFile.exists()) {
+          val actualPort = portFile.readText().trim()
+          if (actualPort.isNotEmpty()) {
+            systemProperty("parikshan.port", actualPort)
+          }
+        }
       }
     }
   }
@@ -122,56 +140,10 @@ internal object IosTargetConfigurer {
   private data class IosSimulatorDevice(val name: String, val udid: String, val runtime: String, val isBooted: Boolean)
 
   private fun resolveIosSimulatorDevice(requested: String, workingDir: File): IosSimulatorDevice {
-    val process = ProcessBuilder("xcrun", "simctl", "list", "devices", "available").directory(workingDir).start()
-    val output = process.inputStream.bufferedReader().readText()
-    val error = process.errorStream.bufferedReader().readText()
-    val exitCode = process.waitFor()
-    if (exitCode != 0) {
-      throw GradleException(
-        "Parikshan iOS: Could not list iOS Simulators using `xcrun simctl list devices available` " +
-          "(exit code $exitCode). ${error.ifBlank { output }.trim()}"
-      )
-    }
-
-    var runtime = ""
-    val allDevices = mutableListOf<IosSimulatorDevice>()
-    output.lineSequence().forEach { line ->
-      if (line.startsWith("--")) {
-        runtime = line.trim('-', ' ')
-      } else if (line.contains("(")) {
-        val name = line.substringBefore("(").trim()
-        val udid = line.substringAfter("(").substringBefore(")")
-        val state = line.substringAfterLast("(").substringBefore(")")
-        if (name.isNotEmpty() && udid.isNotEmpty()) {
-          allDevices += IosSimulatorDevice(name, udid, runtime, state.contains("Booted", ignoreCase = true))
-        }
-      }
-    }
-
-    val exactMatch = allDevices.filter {
-      requested == "booted" && it.isBooted || requested == it.name || requested == it.udid
-    }
-    exactMatch.firstOrNull { it.isBooted }?.let { return it }
-    exactMatch.firstOrNull()?.let { return it }
-
-    allDevices.firstOrNull { it.isBooted }?.let {
-      System.err.println("Parikshan iOS: Device '$requested' not found. Falling back to active booted device: ${it.name}")
-      return it
-    }
-
-    allDevices.firstOrNull { it.name.startsWith("iPhone", ignoreCase = true) }?.let {
-      System.err.println("Parikshan iOS: Device '$requested' not found. Falling back to available device: ${it.name}")
-      return it
-    }
-
-    allDevices.firstOrNull()?.let {
-      System.err.println("Parikshan iOS: Device '$requested' not found. Falling back to available device: ${it.name}")
-      return it
-    }
-
-    throw GradleException(
-      "Parikshan iOS: No available iOS Simulators detected. Run `xcrun simctl list devices available` to check your environment."
-    )
+    val activeSdkVersion = ParikshanStartIosTask.IosSimulatorResolver.getActiveIosSdkVersion()
+    val available = ParikshanStartIosTask.IosSimulatorResolver.listAvailableIosDevices(workingDir)
+    val best = ParikshanStartIosTask.IosSimulatorResolver.selectBestDevice(requested, available, activeSdkVersion)
+    return IosSimulatorDevice(best.name, best.udid, best.runtimeName, best.isBooted)
   }
 
   private fun postIosPing(port: Int, token: String): Boolean {

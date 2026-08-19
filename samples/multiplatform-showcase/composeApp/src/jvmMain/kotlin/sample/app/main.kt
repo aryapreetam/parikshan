@@ -8,10 +8,8 @@ import java.awt.Dimension
 fun main(args: Array<String>) = application {
   Window(
     title = "sample",
-    state = rememberWindowState(width = 950.dp, height = 850.dp),
     onCloseRequest = ::exitApplication,
   ) {
-    window.minimumSize = Dimension(350, 600)
     App()
   }
 }

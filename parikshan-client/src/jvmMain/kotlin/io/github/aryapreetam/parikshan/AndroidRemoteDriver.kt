@@ -75,11 +75,13 @@ internal class AndroidRemoteDriver private constructor(
         try {
             // Try to find the PID of screenrecord on device
             val pidProcess = ProcessBuilder(adbPrefix + listOf("shell", "pidof", "screenrecord")).start()
-            val pid = pidProcess.inputStream.bufferedReader().readText().trim()
+            val pidOutput = pidProcess.inputStream.bufferedReader().readText().trim()
             
-            if (pid.isNotEmpty()) {
-                // Gracefully stop specifically that screenrecord process
-                ProcessBuilder(adbPrefix + listOf("shell", "kill", "-2", pid)).start().waitFor()
+            if (pidOutput.isNotEmpty()) {
+                // pidof may return multiple space-separated PIDs
+                pidOutput.split("\\s+".toRegex()).filter { it.isNotEmpty() }.forEach { pid ->
+                    ProcessBuilder(adbPrefix + listOf("shell", "kill", "-2", pid)).start().waitFor()
+                }
             } else {
                 // Fallback to pkill if pidof fails or returns nothing
                 ProcessBuilder(adbPrefix + listOf("shell", "pkill", "-2", "screenrecord")).start().waitFor()
@@ -176,14 +178,20 @@ internal class AndroidRemoteDriver private constructor(
       val baseUrl = "http://${config.host}:${config.port}/"
       val driver = AndroidRemoteDriver(baseUrl)
 
-      val retries = 90 // Android instrumentation can take a long time to boot
+      val retries = 300 // Android instrumentation can take a long time to boot
 
       // Wait for the Android server to become available
       repeat(retries) { attempt ->
         try {
           val resp = driver.send(Command.Ping(id = "ping-connect"))
-          if (resp is Response.Ok) return driver
+          if (resp is Response.Ok) {
+            println("Parikshan: Connected to Android server at $baseUrl successfully after ${attempt + 1} attempts.")
+            return driver
+          }
         } catch (_: Throwable) {
+          if ((attempt + 1) % 15 == 0) {
+            println("Parikshan: Still waiting for Android server to start at $baseUrl (attempt ${attempt + 1}/$retries)...")
+          }
           if (attempt < retries - 1) {
             delay(config.connectRetryDelayMs)
           }

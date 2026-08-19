@@ -215,27 +215,41 @@ internal object WasmSemanticsAccessor {
     val centerX = bounds.left + (bounds.width / 2f)
     val centerY = bounds.top + (bounds.height / 2f)
     
-    // Improved visibility: check viewport AND parent clipping (for scrollable lists)
     var isPhysicallyVisible = hasArea &&
       centerX >= 0 && centerX <= viewportWidth &&
       centerY >= 0 && centerY <= viewportHeight
     
     if (isPhysicallyVisible) {
       var current = node.parent
-      while (current != null) {
+      var isInsidePopupOrDialog = node.config.getOrNull(SemanticsProperties.IsPopup) != null ||
+        node.config.getOrNull(SemanticsProperties.IsDialog) != null ||
+        node.config.getOrNull(SemanticsProperties.TestTag)?.contains("dialog") == true
+
+      while (current != null && !isInsidePopupOrDialog) {
+        if (current.config.getOrNull(SemanticsProperties.IsPopup) != null ||
+            current.config.getOrNull(SemanticsProperties.IsDialog) != null ||
+            current.config.getOrNull(SemanticsProperties.TestTag)?.contains("dialog") == true) {
+          isInsidePopupOrDialog = true
+          break
+        }
         val pb = current.boundsInWindow
         if (pb.width > 0 && pb.height > 0) {
-           // Small padding (1px) to avoid floating point edge issues
-           val isClipped = centerX < pb.left - 1 || centerX > pb.right + 1 || centerY < pb.top - 1 || centerY > pb.bottom + 1
-           if (isClipped) {
-             val isScrollable = current.config.getOrNull(SemanticsActions.ScrollBy) != null
-             if (isScrollable) {
+           val isScrollable = current.config.getOrNull(SemanticsActions.ScrollBy) != null
+           if (isScrollable) {
+             val isClippedY = centerY < pb.top - 1 || centerY > pb.bottom + 1
+             if (isClippedY) {
                isPhysicallyVisible = false
                break
              }
            }
         }
         current = current.parent
+      }
+
+      if (isInsidePopupOrDialog) {
+        isPhysicallyVisible = hasArea &&
+          centerX >= 0 && centerX <= viewportWidth &&
+          centerY >= 0 && centerY <= viewportHeight
       }
     }
 
@@ -302,6 +316,15 @@ internal object WasmSemanticsAccessor {
       if (current.config.getOrNull(SemanticsActions.ScrollBy) != null) return current
       current = current.parent
     }
+
+    val queue = ArrayDeque<SemanticsNode>()
+    queue.addAll(node.children)
+    while (queue.isNotEmpty()) {
+      val child = queue.removeFirst()
+      if (child.config.getOrNull(SemanticsActions.ScrollBy) != null) return child
+      queue.addAll(child.children)
+    }
+
     return null
   }
 
@@ -328,9 +351,10 @@ internal object WasmSemanticsAccessor {
       }
 
       val actionToInvoke = bestAction ?: textFieldAction
-      val semanticResult = actionToInvoke?.invoke() == true
-      val physicalResult = performPhysicalClick(node)
-      if (semanticResult || physicalResult) return true
+      if (actionToInvoke != null && actionToInvoke.invoke()) {
+        return true
+      }
+      if (performPhysicalClick(node)) return true
     }
 
     return clickA11yNode(selector.raw, selector.index ?: 0)

@@ -13,6 +13,7 @@ import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
 import io.github.aryapreetam.parikshan.protocol.ProtocolJson
 import io.github.aryapreetam.parikshan.protocol.Response
 import io.github.aryapreetam.parikshan.protocol.resolvedSelector
+import com.google.gson.JsonObject
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
@@ -70,74 +71,14 @@ internal class WasmDriver private constructor(
             Page.WaitForFunctionOptions().setTimeout(config.bridgeReadyTimeoutMs.toDouble())
           )
         }
+        relaunchSharedPage(config)
       }
     }
   }
 
   private suspend fun ensureActivePage(config: ParikshanWasmConfig) {
     connectMutex.withLock {
-      val isBrowserAlive = sharedBrowser?.isConnected == true
-      if (!isBrowserAlive || sharedPlaywright == null) {
-        runCatching { sharedPage?.close() }
-        runCatching { sharedContext?.close() }
-        runCatching { sharedBrowser?.close() }
-        runCatching { sharedPlaywright?.close() }
-        
-        sharedPage = null
-        sharedContext = null
-        sharedBrowser = null
-        sharedPlaywright = null
-
-        val playwright = Playwright.create()
-        sharedPlaywright = playwright
-        val launchOptions = BrowserType.LaunchOptions().setHeadless(config.headless)
-        launchOptions.setArgs(listOf(
-          "--window-size=${config.viewportWidth + 50},${config.viewportHeight + 100}",
-          "--disable-gpu",
-          "--use-gl=angle",
-          "--use-angle=swiftshader",
-          "--no-sandbox"
-        ))
-        
-        sharedBrowser = playwright.chromium().launch(launchOptions)
-      }
-
-      val isPageClosed = sharedPage?.isClosed ?: true
-      if (sharedPage == null || isPageClosed) {
-        val videoConfig = ParikshanVideoConfig.fromSystemProperties()
-        val contextOptions = Browser.NewContextOptions().setViewportSize(config.viewportWidth, config.viewportHeight)
-
-        if (videoConfig.enabled) {
-          val tempDir = playwrightTempDir ?: Files.createTempDirectory("parikshan-wasm-video").also { playwrightTempDir = it }
-          contextOptions.setRecordVideoDir(tempDir)
-          
-          if (videoConfig.videoWidth != null && videoConfig.videoHeight != null) {
-            contextOptions.setRecordVideoSize(videoConfig.videoWidth, videoConfig.videoHeight)
-          } else {
-            contextOptions.setRecordVideoSize(config.viewportWidth, config.viewportHeight)
-          }
-          videoConfig.deviceScaleFactor?.let { contextOptions.setDeviceScaleFactor(it) }
-        }
-
-        val context = sharedBrowser!!.newContext(contextOptions)
-        
-        context.addInitScript(PARIKSHAN_UTILS_INIT_SCRIPT)
-        
-        sharedContext = context
-        val page = context.newPage()
-        page.onConsoleMessage { msg ->
-          val target = if (msg.type() == "error") System.err else System.out
-          target.println("Wasm Console [${msg.type()}]: ${msg.text()}")
-        }
-        sharedPage = page
-
-        page.navigate(config.appUrl)
-        page.waitForFunction(
-          "() => typeof window.__parikshan_getTreeJson === 'function'",
-          null,
-          Page.WaitForFunctionOptions().setTimeout(config.bridgeReadyTimeoutMs.toDouble())
-        )
-      }
+      ensureActivePageInternal(config)
     }
   }
 
@@ -261,7 +202,17 @@ internal class WasmDriver private constructor(
       is Command.Drag -> {
         page.mouse().move(command.fromX, command.fromY)
         page.mouse().down()
-        page.mouse().move(command.toX, command.toY, com.microsoft.playwright.Mouse.MoveOptions().setSteps(20))
+        delay(30)
+        val steps = 20
+        val stepDelay = (command.durationMs / steps).coerceAtLeast(10L)
+        for (i in 1..steps) {
+          val progress = i.toDouble() / steps
+          val curX = command.fromX + (command.toX - command.fromX) * progress
+          val curY = command.fromY + (command.toY - command.fromY) * progress
+          page.mouse().move(curX, curY)
+          delay(stepDelay)
+        }
+        delay(30)
         page.mouse().up()
         Response.Ok(command.id)
       }
@@ -296,25 +247,25 @@ internal class WasmDriver private constructor(
               val videoObj = runCatching { sharedPage?.video() }.getOrNull()
               runCatching { sharedPage?.close() }
 
-              // Staff+ Deterministic Finalization: Poll for the file to exist and have size > 0
+              // Poll for the file to exist and have size > 0
               var rawVideoPath: Path? = null
               repeat(50) { attempt ->
                   rawVideoPath = runCatching { videoObj?.path() }.getOrNull()
-                  if (rawVideoPath != null && Files.exists(rawVideoPath!!) && Files.size(rawVideoPath!!) > 0) {
+                  if (rawVideoPath != null && Files.exists(rawVideoPath) && Files.size(rawVideoPath) > 0) {
                       return@repeat
                   }
                   delay(100)
               }
 
-              if (rawVideoPath != null && Files.exists(rawVideoPath!!) && Files.size(rawVideoPath!!) > 0) {
+              if (rawVideoPath != null && Files.exists(rawVideoPath) && Files.size(rawVideoPath) > 0) {
                 val finalVideoPath = Paths.get(targetPath)
                 finalVideoPath.parent?.let { Files.createDirectories(it) }
                 try {
-                  Files.copy(rawVideoPath!!, finalVideoPath, StandardCopyOption.REPLACE_EXISTING)
+                  Files.copy(rawVideoPath, finalVideoPath, StandardCopyOption.REPLACE_EXISTING)
                   val size = Files.size(finalVideoPath)
                   System.err.println("WasmVideo: Successfully saved recording to $targetPath (bytes=$size)")
                   registerWasmVideoPath(targetPath)
-                  runCatching { Files.deleteIfExists(rawVideoPath!!) }
+                  runCatching { Files.deleteIfExists(rawVideoPath) }
                 } catch (e: Throwable) {
                   System.err.println("WasmVideo: Error copying video to $targetPath: ${e.message}")
                   e.printStackTrace()
@@ -327,7 +278,7 @@ internal class WasmDriver private constructor(
           }
           Response.Ok(command.id)
         } catch (throwable: Throwable) {
-          System.err.println("WasmVideo: Error while stopping recording: ${'$'}{throwable.message}")
+          System.err.println("WasmVideo: Error while stopping recording: ${throwable.message}")
           throwable.printStackTrace()
           Response.Error(command.id, throwable.message ?: "StopRecording failed")
         }
@@ -357,14 +308,15 @@ internal class WasmDriver private constructor(
   }
 
   private fun readBridgeTree(): List<NodeSnapshot> {
-    val payload =
-      page.evaluate(
-        "() => (window.__parikshan_getTreeJson ? window.__parikshan_getTreeJson() : '[]')"
-      ) as? String ?: "[]"
-    return ProtocolJson.instance.decodeFromString(
-      ListSerializer(NodeSnapshot.serializer()),
-      payload
-    )
+    val bridgeTree = runCatching {
+      val payload = page.evaluate("() => (window.__parikshan_getTreeJson ? window.__parikshan_getTreeJson() : '[]')") as? String ?: "[]"
+      ProtocolJson.instance.decodeFromString(ListSerializer(NodeSnapshot.serializer()), payload)
+    }.getOrDefault(emptyList())
+
+    if (bridgeTree.any { it.tag.isNotEmpty() || !it.text.isNullOrBlank() }) {
+      return bridgeTree
+    }
+    return readDomTree()
   }
 
   private fun readDomNode(tag: String): NodeSnapshot? {
@@ -481,7 +433,7 @@ internal class WasmDriver private constructor(
             if (!current || visited.has(current)) continue;
             visited.add(current);
             if (current.id === tag) { element = current; break; }
-            const descendants = current.querySelectorAll?.(`[id="${'$'}{tag}"]`) ?? [];
+            const descendants = current.querySelectorAll?.(`[id="${'$'}tag"]`) ?? [];
             if (descendants.length > 0) { element = descendants[0]; break; }
             if (current.shadowRoot) queue.push(current.shadowRoot);
             const children = current.children ?? current.childNodes ?? [];
@@ -579,8 +531,10 @@ internal class WasmDriver private constructor(
         }
 
         // Close in order to finalize video
-        runCatching { sharedPage?.close() }
-        runCatching { sharedContext?.close() }
+        if (!isKeepAliveEnabled()) {
+          runCatching { sharedPage?.close() }
+          runCatching { sharedContext?.close() }
+        }
         
         val rawVideoPath = runCatching { videoObj?.path() }.getOrNull()
         System.err.println("WasmVideo: Playwright reports video path: $rawVideoPath")
@@ -629,13 +583,44 @@ internal class WasmDriver private constructor(
       }, "parikshan-wasm-shutdown"))
     }
 
-    suspend fun connect(config: ParikshanWasmConfig = ParikshanWasmConfig.fromSystemProperties()): WasmDriver = connectMutex.withLock {
-      val isBrowserAlive = sharedBrowser?.isConnected == true
-      val isPageClosed = sharedPage?.isClosed ?: true
-      val isKeepAlive = isKeepAliveEnabled()
+    /**
+     * Constructs standard command-line flags for launching Chromium instances.
+     *
+     * Configures WebGL fallback rendering, automation flags to suppress info-bars,
+     * and outer window positioning and dimensions.
+     *
+     * @param config The [ParikshanWasmConfig] holding viewport dimensions and execution options.
+     * @return List of Chromium command-line flag strings.
+     */
+    private fun getChromiumArgs(config: ParikshanWasmConfig): List<String> {
+      val chromiumArgs = mutableListOf(
+        "--disable-gpu",
+        "--use-gl=angle",
+        "--use-angle=swiftshader",
+        "--force-device-scale-factor=1",
+        "--enable-automation",
+        "--disable-infobars",
+        "--test-type",
+        "--no-first-run",
+        "--no-default-browser-check"
+      )
+      if (config.appMode) {
+        chromiumArgs.add("--app=${config.appUrl}")
+        chromiumArgs.add("--window-size=${config.viewportWidth},${config.viewportHeight}")
+      } else {
+        chromiumArgs.add("--window-size=${config.viewportWidth},${config.viewportHeight}")
+      }
+      if (!config.headless && config.windowX != null && config.windowY != null) {
+        chromiumArgs.add("--window-position=${config.windowX},${config.windowY}")
+      }
+      return chromiumArgs
+    }
 
+    private fun ensureActivePageInternal(config: ParikshanWasmConfig) {
+      val isKeepAlive = isKeepAliveEnabled()
+      val wasAlreadyRunning = isPortOpen(9222)
+      val isBrowserAlive = sharedBrowser?.isConnected == true || (sharedContext != null && sharedPage != null && !sharedPage!!.isClosed)
       if (!isBrowserAlive || sharedPlaywright == null) {
-        // Initial setup or browser crashed
         runCatching { sharedPage?.close() }
         runCatching { sharedContext?.close() }
         if (!isKeepAlive) {
@@ -643,31 +628,42 @@ internal class WasmDriver private constructor(
           runCatching { sharedPlaywright?.close() }
         }
 
-        if (isKeepAlive && isPortOpen(9222)) {
-          val playwright = Playwright.create()
-          sharedPlaywright = playwright
-          sharedBrowser = playwright.chromium().connectOverCDP("http://127.0.0.1:9222")
-        } else {
-          val playwright = Playwright.create()
-          sharedPlaywright = playwright
-          val launchOptions = BrowserType.LaunchOptions().setHeadless(config.headless)
-          launchOptions.setArgs(listOf(
-            "--window-size=${config.viewportWidth + 50},${config.viewportHeight + 100}",
-            "--disable-gpu",
-            "--use-gl=angle",
-            "--use-angle=swiftshader",
-            "--no-sandbox"
-          ))
+        sharedPage = null
+        sharedContext = null
+        if (!isKeepAlive) {
+          sharedBrowser = null
+          sharedPlaywright = null
+        }
 
-          if (isKeepAlive) {
-            val executable = playwright.chromium().executablePath()
+        if (isKeepAlive && !wasAlreadyRunning) {
+          runCatching {
+            val tempPlaywright = Playwright.create()
+            val executable = tempPlaywright.chromium().executablePath()
+            val userDataDir = Files.createTempDirectory("parikshan-wasm-cdp-user")
             val args = mutableListOf(
               executable,
               "--remote-debugging-port=9222",
-              "--window-size=${config.viewportWidth + 50},${config.viewportHeight + 100}",
+              "--user-data-dir=${userDataDir.toAbsolutePath()}",
               "--disable-gpu",
-              "--no-sandbox"
+              "--use-gl=angle",
+              "--use-angle=swiftshader",
+              "--force-device-scale-factor=1",
+              "--enable-automation",
+              "--disable-infobars",
+              "--test-type",
+              "--no-first-run",
+              "--no-default-browser-check",
+              "--disable-features=Translate,BackForwardCache"
             )
+            if (config.appMode) {
+              args.add("--app=${config.appUrl}")
+              args.add("--window-size=${config.viewportWidth},${config.viewportHeight}")
+            } else {
+              args.add("--window-size=${config.viewportWidth},${config.viewportHeight}")
+            }
+            if (!config.headless && config.windowX != null && config.windowY != null) {
+              args.add("--window-position=${config.windowX},${config.windowY}")
+            }
             if (config.headless) {
               args.add("--headless")
             }
@@ -676,36 +672,71 @@ internal class WasmDriver private constructor(
             pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile))
             pb.redirectError(ProcessBuilder.Redirect.appendTo(logFile))
             pb.start()
+            
+            tempPlaywright.close()
 
-            var success = false
-            for (i in 1..20) {
-              if (isPortOpen(9222)) {
-                success = true
-                break
-              }
-              delay(100)
+            for (i in 1..30) {
+              if (isPortOpen(9222)) break
+              Thread.sleep(100)
             }
-            playwright.close()
-
-            val realPlaywright = Playwright.create()
-            sharedPlaywright = realPlaywright
-            sharedBrowser = realPlaywright.chromium().connectOverCDP("http://127.0.0.1:9222")
-          } else {
-            val browser = playwright.chromium().launch(launchOptions)
-            sharedBrowser = browser
           }
+        }
+
+        if (isKeepAlive && isPortOpen(9222)) {
+          val playwright = Playwright.create()
+          sharedPlaywright = playwright
+          runCatching {
+            sharedBrowser = playwright.chromium().connectOverCDP("http://127.0.0.1:9222")
+          }.onFailure {
+            sharedBrowser = null
+            playwright.close()
+            sharedPlaywright = null
+          }
+        }
+
+        if (sharedPlaywright == null) {
+          val playwright = Playwright.create()
+          sharedPlaywright = playwright
+          val chromiumArgs = getChromiumArgs(config)
+
+          val userDataDir = Files.createTempDirectory(if (config.appMode) "parikshan-wasm-appmode-user" else "parikshan-wasm-user")
+          val videoConfig = ParikshanVideoConfig.fromSystemProperties()
+          val launchOptions = BrowserType.LaunchPersistentContextOptions()
+            .setHeadless(config.headless)
+            .setArgs(chromiumArgs)
+
+          if (config.appMode) {
+            launchOptions.setViewportSize(config.viewportWidth, config.viewportHeight - 28)
+          } else {
+            launchOptions.setViewportSize(null)
+          }
+
+          if (videoConfig.enabled) {
+            val tempDir = playwrightTempDir ?: Files.createTempDirectory("parikshan-wasm-video").also { playwrightTempDir = it }
+            launchOptions.setRecordVideoDir(tempDir)
+            if (videoConfig.videoWidth != null && videoConfig.videoHeight != null) {
+              launchOptions.setRecordVideoSize(videoConfig.videoWidth, videoConfig.videoHeight)
+            } else {
+              launchOptions.setRecordVideoSize(config.viewportWidth, config.viewportHeight)
+            }
+          }
+          val context = playwright.chromium().launchPersistentContext(userDataDir, launchOptions)
+          sharedContext = context
         }
       }
 
-      if (sharedPage == null || isPageClosed) {
-        // Browser is alive, but we need a new page (e.g. after a video stop)
+      if (sharedPage == null || sharedPage!!.isClosed) {
         val videoConfig = ParikshanVideoConfig.fromSystemProperties()
-        val contextOptions = Browser.NewContextOptions().setViewportSize(config.viewportWidth, config.viewportHeight)
+        val contextOptions = Browser.NewContextOptions()
+        if (config.appMode) {
+          contextOptions.setViewportSize(config.viewportWidth, config.viewportHeight - 28)
+        } else {
+          contextOptions.setViewportSize(null)
+        }
 
         if (videoConfig.enabled) {
           val tempDir = playwrightTempDir ?: Files.createTempDirectory("parikshan-wasm-video").also { playwrightTempDir = it }
           contextOptions.setRecordVideoDir(tempDir)
-          
           if (videoConfig.videoWidth != null && videoConfig.videoHeight != null) {
             contextOptions.setRecordVideoSize(videoConfig.videoWidth, videoConfig.videoHeight)
           } else {
@@ -714,43 +745,148 @@ internal class WasmDriver private constructor(
           videoConfig.deviceScaleFactor?.let { contextOptions.setDeviceScaleFactor(it) }
         }
 
-        val context = sharedBrowser!!.newContext(contextOptions)
-        
+        val context = if (sharedContext != null) {
+          sharedContext!!
+        } else if (isKeepAlive && sharedBrowser != null) {
+          sharedBrowser!!.contexts().firstOrNull() ?: sharedBrowser!!.newContext(contextOptions)
+        } else {
+          sharedBrowser!!.newContext(contextOptions)
+        }
+
         context.addInitScript(PARIKSHAN_UTILS_INIT_SCRIPT)
-        
         sharedContext = context
 
-        val page = context.newPage()
+        val targetUrlNormalized = config.appUrl.trimEnd('/')
+        var page = context.pages().firstOrNull { it.url().trimEnd('/').startsWith(targetUrlNormalized) }
+        if (page == null) {
+          val existingPage = context.pages().firstOrNull()
+          if (existingPage != null && (existingPage.url() == "about:blank" || existingPage.url().isBlank())) {
+            page = existingPage
+          } else {
+            page = existingPage ?: context.newPage()
+          }
+        }
+
+        if (context.pages().size > 1) {
+          context.pages().filter { it != page && (it.url() == "about:blank" || it.url().isBlank()) }.forEach {
+            runCatching { it.close() }
+          }
+        }
+
         page.onConsoleMessage { msg ->
           val target = if (msg.type() == "error") System.err else System.out
-          target.println("Wasm Console [${msg.type()}]: ${msg.text()}")
+          target.println("Wasm Console [${msg.type()}]: ${msg.text()} at ${msg.location()}")
+          if (msg.type() == "error") {
+            msg.args().forEach { arg ->
+              runCatching {
+                target.println("  Wasm Console Error Arg: ${arg.jsonValue()}")
+              }
+            }
+          }
         }
+        page.onClose { markWasmSessionClosed() }
         sharedPage = page
+        markWasmSessionActive()
 
-        page.navigate(config.appUrl)
+        // Set viewport and window bounds via CDP for reliable override across platforms
+        fun applyViewport() {
+          runCatching {
+            if (config.appMode) {
+              page.setViewportSize(config.viewportWidth, config.viewportHeight - 28)
+              page.evaluate("() => { window.resizeTo(${config.viewportWidth}, ${config.viewportHeight}); }")
+            } else if (!config.headless) {
+              // Non-app mode: use CDP Browser.setWindowBounds for reliable window
+              // positioning. CLI --window-position is ignored by macOS window manager;
+              // CDP is a programmatic override that works on macOS, Linux, and Windows.
+              val cdp = page.context().newCDPSession(page)
+              try {
+                val windowInfo = cdp.send("Browser.getWindowForTarget")
+                val windowId = windowInfo?.get("windowId")?.asInt
+                if (windowId != null) {
+                  val bounds = JsonObject().apply {
+                    if (config.windowX != null && config.windowY != null) {
+                      addProperty("left", config.windowX)
+                      addProperty("top", config.windowY)
+                    }
+                    addProperty("width", config.viewportWidth)
+                    addProperty("height", config.viewportHeight)
+                    addProperty("windowState", "normal")
+                  }
+                  val params = JsonObject().apply {
+                    addProperty("windowId", windowId)
+                    add("bounds", bounds)
+                  }
+                  cdp.send("Browser.setWindowBounds", params)
+                }
+              } finally {
+                cdp.detach()
+              }
+            }
+          }
+        }
+
+        applyViewport()
+
+        val currentUrlNormalized = page.url().trimEnd('/')
+        val isErrorOrBlank = currentUrlNormalized.startsWith("chrome-error://") || 
+                             currentUrlNormalized == "about:blank" || 
+                             currentUrlNormalized.isEmpty()
+
+        if (wasAlreadyRunning && !isErrorOrBlank && currentUrlNormalized == targetUrlNormalized) {
+          val reloadSuccess = runCatching {
+            page.evaluate("() => { sessionStorage.clear(); localStorage.clear(); location.reload(); }")
+          }.isSuccess
+          if (!reloadSuccess) {
+            page.navigate(config.appUrl)
+          }
+        } else {
+          var navSuccess = false
+          for (attempt in 1..5) {
+            val res = runCatching {
+              page.navigate(config.appUrl)
+            }
+            if (res.isSuccess) {
+              navSuccess = true
+              break
+            }
+            Thread.sleep(300)
+          }
+          if (!navSuccess) {
+            page.navigate(config.appUrl)
+          }
+        }
+
+        // Re-apply viewport after navigation to ensure Compose renders at correct size
+        applyViewport()
+
+        runCatching { page.bringToFront() }
+
         page.waitForFunction(
           "() => typeof window.__parikshan_getTreeJson === 'function'",
           null,
           Page.WaitForFunctionOptions().setTimeout(config.bridgeReadyTimeoutMs.toDouble())
         )
       }
+    }
 
+    suspend fun connect(config: ParikshanWasmConfig = ParikshanWasmConfig.fromSystemProperties()): WasmDriver = connectMutex.withLock {
+      ensureActivePageInternal(config)
       return WasmDriver()
     }
 
-    private suspend fun relaunchSharedPage(config: ParikshanWasmConfig) {
-      connectMutex.withLock {
-        val page = sharedPage ?: error("WasmDriver shared page is not initialized")
-        if (page.isClosed()) {
-          error("WasmDriver shared page is closed")
-        }
-        page.navigate(config.appUrl)
-        page.waitForFunction(
-          "() => typeof window.__parikshan_getTreeJson === 'function'",
-          null,
-          Page.WaitForFunctionOptions().setTimeout(config.bridgeReadyTimeoutMs.toDouble())
-        )
+    private fun relaunchSharedPage(config: ParikshanWasmConfig) {
+      val page = sharedPage ?: error("WasmDriver shared page is not initialized")
+      if (page.isClosed()) {
+        error("WasmDriver shared page is closed")
       }
+      runCatching {
+        page.evaluate("() => { sessionStorage.clear(); localStorage.clear(); location.reload(); }")
+      }
+      page.waitForFunction(
+        "() => typeof window.__parikshan_getTreeJson === 'function'",
+        null,
+        Page.WaitForFunctionOptions().setTimeout(config.bridgeReadyTimeoutMs.toDouble())
+      )
     }
 
     private fun registerWasmVideoPath(targetPath: String) {
@@ -764,6 +900,40 @@ internal class WasmDriver private constructor(
         }
       } catch (e: Exception) {
         System.err.println("WARN: Failed to write to video-index.txt in WasmDriver: ${e.message}")
+      }
+    }
+
+    /**
+     * Writes session state properties to `build/parikshan/wasm-session.properties`
+     * indicating that the WASM driver session is active.
+     */
+    private fun markWasmSessionActive() {
+      runCatching {
+        val projectRootDirProp = System.getProperty("parikshan.projectRootDir")
+        val dir = if (!projectRootDirProp.isNullOrBlank()) {
+          File(projectRootDirProp, "build/parikshan")
+        } else {
+          File(System.getProperty("user.dir"), "build/parikshan")
+        }
+        dir.mkdirs()
+        File(dir, "wasm-session.properties").writeText("status=active\ntimestamp=${System.currentTimeMillis()}\n")
+      }
+    }
+
+    /**
+     * Writes session state properties to `build/parikshan/wasm-session.properties`
+     * indicating that the WASM browser window or tab was closed.
+     */
+    private fun markWasmSessionClosed() {
+      runCatching {
+        val projectRootDirProp = System.getProperty("parikshan.projectRootDir")
+        val dir = if (!projectRootDirProp.isNullOrBlank()) {
+          File(projectRootDirProp, "build/parikshan")
+        } else {
+          File(System.getProperty("user.dir"), "build/parikshan")
+        }
+        dir.mkdirs()
+        File(dir, "wasm-session.properties").writeText("status=closed\ntimestamp=${System.currentTimeMillis()}\n")
       }
     }
   }

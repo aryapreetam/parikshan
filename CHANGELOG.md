@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.0.7] - 2026-08-15
+
+### Added
+- **Window Layout & Sizing**: Added runtime window positioning and sizing options (`--layout=side-by-side`, `--window-size=<w>x<h>`, `--desktop-window-size`, `--wasm-window-size`, `--app-mode`).
+- **Synchronized Multi-Target Execution**: Added lockstep step-barrier test execution (`--sync`) driving multiple target platforms concurrently.
+- **Continuous Watch Mode & Keep-Alive**: Added file system watcher (`--watch`) for automatic re-execution on code changes, and persistent application session preservation (`--keep-alive`).
+- **Documentation Verification**: Added `scripts/verify-docs-local.sh` script automating MkDocs, Dokka API reference, and showcase Wasm distribution builds.
+
+### Fixed & Resolved Issues
+- **Issue #10**: Fixed iOS text input focus and crash issues on un-tagged input fields by adding parent label text fallback and KVC input safety.
+- **Issue #12**: Resolved plugin configuration failures on mobile-only KMP projects lacking explicit Desktop/JVM targets.
+- **Issue #13**: Added safe host test task resolution for `com.android.kotlin.multiplatform.library` modules without throwing `UnknownTaskException`.
+- **Issue #15**: Refactored test tasks and target configurers to use Gradle `TaskProvider` APIs for full Gradle Configuration Cache compatibility.
+- **Issue #16**: Prevented false-positive test passes by ignoring `e2eTest` blocks during standard host unit test tasks (e.g., `testAndroidHostTest`) and activating them strictly during Parikshan E2E tasks.
+
+### Changes
+- Improved documentation and website layout
+
 ## [0.0.6] - 2026-07-24
 
 ### Added

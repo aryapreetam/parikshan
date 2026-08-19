@@ -13,6 +13,9 @@ plugins {
 dokka {
   moduleName.set("parikshan-core")
   dokkaSourceSets.configureEach {
+    if (name == "jsMain") {
+      suppress.set(true)
+    }
     includes.from("src/commonMain/kotlin/Module.md")
     includes.from("src/commonMain/kotlin/io/github/aryapreetam/parikshan/package.md")
     perPackageOption {

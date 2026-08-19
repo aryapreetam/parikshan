@@ -41,6 +41,12 @@ interface TestDriver {
 
   fun resolveArtifactPath(relativePath: String): String =
     "build/parikshan/${relativePath.trimStart('/', '\\')}"
+
+  fun setRouteTarget(platform: String?) {}
+
+  suspend fun executeParallel(block: suspend (TestDriver) -> Unit) {
+    block(this)
+  }
 }
 
 /**
@@ -83,12 +89,55 @@ data class E2ETestConfig(
  *
  * @see Selector
  */
-class E2ETestScope internal constructor(
+class E2ETestScope @InternalParikshanApi constructor(
   private val driver: TestDriver,
   private val config: E2ETestConfig
 ) {
   /** The target execution platform string (e.g. "android", "ios", "desktop", "wasm"). */
   val targetPlatform: String get() = driver.targetPlatform
+
+  /**
+   * Executes the provided test [block] concurrently across each active target driver in parallel.
+   *
+   * Inside [block], `this` refers to a target-scoped [E2ETestScope] connected directly to an individual
+   * target driver (such as Desktop, Wasm, Android, or iOS). Actions dispatched within [block] run
+   * independently on each target without waiting for other target viewports to reach the same step.
+   *
+   * ### When to Use
+   * Use `executeParallel` when writing navigation or layout helpers for multi-target scenarios where
+   * different target viewports display different UI states (for example, a wide Desktop window displaying a
+   * persistent navigation rail vs a mobile screen displaying a compact hamburger button and modal drawer).
+   *
+   * ### When to Avoid
+   * Avoid using `executeParallel` inside standard end-to-end test scenarios. Standard test flows should use
+   * the top-level unified DSL (`click`, `input`, `assertVisible`), which enforces a strict step-barrier
+   * contract across all target platforms after every command.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * @OptIn(InternalParikshanApi::class)
+   * suspend fun E2ETestScope.openAppNavigation() {
+   *   executeParallel {
+   *     if (hasVisibleNode("hamburger_button")) {
+   *       if (!hasVisibleNode("navigation_drawer")) {
+   *         click("hamburger_button")
+   *         waitFor("navigation_drawer")
+   *       }
+   *     }
+   *   }
+   * }
+   * ```
+   *
+   * @param block The target-scoped test operations to execute independently on each active target.
+   * @see TestDriver.executeParallel
+   */
+  @InternalParikshanApi
+  suspend fun executeParallel(block: suspend E2ETestScope.() -> Unit) {
+    driver.executeParallel { targetDriver ->
+      val localScope = E2ETestScope(driver = targetDriver, config = config)
+      localScope.block()
+    }
+  }
 
   /**
    * Executes a physical tap or click on the UI element matching the provided string [tag] or text.
@@ -331,17 +380,21 @@ class E2ETestScope internal constructor(
     maxScrolls: Int = 30,
     stabilizationDelayMs: Long = 300
   ) {
-    for (i in 0 until maxScrolls) {
-      if (hasVisibleNode(targetSelector)) {
-        return
+    driver.executeParallel { targetDriver ->
+      val localScope = E2ETestScope(driver = targetDriver, config = config)
+      for (i in 0 until maxScrolls) {
+        if (localScope.hasVisibleNode(targetSelector)) {
+          return@executeParallel
+        }
+        localScope.scroll(selector = containerSelector, direction = direction)
+        delay(stabilizationDelayMs)
       }
-      scroll(selector = containerSelector, direction = direction)
-      delay(stabilizationDelayMs)
+      throw AssertionError(
+        "Timed out scrolling container '${containerSelector.raw}' to locate target element: '${targetSelector.raw}' after $maxScrolls scrolls."
+      )
     }
-    throw AssertionError(
-      "Timed out scrolling container '${containerSelector.raw}' to locate target element: '${targetSelector.raw}' after $maxScrolls scrolls."
-    )
   }
+
 
   /**
    * Asserts that a UI element matching string [tag] is present and visible on screen.
@@ -734,6 +787,7 @@ class E2ETestScope internal constructor(
       }
       delay(WAIT_POLL_INTERVAL_MS)
     } while (true)
+
 
     if (config.captureScreenshotOnFailure) {
       runCatching {
@@ -1149,6 +1203,63 @@ class E2ETestScope internal constructor(
     }
     throw lastError ?: RuntimeException("Retry failed after $maxAttempts attempts")
   }
+
+  /**
+   * Executes the provided test [block] exclusively on the specified [target] platform.
+   *
+   * In synchronized execution mode (`--sync`), actions dispatched inside [block] are routed
+   * only to the driver matching [target], while other connected target drivers skip execution.
+   * In single-target execution, [block] executes if the active target matches [target], and is
+   * skipped otherwise.
+   *
+   * ### When to Use
+   * Use `onTarget` when handling platform-conditional UI divergences during synchronized multi-target
+   * tests (such as dismissing a platform-specific permission dialog, handling differing navigation
+   * structures like mobile drawers vs desktop sidebars, or validating target-specific layout elements).
+   *
+   * ### When Not to Use
+   * Do not use `onTarget` for common user flows or assertions that apply across all target platforms.
+   * Standard cross-platform assertions (`assertVisible`, `click`, `input`) should be called directly on
+   * the root [E2ETestScope] to ensure all targets execute in synchronized lockstep.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * @Test
+   * fun testPlatformAdaptiveFlow() = e2eTest {
+   *   // Common step across all targets
+   *   click("get_started_button")
+   *
+   *   // Platform-specific interaction during sync execution
+   *   onTarget(Target.Android) {
+   *     click("allow_notifications_button")
+   *   }
+   *
+   *   onTarget(Target.Desktop) {
+   *     click("maximize_window_button")
+   *   }
+   *
+   *   // Resumed common assertions across all targets
+   *   assertVisible("dashboard_header")
+   * }
+   * ```
+   *
+   * @param target The target platform on which to execute [block] (e.g. [Target.Desktop], [Target.Wasm], [Target.Android], [Target.Ios]).
+   * @param block The scoped test operations to execute on the specified target.
+   * @see Target
+   * @see executeParallel
+   */
+  suspend fun onTarget(target: Target, block: suspend E2ETestScope.() -> Unit) {
+    if (driver.targetPlatform == "sync") {
+      driver.setRouteTarget(target.platformName)
+      try {
+        block()
+      } finally {
+        driver.setRouteTarget(null)
+      }
+    } else if (driver.targetPlatform == target.platformName) {
+      block()
+    }
+  }
 }
 
 /**
@@ -1166,6 +1277,7 @@ suspend fun e2eTest(
     if (pingResponse is Response.Error) {
       throw IllegalStateException("Failed to connect to Parikshan server: ${pingResponse.message}")
     }
+    runCatching { driver.reset() }
     scope.block()
   } catch (throwable: Throwable) {
     if (config.captureScreenshotOnFailure) {
@@ -1175,6 +1287,7 @@ suspend fun e2eTest(
     }
     throw throwable
   } finally {
+    runCatching { driver.reset() }
     driver.close()
   }
 }
@@ -1195,7 +1308,7 @@ private enum class MatchPolicy {
 /**
  * @suppress
  */
-@Target(AnnotationTarget.FUNCTION)
+@kotlin.annotation.Target(AnnotationTarget.FUNCTION)
 @Retention(AnnotationRetention.SOURCE)
 annotation class ParikshanScenario(
   val testName: String = ""
@@ -1248,3 +1361,10 @@ fun E2ETestScope.isAndroid(): Boolean = targetPlatform == "android"
  * ```
  */
 fun E2ETestScope.isIos(): Boolean = targetPlatform == "ios"
+
+enum class Target(val platformName: String) {
+  Desktop("desktop"),
+  Wasm("wasm"),
+  Android("android"),
+  Ios("ios")
+}

@@ -24,6 +24,11 @@ public final class io/github/aryapreetam/parikshan/IosDriverConfig {
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class io/github/aryapreetam/parikshan/MultiTargetFailureException : java/lang/AssertionError {
+	public static final field $stable I
+	public fun <init> (Ljava/lang/String;)V
+}
+
 public final class io/github/aryapreetam/parikshan/client/AndroidVideoRecorder : io/github/aryapreetam/parikshan/client/VideoRecorder {
 	public static final field $stable I
 	public fun <init> (Ljava/lang/String;J)V
@@ -129,20 +134,27 @@ public final class io/github/aryapreetam/parikshan/client/ParikshanVideoConfig$C
 public final class io/github/aryapreetam/parikshan/client/ParikshanWasmConfig {
 	public static final field $stable I
 	public static final field Companion Lio/github/aryapreetam/parikshan/client/ParikshanWasmConfig$Companion;
-	public fun <init> (Ljava/lang/String;ZIIJ)V
+	public fun <init> (Ljava/lang/String;ZIIJLjava/lang/Integer;Ljava/lang/Integer;Z)V
+	public synthetic fun <init> (Ljava/lang/String;ZIIJLjava/lang/Integer;Ljava/lang/Integer;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Z
 	public final fun component3 ()I
 	public final fun component4 ()I
 	public final fun component5 ()J
-	public final fun copy (Ljava/lang/String;ZIIJ)Lio/github/aryapreetam/parikshan/client/ParikshanWasmConfig;
-	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/client/ParikshanWasmConfig;Ljava/lang/String;ZIIJILjava/lang/Object;)Lio/github/aryapreetam/parikshan/client/ParikshanWasmConfig;
+	public final fun component6 ()Ljava/lang/Integer;
+	public final fun component7 ()Ljava/lang/Integer;
+	public final fun component8 ()Z
+	public final fun copy (Ljava/lang/String;ZIIJLjava/lang/Integer;Ljava/lang/Integer;Z)Lio/github/aryapreetam/parikshan/client/ParikshanWasmConfig;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/client/ParikshanWasmConfig;Ljava/lang/String;ZIIJLjava/lang/Integer;Ljava/lang/Integer;ZILjava/lang/Object;)Lio/github/aryapreetam/parikshan/client/ParikshanWasmConfig;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAppMode ()Z
 	public final fun getAppUrl ()Ljava/lang/String;
 	public final fun getBridgeReadyTimeoutMs ()J
 	public final fun getHeadless ()Z
 	public final fun getViewportHeight ()I
 	public final fun getViewportWidth ()I
+	public final fun getWindowX ()Ljava/lang/Integer;
+	public final fun getWindowY ()Ljava/lang/Integer;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }

@@ -4,37 +4,36 @@ on:
   push:
     branches:
       - '**'
+      - '!draft/**'
+      - '!sandbox/**'
+      - '!debug/**'
     tags-ignore:
       - 'v*'
-    paths:
-      # Run CI only when these files/directories change
-      - 'parikshan/**'
-      - 'samples/**'
-      - 'parikshan-core/**'
-      - 'parikshan-client/**'
-      - 'parikshan-server/**'
-      - 'gradle-plugins/**'
-      - 'gradle/**'
-      - 'gradle.properties'
-      - 'settings.gradle.kts'
-      - 'build.gradle.kts'
-      - '.github/workflows/ci.yml'
-      - '.github/workflows/push-ci.yml'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      target_job:
+        description: 'Specific CI job to run (all, ios-cmp-latest, ios-showcase, desktop, wasm, android)'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - ios-issue-playground
+          - ios-cmp-latest
+          - ios-showcase
+          - ios-composables
+          - desktop
+          - wasm
+          - android
+          - sync
+          - watch-script
   pull_request:
-    paths:
-      # Same path filters for PRs
-      - 'parikshan/**'
-      - 'samples/**'
-      - 'parikshan-core/**'
-      - 'parikshan-client/**'
-      - 'parikshan-server/**'
-      - 'gradle-plugins/**'
-      - 'gradle/**'
-      - 'gradle.properties'
-      - 'settings.gradle.kts'
-      - 'build.gradle.kts'
-      - '.github/workflows/ci.yml'
-      - '.github/workflows/push-ci.yml'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
 
 permissions:
   contents: read
@@ -85,6 +84,8 @@ jobs:
     needs: check-template-setup
     if: needs.check-template-setup.outputs.is_configured == 'true'
     uses: ./.github/workflows/ci.yml
+    with:
+      target_job: ${{ inputs.target_job || 'all' }}
 
   skip-ci:
     name: Template not configured - CI skipped

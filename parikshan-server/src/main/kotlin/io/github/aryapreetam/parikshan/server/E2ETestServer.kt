@@ -259,7 +259,9 @@ private class RunningE2ETestServer(
               delay(50)
               robot.mouseRelease(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)
               delay(100)
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+              System.err.println("Parikshan: AWT Robot focus fallback failed: ${e.message}")
+            }
             
             // Re-try semantic set text after focus grab attempt
             if (!semantics.performSetText(sel, command.text)) {
@@ -393,7 +395,14 @@ private class RunningE2ETestServer(
         Response.Error(command.id, "relaunchApp() is handled by the DesktopDriver process launcher")
       is Command.Shutdown -> Response.Ok(command.id)
       is Command.Ping -> Response.Ok(command.id)
-      is Command.Reset -> Response.Ok(command.id)
+      is Command.Reset -> {
+        runCatching {
+          withContext(Dispatchers.Main) {
+            // Flush AWT / Compose Desktop event queue
+          }
+        }
+        Response.Ok(command.id)
+      }
     }
   }
 

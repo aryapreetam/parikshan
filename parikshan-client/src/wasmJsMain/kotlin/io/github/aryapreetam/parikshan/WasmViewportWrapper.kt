@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.Owner
 import androidx.compose.ui.node.requireOwner
 import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.window.ComposeViewport
@@ -75,6 +76,8 @@ private data object ParikshanSemanticsGrabberElement : ModifierNodeElement<Parik
 
 @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE", "CANNOT_OVERRIDE_INVISIBLE_MEMBER")
 private class ParikshanSemanticsGrabberNode : Modifier.Node() {
+    private var registeredOwner: Owner? = null
+
     override fun onAttach() {
         super.onAttach()
         register()
@@ -82,14 +85,19 @@ private class ParikshanSemanticsGrabberNode : Modifier.Node() {
 
     private fun register() {
         try {
-            WasmSemanticsAccessor.injectOwner(requireOwner())
+            val owner = requireOwner()
+            WasmSemanticsAccessor.injectOwner(owner)
+            registeredOwner = owner
         } catch (_: Throwable) {}
     }
 
     override fun onDetach() {
-        try {
-            WasmSemanticsAccessor.removeOwner(requireOwner())
-        } catch (_: Throwable) {}
+        registeredOwner?.let { owner ->
+            try {
+                WasmSemanticsAccessor.removeOwner(owner)
+            } catch (_: Throwable) {}
+        }
+        registeredOwner = null
         super.onDetach()
     }
 }

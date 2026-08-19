@@ -40,6 +40,7 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalTestApi::class)
 object AndroidServer {
+  private val ruleLock = Any()
   private val running = AtomicBoolean(false)
   private var serverThread: Thread? = null
   private val shutdownLatch = CountDownLatch(1)
@@ -52,20 +53,22 @@ object AndroidServer {
   private var lastClockTime: Long = 0L
 
   private fun syncClockWithRealTime() {
-    val now = System.currentTimeMillis()
-    if (lastClockTime == 0L) {
+    synchronized(ruleLock) {
+      val now = System.currentTimeMillis()
+      if (lastClockTime == 0L) {
+        lastClockTime = now
+        return
+      }
+      val elapsed = now - lastClockTime
       lastClockTime = now
-      return
-    }
-    val elapsed = now - lastClockTime
-    lastClockTime = now
-    if (elapsed > 0) {
-      try {
-        composeRule.runOnUiThread {
-          composeRule.mainClock.advanceTimeBy(elapsed)
+      if (elapsed > 0) {
+        try {
+          composeRule.runOnUiThread {
+            composeRule.mainClock.advanceTimeBy(elapsed)
+          }
+        } catch (e: Throwable) {
+          // Ignore
         }
-      } catch (e: Throwable) {
-        // Ignore
       }
     }
   }
@@ -399,9 +402,9 @@ object AndroidServer {
     }
   }
 
-  private fun handleCommand(command: Command): Response {
+  private fun handleCommand(command: Command): Response = synchronized(ruleLock) {
     syncClockWithRealTime()
-    return when (command) {
+    when (command) {
       is Command.Click -> {
         val matched = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${selectorLabel(command)}'")
@@ -618,7 +621,14 @@ object AndroidServer {
         Response.Ok(command.id)
       }
       is Command.Ping -> Response.Ok(command.id)
-      is Command.Reset -> Response.Ok(command.id)
+      is Command.Reset -> {
+        try {
+          composeRule.waitForIdle()
+        } catch (_: Throwable) {
+          // Ignore
+        }
+        Response.Ok(command.id)
+      }
     }
   }
 

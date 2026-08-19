@@ -1,0 +1,5 @@
+:root {
+    --dokka-logo-image-url: url('../images/logo.png') !important;
+    --dokka-logo-height: 28px !important;
+    --dokka-logo-width: 28px !important;
+}

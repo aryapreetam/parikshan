@@ -14,9 +14,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import io.github.aryapreetam.composeapp.generated.resources.NotoSansDevanagari
-import io.github.aryapreetam.composeapp.generated.resources.Res
-import io.github.aryapreetam.composeapp.generated.resources.parikshan_logo
+import sample.app.composeapp.generated.resources.NotoSansDevanagari
+import sample.app.composeapp.generated.resources.Res
+import sample.app.composeapp.generated.resources.parikshan_logo
 import org.jetbrains.compose.resources.Font
 import org.jetbrains.compose.resources.painterResource
 

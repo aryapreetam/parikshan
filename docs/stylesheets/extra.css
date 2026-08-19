@@ -1,5 +1,8 @@
 /* Font overrides for code elements */
-code, kbd, pre, .md-typeset pre code {
+code,
+kbd,
+pre,
+.md-typeset pre code {
     font-family: "JetBrains Mono", "Monaco", "Courier New", monospace !important;
 }
 
@@ -8,3 +11,52 @@ code, kbd, pre, .md-typeset pre code {
     display: none !important;
 }
 
+/* Expand content grid for modern widescreen displays */
+.md-grid {
+    max-width: 78rem;
+}
+
+/* Preserve crisp Material table borders, cell padding, and layout for demo tables */
+.md-typeset table.demo-table {
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid var(--md-default-fg-color--lightest, rgba(128, 128, 128, 0.2));
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 1.2em 0;
+}
+
+.md-typeset table.demo-table th {
+    background-color: var(--md-default-bg-color--lighter, rgba(128, 128, 128, 0.06));
+    padding: 0.75rem 1rem;
+    font-weight: 600;
+    text-align: center;
+    border-bottom: 1px solid var(--md-default-fg-color--lightest, rgba(128, 128, 128, 0.2));
+}
+
+.md-typeset table.demo-table td {
+    padding: 0.5rem;
+    vertical-align: middle;
+    text-align: center;
+    border-bottom: 1px solid var(--md-default-fg-color--lightest, rgba(128, 128, 128, 0.12));
+}
+
+.md-typeset table.demo-table th:not(:last-child),
+.md-typeset table.demo-table td:not(:last-child) {
+    border-right: 1px solid var(--md-default-fg-color--lightest, rgba(128, 128, 128, 0.12));
+}
+
+/* Fluidly scale demo showcase media within cells while maintaining aspect ratio and rounded corners */
+.md-typeset table.demo-table td img,
+.md-typeset table.demo-table td video {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    display: block;
+    margin: 0 auto;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}

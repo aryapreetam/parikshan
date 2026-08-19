@@ -18,6 +18,8 @@ import java.awt.Window
 import java.awt.event.MouseEvent
 import java.awt.event.InputEvent
 import javax.swing.SwingUtilities
+import kotlinx.coroutines.delay
+
 
 internal data class DesktopNode(
   val tag: String,
@@ -184,15 +186,7 @@ internal class DesktopSemanticsAccessor(
         return@onEdt
       }
       
-      var currentNode: SemanticsNode? = resolvedNode.node
-      var action: ((Float, Float) -> Boolean)? = null
-      
-      while (currentNode != null) {
-        action = currentNode.config.getOrNull(SemanticsActions.ScrollBy)?.action
-        if (action != null) break
-        currentNode = currentNode.parent
-      }
-
+      val action = findScrollAction(resolvedNode.node)
       if (action != null) {
         val (deltaX, deltaY) = when (direction) {
           ScrollDirection.Up -> 0f to -amountPx
@@ -224,58 +218,76 @@ internal class DesktopSemanticsAccessor(
     return success
   }
 
-  fun performDrag(
+  private fun findScrollAction(node: SemanticsNode): ((Float, Float) -> Boolean)? {
+    var currentNode: SemanticsNode? = node
+    while (currentNode != null) {
+      val action = currentNode.config.getOrNull(SemanticsActions.ScrollBy)?.action
+      if (action != null) return action
+      currentNode = currentNode.parent
+    }
+
+    val queue = ArrayDeque<SemanticsNode>()
+    queue.addAll(node.children)
+    while (queue.isNotEmpty()) {
+      val child = queue.removeFirst()
+      val action = child.config.getOrNull(SemanticsActions.ScrollBy)?.action
+      if (action != null) return action
+      queue.addAll(child.children)
+    }
+
+    return null
+  }
+
+  suspend fun performDrag(
     fromX: Double,
     fromY: Double,
     toX: Double,
     toY: Double,
     durationMs: Long
   ): Boolean {
-    val location = onEdt { primaryWindow.locationOnScreen }
-    
-    // Relative coordinates
-    val startX = (fromX - location.x).toInt()
-    val startY = (fromY - location.y).toInt()
-    val endX = (toX - location.x).toInt()
-    val endY = (toY - location.y).toInt()
-
     val targetComponent = onEdt {
-        primaryWindow.findComponentAt(startX, startY) ?: primaryWindow.contentPane
+      val wl = primaryWindow.locationOnScreen
+      val winStartX = (fromX - wl.x).toInt()
+      val winStartY = (fromY - wl.y).toInt()
+      primaryWindow.findComponentAt(winStartX, winStartY) ?: primaryWindow.contentPane
     }
 
+    val compLoc = onEdt { targetComponent.locationOnScreen }
+    val startX = (fromX - compLoc.x).toInt()
+    val startY = (fromY - compLoc.y).toInt()
+    val endX = (toX - compLoc.x).toInt()
+    val endY = (toY - compLoc.y).toInt()
+
+
     onEdt {
-        targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_ENTERED, System.currentTimeMillis(), 0, startX, startY, fromX.toInt(), fromY.toInt(), 0, false, MouseEvent.NOBUTTON))
-        targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_MOVED, System.currentTimeMillis(), 0, startX, startY, fromX.toInt(), fromY.toInt(), 0, false, MouseEvent.NOBUTTON))
-        targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_PRESSED, System.currentTimeMillis(), InputEvent.BUTTON1_DOWN_MASK, startX, startY, fromX.toInt(), fromY.toInt(), 1, false, MouseEvent.BUTTON1))
+      targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_ENTERED, System.currentTimeMillis(), 0, startX, startY, fromX.toInt(), fromY.toInt(), 0, false, MouseEvent.NOBUTTON))
+      targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_MOVED, System.currentTimeMillis(), 0, startX, startY, fromX.toInt(), fromY.toInt(), 0, false, MouseEvent.NOBUTTON))
+      targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_PRESSED, System.currentTimeMillis(), InputEvent.BUTTON1_DOWN_MASK, startX, startY, fromX.toInt(), fromY.toInt(), 1, false, MouseEvent.BUTTON1))
     }
 
     // Small delay to ensure "drag" is registered
-    Thread.sleep(50)
+    delay(50)
 
     val steps = 30
     val stepDelay = (durationMs / steps).coerceAtLeast(1L)
     
     for (i in 1..steps) {
-        val progress = i.toFloat() / steps
-        val curXRel = startX + (endX - startX) * progress
-        val curYRel = startY + (endY - startY) * progress
-        val curXAbs = fromX + (toX - fromX) * progress
-        val curYAbs = fromY + (toY - fromY) * progress
-        
-        onEdt {
-            targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_DRAGGED, System.currentTimeMillis(), InputEvent.BUTTON1_DOWN_MASK, curXRel.toInt(), curYRel.toInt(), curXAbs.toInt(), curYAbs.toInt(), 0, false, MouseEvent.NOBUTTON))
-        }
-        
-        try {
-            Thread.sleep(stepDelay)
-        } catch (_: InterruptedException) {
-            break
-        }
+      val progress = i.toFloat() / steps
+      val curXRel = startX + (endX - startX) * progress
+      val curYRel = startY + (endY - startY) * progress
+      val curXAbs = fromX + (toX - fromX) * progress
+      val curYAbs = fromY + (toY - fromY) * progress
+      
+      onEdt {
+        targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_DRAGGED, System.currentTimeMillis(), InputEvent.BUTTON1_DOWN_MASK, curXRel.toInt(), curYRel.toInt(), curXAbs.toInt(), curYAbs.toInt(), 0, false, MouseEvent.NOBUTTON))
+      }
+      
+      delay(stepDelay)
     }
 
     onEdt {
-        targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_RELEASED, System.currentTimeMillis(), InputEvent.BUTTON1_DOWN_MASK, endX, endY, toX.toInt(), toY.toInt(), 1, false, MouseEvent.BUTTON1))
-        targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_EXITED, System.currentTimeMillis(), 0, endX, endY, toX.toInt(), toY.toInt(), 0, false, MouseEvent.NOBUTTON))
+      targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_RELEASED, System.currentTimeMillis(), InputEvent.BUTTON1_DOWN_MASK, endX, endY, toX.toInt(), toY.toInt(), 1, false, MouseEvent.BUTTON1))
+      targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_EXITED, System.currentTimeMillis(), 0, endX, endY, toX.toInt(), toY.toInt(), 0, false, MouseEvent.NOBUTTON))
     }
     
     return true
@@ -345,10 +357,10 @@ internal class DesktopSemanticsAccessor(
   private fun WindowedNode.toDesktopNode(): DesktopNode? {
     val tag = node.config.getOrNull(SemanticsProperties.TestTag) ?: ""
     
-    // On macOS in background mode, locationOnScreen can be unstable.
-    // Using window.bounds as a more reliable anchor.
-    val winX = window.bounds.x
-    val winY = window.bounds.y
+    // Calculate actual screen origin of the Compose content area (accounting for title bar and window insets).
+    val canvasLoc = runCatching { window.contentPane.locationOnScreen }.getOrNull()
+    val winX = canvasLoc?.x ?: (window.bounds.x + window.insets.left)
+    val winY = canvasLoc?.y ?: (window.bounds.y + window.insets.top)
     val nodeBounds = node.boundsInWindow
     
     val editableText = node.config.getOrNull(SemanticsProperties.EditableText)?.text

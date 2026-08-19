@@ -262,6 +262,15 @@ internal class DesktopDriver(
         if (background == "true") {
             add("-Dparikshan.background=true")
         }
+        val wX = System.getProperty("parikshan.desktop.windowX")
+        val wY = System.getProperty("parikshan.desktop.windowY")
+        val wW = System.getProperty("parikshan.desktop.windowWidth")
+        val wH = System.getProperty("parikshan.desktop.windowHeight")
+        if (!wX.isNullOrEmpty()) add("-Dparikshan.desktop.windowX=$wX")
+        if (!wY.isNullOrEmpty()) add("-Dparikshan.desktop.windowY=$wY")
+        if (!wW.isNullOrEmpty()) add("-Dparikshan.desktop.windowWidth=$wW")
+        if (!wH.isNullOrEmpty()) add("-Dparikshan.desktop.windowHeight=$wH")
+
         windowTitle?.let { add("-Dparikshan.desktop.windowTitle=$it") }
         add("-cp")
         add(jarPath)

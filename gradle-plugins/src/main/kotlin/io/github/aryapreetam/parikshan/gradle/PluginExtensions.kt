@@ -29,7 +29,7 @@ internal fun Test.configureE2eHostTestExecution(
       .orElse(project.providers.systemProperty("parikshan.video.granularity"))
       .orElse("class")
 
-  val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.7"
+  val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.8"
   val clientDep = project.rootProject.findProject(":parikshan-client")
     ?.let { project.dependencies.project(mapOf("path" to it.path)) }
     ?: "io.github.aryapreetam.parikshan:parikshan-client:$pluginVersion"
@@ -214,7 +214,7 @@ internal fun Project.findOrRegisterHostTestTask(override: String?): TaskProvider
       ?: tasks.findByName("testUnitTest") as? Test
       ?: tasks.withType(Test::class.java).firstOrNull { it.name.contains("HostTest", ignoreCase = true) || it.name.contains("UnitTest", ignoreCase = true) }
 
-    val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.7"
+    val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.8"
     val clientDep = project.rootProject.findProject(":parikshan-client")
       ?.let { project.dependencies.project(mapOf("path" to it.path)) }
       ?: "io.github.aryapreetam.parikshan:parikshan-client:$pluginVersion"
@@ -592,7 +592,7 @@ private fun String.maskKotlinCommentsAndLiterals(): String {
 
 internal fun Project.configureParikshanDependencies(isE2EActive: Boolean) {
   // Resolve version dynamically from loaded plugin class metadata.
-  val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.7"
+  val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.8"
 
   val hasKmp = pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform")
   if (hasKmp) {

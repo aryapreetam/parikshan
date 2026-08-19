@@ -24,7 +24,7 @@ val rootProps = Properties().apply {
   file("../gradle.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
 
-group = rootProps.getProperty("libGroup")?.let { "$it.parikshan" } ?: "io.github.aryapreetam.parikshan"
+group = rootProps.getProperty("libGroup") ?: "io.github.aryapreetam.parikshan"
 version = rootProps.getProperty("libVersion") ?: "0.0.1"
 
 dependencies {

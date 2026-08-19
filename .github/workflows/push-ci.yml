@@ -1,4 +1,4 @@
-name: CI (push & PR)
+name: CI (push)
 
 on:
   push:
@@ -30,10 +30,6 @@ on:
           - android
           - sync
           - watch-script
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
 
 permissions:
   contents: read

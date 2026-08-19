@@ -37,15 +37,44 @@ trap cleanup EXIT
 rm -rf "${PARIKSHAN_ROOT}/samples/multiplatform-showcase/composeApp/build/parikshan/active-session.json"
 rm -rf "${PARIKSHAN_ROOT}/samples/multiplatform-showcase/composeApp/build/parikshan/sessions"
 
-EXTRA_ARGS="$*"
+ENVIRONMENT="local"
+TARGETS_ARG=""
+EXTRA_ARGS=()
+
+for arg in "$@"; do
+  case "$arg" in
+    --environment=ci|--ci)
+      ENVIRONMENT="ci"
+      ;;
+    --environment=local|--local)
+      ENVIRONMENT="local"
+      ;;
+    --targets=*)
+      TARGETS_ARG="$arg"
+      ;;
+    *)
+      EXTRA_ARGS+=("$arg")
+      ;;
+  esac
+done
+
+if [ -n "${TARGETS_ARG}" ]; then
+  FINAL_TARGETS="${TARGETS_ARG}"
+elif [ "${ENVIRONMENT}" == "ci" ] || [ "${CI}" == "true" ]; then
+  FINAL_TARGETS="--targets=jvm,wasm"
+else
+  FINAL_TARGETS=""
+fi
 
 # 1. Start Watch Mode Process
-echo "==> Step 1: Starting watch mode process (extra args: ${EXTRA_ARGS:-none})..."
+echo "==> Step 1: Starting watch mode process (environment: ${ENVIRONMENT}, targets: ${FINAL_TARGETS:-all}, extra args: ${EXTRA_ARGS[*]:-none})..."
 "${PARIKSHAN_ROOT}/gradlew" :samples:multiplatform-showcase:composeApp:e2eTest \
   --tests=sample.app.AccessibilityIntegrationTest.testSubtextMatching \
   --watch \
   --window-size=360x720 \
-  --layout=side-by-side ${EXTRA_ARGS} > "${LOG_FILE}" 2>&1 &
+  --layout=side-by-side \
+  ${FINAL_TARGETS} \
+  ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} > "${LOG_FILE}" 2>&1 &
 WATCH_PID=$!
 echo "   Watch process started with PID: ${WATCH_PID}"
 

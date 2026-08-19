@@ -282,10 +282,9 @@ jobs:
           restore-keys: konan-${{ runner.os }}-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-      - name: Pre-boot Simulator
+      - name: List Available Simulators
         run: |
-          xcrun simctl list devices
-          xcrun simctl boot "iPhone 15" || true
+          xcrun simctl list devices available
       - name: Pre-compile Kotlin Native Framework
         run: |
           ./gradlew :samples:multiplatform-showcase:composeApp:linkDebugFrameworkIosSimulatorArm64 -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
@@ -323,10 +322,9 @@ jobs:
           restore-keys: konan-${{ runner.os }}-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-      - name: Pre-boot Simulator
+      - name: List Available Simulators
         run: |
-          xcrun simctl list devices
-          xcrun simctl boot "iPhone 15" || true
+          xcrun simctl list devices available
       - name: Pre-compile Kotlin Native Framework
         working-directory: samples/cmp-latest
         run: |
@@ -366,10 +364,9 @@ jobs:
           restore-keys: konan-${{ runner.os }}-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-      - name: Pre-boot Simulator
+      - name: List Available Simulators
         run: |
-          xcrun simctl list devices
-          xcrun simctl boot "iPhone 15" || true
+          xcrun simctl list devices available
       - name: Pre-compile Kotlin Native Framework
         working-directory: samples/issue-playground
         run: |
@@ -409,10 +406,9 @@ jobs:
           restore-keys: konan-${{ runner.os }}-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-      - name: Pre-boot Simulator
+      - name: List Available Simulators
         run: |
-          xcrun simctl list devices
-          xcrun simctl boot "iPhone 15" || true
+          xcrun simctl list devices available
       - name: Pre-compile Kotlin Native Framework
         working-directory: samples/composables-sample
         run: |

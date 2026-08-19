@@ -2,6 +2,14 @@
 set -eo pipefail
 
 PARIKSHAN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+START_TIME=$(date +%s)
+
+format_duration() {
+  local elapsed=$(($(date +%s) - START_TIME))
+  local mins=$((elapsed / 60))
+  local secs=$((elapsed % 60))
+  echo "${mins}m ${secs}s (${elapsed} seconds)"
+}
 
 # Parse optional flags
 PUBLISH_MAVEN=false
@@ -126,6 +134,7 @@ pkill -f '.*org.gradle.launcher.daemon.bootstrap.GradleDaemon.*' || true
 echo "============================================================="
 echo " SUCCESS: All library unit tests, sample project matrix E2E"
 echo " tests, task existence audits, and external project tests PASSED!"
+echo " Total Execution Time: $(format_duration)"
 echo "============================================================="
 
 

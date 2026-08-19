@@ -251,21 +251,21 @@ internal class WasmDriver private constructor(
               var rawVideoPath: Path? = null
               repeat(50) { attempt ->
                   rawVideoPath = runCatching { videoObj?.path() }.getOrNull()
-                  if (rawVideoPath != null && Files.exists(rawVideoPath!!) && Files.size(rawVideoPath!!) > 0) {
+                  if (rawVideoPath != null && Files.exists(rawVideoPath) && Files.size(rawVideoPath) > 0) {
                       return@repeat
                   }
                   delay(100)
               }
 
-              if (rawVideoPath != null && Files.exists(rawVideoPath!!) && Files.size(rawVideoPath!!) > 0) {
+              if (rawVideoPath != null && Files.exists(rawVideoPath) && Files.size(rawVideoPath) > 0) {
                 val finalVideoPath = Paths.get(targetPath)
                 finalVideoPath.parent?.let { Files.createDirectories(it) }
                 try {
-                  Files.copy(rawVideoPath!!, finalVideoPath, StandardCopyOption.REPLACE_EXISTING)
+                  Files.copy(rawVideoPath, finalVideoPath, StandardCopyOption.REPLACE_EXISTING)
                   val size = Files.size(finalVideoPath)
                   System.err.println("WasmVideo: Successfully saved recording to $targetPath (bytes=$size)")
                   registerWasmVideoPath(targetPath)
-                  runCatching { Files.deleteIfExists(rawVideoPath!!) }
+                  runCatching { Files.deleteIfExists(rawVideoPath) }
                 } catch (e: Throwable) {
                   System.err.println("WasmVideo: Error copying video to $targetPath: ${e.message}")
                   e.printStackTrace()

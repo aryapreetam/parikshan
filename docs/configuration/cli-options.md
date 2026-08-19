@@ -7,7 +7,7 @@ Parikshan supports execution configuration through Gradle command-line flags on 
 ## Configuration Models
 
 * **Unified `e2eTest` Task (Recommended for multi-target workflows):**
-  Accepts task command-line options (`--<option>`) and convenience task arguments (`video`, `background`):
+  Accepts task command-line options (`--<option>`) and convenience task arguments (`video`):
   ```bash
   ./gradlew e2eTest video --targets=desktop,wasm --layout=side-by-side
   ```

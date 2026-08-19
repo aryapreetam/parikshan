@@ -113,8 +113,11 @@ wait_for_log "Latest: ([1-9][0-9]*|2) PASSED, 0 FAILED" "Initial run PASS status
 
 # 3. Inject Failure into Test File
 echo "==> Step 3: Injecting failing assertion on line 68 of test file..."
-sed -i '' 's/assertVisible("This is a sample text")/assertVisible("This text does not exist anywhere")/' "${TEST_FILE}" || \
-sed -i 's/assertVisible("This is a sample text")/assertVisible("This text does not exist anywhere")/' "${TEST_FILE}"
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  sed -i '' 's/assertVisible("This is a sample text")/assertVisible("This text does not exist anywhere")/' "${TEST_FILE}"
+else
+  sed -i 's/assertVisible("This is a sample text")/assertVisible("This text does not exist anywhere")/' "${TEST_FILE}"
+fi
 
 # 4. Wait for FAIL Detection
 wait_for_log "Latest: 0 PASSED, ([1-9][0-9]*|2) FAILED" "Watch mode FAIL detection" 360

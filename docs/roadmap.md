@@ -7,10 +7,10 @@ This document outlines accomplished milestones, active capabilities, and upcomin
 ## Accomplished Milestones
 
 * **Multi-Target End-to-End Execution:** End-to-End UI test automation implemented and verified across all target platforms: Desktop (JVM), Web (WasmJs), Android, and iOS Simulator.
-* **Window Sizing & Layout Control (0.0.7):** Dynamic runtime resizing and positioning of Desktop JVM and Web (WasmJs) application windows (`--layout=side-by-side`, `--window-size=<w>x<h>`, `--app-mode`).
-* **Synchronized Multi-Target Mode (0.0.7):** Concurrent execution mode (`--sync`) where test steps synchronize across targets via lockstep barrier coordination.
-* **Watch Mode & Keep-Alive Engine (0.0.7):** Continuous test runner watching source file modifications (`--watch`) and persistent test sessions (`--keep-alive`).
-* **Configuration Cache & Mobile-Only KMP Support (0.0.7):** Full Gradle Configuration Cache compatibility and support for mobile-only projects lacking explicit Desktop/JVM targets.
+* **Window Sizing & Layout Control (0.0.8):** Dynamic runtime resizing and positioning of Desktop JVM and Web (WasmJs) application windows (`--layout=side-by-side`, `--window-size=<w>x<h>`, `--app-mode`).
+* **Synchronized Multi-Target Mode (0.0.8):** Concurrent execution mode (`--sync`) where test steps synchronize across targets via lockstep barrier coordination.
+* **Watch Mode & Keep-Alive Engine (0.0.8):** Continuous test runner watching source file modifications (`--watch`) and persistent test sessions (`--keep-alive`).
+* **Configuration Cache & Mobile-Only KMP Support (0.0.8):** Full Gradle Configuration Cache compatibility and support for mobile-only projects lacking explicit Desktop/JVM targets.
 
 ---
 

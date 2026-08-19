@@ -1,6 +1,6 @@
 ---
 date: 2026-08-16
-description: Introducing runtime window sizing and positioning, synchronized multi-target execution, and continuous watch mode in Parikshan 0.0.7.
+description: Introducing runtime window sizing and positioning, synchronized multi-target execution, and continuous watch mode in Parikshan 0.0.8.
 categories:
   - Releases
   - E2E Testing
@@ -8,7 +8,7 @@ categories:
 
 # Supporting Window Layouts (Size, Position), Sync, and Watch Mode
 
-Parikshan 0.0.7 adds runtime window layout and sizing controls, synchronized multi-target execution (`--sync`), continuous watch mode (`--watch`), and fixes several community-reported edge cases.
+Parikshan 0.0.8 adds runtime window layout and sizing controls, synchronized multi-target execution (`--sync`), continuous watch mode (`--watch`), and fixes several community-reported edge cases.
 
 <!-- more -->
 
@@ -22,7 +22,7 @@ Here is a breakdown of why these features were built, how they work, and what is
 When running tests during active development, Desktop JVM and Web (WasmJs) windows default to opening in the center of the screen, covering the IDE or terminal. Additionally, testing how an application renders on mobile viewports previously required booting up heavy Android emulators or iOS simulators rather than simply resizing Desktop or Web windows to mobile dimensions.
 
 ### The Solution
-Parikshan 0.0.7 introduces direct CLI options to control window geometry and screen placement:
+Parikshan 0.0.8 introduces direct CLI options to control window geometry and screen placement:
 
 * **Uniform Sizing:** `--window-size=<width>x<height>` resizes both Desktop and Web viewports (for example, `--window-size=360x720` for mobile testing).
 * **Target-Specific Overrides:** `--desktop-window-size`, `--desktop-window-position`, `--wasm-window-size`, and `--wasm-window-position` give granular control over individual targets.

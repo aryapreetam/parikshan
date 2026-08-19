@@ -10,8 +10,8 @@ body:
     id: version
     attributes:
       label: Parikshan Version
-      description: The version of Parikshan you are using (e.g. 0.0.7).
-      placeholder: "0.0.7"
+      description: The version of Parikshan you are using (e.g. 0.0.8).
+      placeholder: "0.0.8"
     validations:
       required: true
   - type: dropdown

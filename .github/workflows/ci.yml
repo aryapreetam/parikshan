@@ -482,6 +482,8 @@ jobs:
       - e2e-ios-issue-playground
       - e2e-ios-composables
       - dex-pollution-audit
+      - e2e-watch-script
+      - e2e-sync
     steps:
       - name: Verify all required jobs passed
         run: |

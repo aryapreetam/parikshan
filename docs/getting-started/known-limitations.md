@@ -19,31 +19,10 @@ You can reference our implementation of this workaround in [OverlayIntegrationTe
 
 ```kotlin
 if (isIos()) {
-    relaunchApp()
-    navigateToSection("nav_overlay_playground")
-    assertVisible("overlay_playground_screen")
+  relaunchApp() 
+  navigateToSection("nav_overlay_playground")
+  assertVisible("overlay_playground_screen")
 }
-```
-
----
-
-## WASM Viewport Height Sensitivity
-
-### Symptom
-When testing the DatePicker component in input mode, tests fail if the WASM viewport height is configured above `600` or `650` pixels.
-
-### Cause
-The DatePicker component's adaptive layout shifts its child elements depending on the viewport size. At heights above 600px, the input field coordinates shift or scale, causing them to fall outside the interactive viewport bounds resolved by the browser driver.
-
-### Workaround
-Ensure the WASM viewport is configured to a height of exactly `600` pixels.
-
-You can reference the default WASM configuration limits in [ParikshanWasmConfig.kt](file:///Users/preetam/workspace/parikshan/parikshan-client/src/jvmMain/kotlin/io/github/aryapreetam/parikshan/client/ParikshanWasmConfig.kt#L13-L15):
-
-```kotlin
-// In ParikshanWasmConfig.kt
-private const val DEFAULT_VIEWPORT_WIDTH = 800
-private const val DEFAULT_VIEWPORT_HEIGHT = 600 // Height must remain <= 600 to prevent DatePicker resolution failures
 ```
 
 ---
@@ -138,4 +117,16 @@ Configure your web application target as `wasmJs` when running end-to-end tests:
 # Unified test runner
 ./gradlew e2eTest --targets=wasm
 ```
+
+---
+
+## Host JVM Target Requirement
+
+### Limitation
+Compose Multiplatform projects targeting WebAssembly (`wasmJs`) or iOS (`iosArm64`, `iosSimulatorArm64`, `iosX64`) require at least one JVM/Desktop target (such as `jvm()` or `jvm("desktop")`) or an Android target declared in `build.gradle.kts` to execute host-driven E2E tests.
+
+### Cause
+Parikshan is a host-driven automation framework. The test runner (`e2eTest`, `e2eWasmTest`, `e2eIosTest`) executes on your host machine inside a JUnit 5 (JVM) process to orchestrate Chromium via Playwright or iOS Simulators via HTTP. 
+
+When a project is configured exclusively for Wasm and/or iOS without a JVM target, Kotlin Multiplatform produces only `.wasm` and iOS native Mach-O binaries—no Java `.class` bytecode is generated for `commonTest`.
 

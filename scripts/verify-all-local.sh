@@ -105,28 +105,13 @@ else
   echo "==> Step 2: Skipping publishToMavenLocal (pass --publish to enable)."
 fi
 
-# -------------------------------------------------------------
-# 4. External Repository Test: ~/projects/kmp-mobile
-# -------------------------------------------------------------
-KMP_MOBILE_DIR="${HOME}/projects/kmp-mobile"
-if [ -d "${KMP_MOBILE_DIR}" ]; then
-  echo "==> Step 4a: Testing ~/projects/kmp-mobile [branch: main]..."
-  cd "${KMP_MOBILE_DIR}"
-  git checkout main
-  if [ "${PUBLISH_MAVEN}" = true ]; then
-    ./gradlew e2eTest --refresh-dependencies
-  else
-    ./gradlew e2eTest
-  fi
-  echo "==> Step 4b: Testing ~/projects/kmp-mobile [branch: check-cmp-1.10.1]..."
-  git checkout check-cmp-1.10.1
-  ./gradlew e2eTest
-  # cleanup
-  ./gradlew --stop
-
-  cd "${PARIKSHAN_ROOT}"
-else
-  echo "WARNING: ${KMP_MOBILE_DIR} directory not found; skipping external repo tests."
+# -------------------------------------------------------------                                                                                                             
+# 4. External Repository Test: ~/projects/kmp-mobile                                                                                                                        
+# -------------------------------------------------------------                                                                                                             
+KMP_MOBILE_SCRIPT="${HOME}/projects/kmp-mobile/scripts/verify-all-cmp.sh"                                                                                                   
+if [ -x "${KMP_MOBILE_SCRIPT}" ] || [ -f "${KMP_MOBILE_SCRIPT}" ]; then                                                                                                     
+  echo "==> Step 4: Running external tests for ~/projects/kmp-mobile..."                                                                                                    
+  bash "${KMP_MOBILE_SCRIPT}"                                                                                                                                               
 fi
                                                                                                                                                                   
 pkill -f '.*org.gradle.launcher.daemon.bootstrap.GradleDaemon.*' || true

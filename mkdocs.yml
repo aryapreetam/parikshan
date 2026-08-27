@@ -57,6 +57,7 @@ markdown_extensions:
         - name: mermaid
           class: mermaid
           format: !!python/name:pymdownx.superfences.fence_code_format
+  - md_in_html
   - pymdownx.tabbed:
       alternate_style: true
 
@@ -72,7 +73,10 @@ nav:
   - Plugins: advanced/plugins.md
   - Roadmap: roadmap.md
   - User Guides:
-      - Your First Test: guides/your-first-test.md
+      - Compose Multiplatform (KMP):
+          - Your First Test: guides/your-first-test.md
+          - Testing Forms & Inputs: guides/forms-and-inputs.md
+      - Standalone Android: guides/first-test-android.md
   - Blog:
       - blog/index.md
   - Reference:

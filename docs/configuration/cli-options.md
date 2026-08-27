@@ -7,9 +7,9 @@ Parikshan supports execution configuration through Gradle command-line flags on 
 ## Configuration Models
 
 * **Unified `e2eTest` Task (Recommended for multi-target workflows):**
-  Accepts task command-line options (`--<option>`) and convenience task arguments (`video`):
+  Accepts task command-line options (`--<option>`):
   ```bash
-  ./gradlew e2eTest video --targets=desktop,wasm --layout=side-by-side
+  ./gradlew e2eTest --video --targets=desktop,wasm --layout=side-by-side
   ```
 * **Target-Specific Tasks (`e2eDesktopTest`, `e2eWasmTest`, `e2eAndroidTest`, `e2eIosTest`):**
   Standard Gradle `Test` tasks that accept JVM system properties and Gradle properties:
@@ -25,8 +25,8 @@ Parikshan supports execution configuration through Gradle command-line flags on 
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `--targets` | String | Configured targets | Comma-separated list of targets (`desktop`, `wasm`, `android`, `ios`) | `--targets=desktop,wasm` | N/A |
 | `--tests` | String | All tests | Class or method filter pattern | `--tests="sample.app.LoginTest"` | `--tests="..."` |
-| `video` | Flag | `false` | Enables MP4 video recording per test execution (not supported with `--sync` or `--watch`) | `video` | `-Dparikshan.video.enabled=true` |
-| `background` | Flag | `false` | Runs tests in headless / background mode | `background` | `-Dparikshan.background=true` |
+| `--video` | Flag | `false` | Enables MP4 video recording per test execution (not supported with `--sync` or `--watch`) | `--video` | `-Dparikshan.video.enabled=true` |
+| `--background` | Flag | `false` | Runs tests in headless / background mode | `--background` | `-Dparikshan.background=true` |
 | `--layout` | String | `default` | Layout presentation mode: `default` or `side-by-side` | `--layout=side-by-side` | N/A |
 | `--window-size` | String | Target default | Global window geometry applied uniformly to Desktop and Wasm | `--window-size=360x720` | `-Dparikshan.desktop.width=...` |
 | `--desktop-window-size` | String | Auto | Desktop-specific window dimensions (`<width>x<height>`) | `--desktop-window-size=400x800` | `-Dparikshan.desktop.width=...` |
@@ -87,8 +87,8 @@ By default, Web (Wasm) launches inside a standard browser window with navigation
 
 In synchronized mode, Parikshan drives all specified targets concurrently using a step-barrier model. Every command is dispatched to all target drivers in parallel, and the test runner waits for all targets to finish before advancing to the next step.
 
-> [!NOTE]
-> Video recording is currently not supported during synchronized multi-target (`--sync`) execution. Video recording remains fully supported for standard multi-target runs (`e2eTest --targets=desktop,wasm`) and individual target tasks.
+!!! note
+    Video recording is currently not supported during synchronized multi-target (`--sync`) execution. Video recording remains fully supported for standard multi-target runs (`e2eTest --targets=desktop,wasm`) and individual target tasks.
 
 !!! tip "Recommended Workflow"
     Synchronized mode is designed for focused cross-platform verification during development. We recommend running `--sync` against a single test scenario:
@@ -103,8 +103,8 @@ In synchronized mode, Parikshan drives all specified targets concurrently using 
 
 Watch mode monitors project source files and re-executes tests automatically when changes are saved.
 
-> [!NOTE]
-> Video recording is not supported in continuous watch mode (`--watch`).
+!!! note
+    Video recording is not supported in continuous watch mode (`--watch`).
 
 !!! tip "Recommended Workflow"
     Use watch mode for rapid TDD iterations targeting a single test scenario:

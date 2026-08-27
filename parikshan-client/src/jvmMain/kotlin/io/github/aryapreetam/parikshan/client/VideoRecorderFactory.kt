@@ -2,7 +2,7 @@ package io.github.aryapreetam.parikshan.client
 
 import io.github.aryapreetam.parikshan.TestDriver
 
-object VideoRecorderFactory {
+internal object VideoRecorderFactory {
   fun create(
     target: String,
     driver: TestDriver,

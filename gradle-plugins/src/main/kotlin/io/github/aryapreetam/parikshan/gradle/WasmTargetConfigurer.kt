@@ -17,7 +17,6 @@ internal object WasmTargetConfigurer {
     isBackgroundRequested: Boolean,
     isVideoRequested: Boolean,
     e2eTestClasses: List<String>,
-    hostTestTask: TaskProvider<Test>,
     wasmOutputDir: File,
     wasmPortFile: File,
     prepareWasmAssetsTask: TaskProvider<Task>,
@@ -65,7 +64,6 @@ internal object WasmTargetConfigurer {
       dependsOn(installPlaywrightTask, startWasmTask)
       finalizedBy("stopParikshanWasmApp")
       configureE2eHostTestExecution(
-        hostTestTaskProvider = hostTestTask,
         e2eTestClasses = e2eTestClasses,
         target = "Wasm",
         logger = logger

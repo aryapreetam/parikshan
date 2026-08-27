@@ -82,7 +82,7 @@ class TargetMatrixTest {
   }
 
   @Test
-  fun `test Wasm only project configuration`() {
+  fun `test Wasm only project configuration without JVM target emits guidance`() {
     val project = createProject()
     project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
@@ -90,8 +90,12 @@ class TargetMatrixTest {
     project.pluginManager.apply("io.github.aryapreetam.parikshan")
     evaluate(project)
 
-    assertNotNull(project.tasks.findByName("e2eWasmTest"), "e2eWasmTest task should be registered")
-    assertNotNull(project.tasks.findByName("e2eTest"), "e2eTest task should be registered")
+    val exception = kotlin.test.assertFailsWith<Throwable> {
+      project.tasks.getByName("e2eTest")
+    }
+    val fullMessage = generateSequence(exception) { it.cause }.mapNotNull { it.message }.joinToString(" ")
+    assertTrue(fullMessage.contains("No JVM host target found"), "Message should mention missing JVM host target: $fullMessage")
+    assertTrue(fullMessage.contains("known-limitations/#host-jvm-target-requirement"), "Message should include docs link: $fullMessage")
   }
 
   @Test
@@ -108,7 +112,7 @@ class TargetMatrixTest {
   }
 
   @Test
-  fun `test iOS only project configuration`() {
+  fun `test iOS only project configuration without JVM target emits guidance`() {
     val project = createProject()
     project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
@@ -116,7 +120,30 @@ class TargetMatrixTest {
     project.pluginManager.apply("io.github.aryapreetam.parikshan")
     evaluate(project)
 
-    assertNotNull(project.tasks.findByName("e2eIosTest"), "e2eIosTest task should be registered")
+    val exception = kotlin.test.assertFailsWith<Throwable> {
+      project.tasks.getByName("e2eTest")
+    }
+    val fullMessage = generateSequence(exception) { it.cause }.mapNotNull { it.message }.joinToString(" ")
+    assertTrue(fullMessage.contains("No JVM host target found"), "Message should mention missing JVM host target: $fullMessage")
+    assertTrue(fullMessage.contains("known-limitations/#host-jvm-target-requirement"), "Message should include docs link: $fullMessage")
+  }
+
+  @Test
+  fun `test Wasm and iOS only project configuration without JVM target emits guidance`() {
+    val project = createProject()
+    project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+    val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+    kmp.wasmJs { browser() }
+    kmp.iosSimulatorArm64()
+    project.pluginManager.apply("io.github.aryapreetam.parikshan")
+    evaluate(project)
+
+    val exception = kotlin.test.assertFailsWith<Throwable> {
+      project.tasks.getByName("e2eTest")
+    }
+    val fullMessage = generateSequence(exception) { it.cause }.mapNotNull { it.message }.joinToString(" ")
+    assertTrue(fullMessage.contains("No JVM host target found"), "Message should mention missing JVM host target: $fullMessage")
+    assertTrue(fullMessage.contains("known-limitations/#host-jvm-target-requirement"), "Message should include docs link: $fullMessage")
   }
 
   @Test
@@ -149,7 +176,7 @@ class TargetMatrixTest {
 
     assertNotNull(project.tasks.findByName("e2eAndroidTest"), "e2eAndroidTest task should be registered")
     assertNotNull(project.tasks.findByName("e2eIosTest"), "e2eIosTest task should be registered")
-    assertNotNull(project.tasks.findByName("parikshanHostTest"), "parikshanHostTest fallback should be registered")
+    assertNotNull(project.tasks.findByName("e2eTest"), "e2eTest task should be registered")
   }
 
   @Test
@@ -267,10 +294,11 @@ class TargetMatrixTest {
   }
 
   @Test
-  fun `test Wasm only project registers Playwright and Wasm asset tasks`() {
+  fun `test Wasm project registers Playwright and Wasm asset tasks`() {
     val project = createProject()
     project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+    kmp.jvm("desktop")
     kmp.wasmJs { browser() }
 
     project.pluginManager.apply("io.github.aryapreetam.parikshan")
@@ -329,7 +357,7 @@ class TargetMatrixTest {
   }
 
   @Test
-  fun `test iOS only KMP project without Android or JVM does not crash`() {
+  fun `test iOS only KMP project without Android or JVM emits guidance`() {
     val project = createProject()
     project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
@@ -338,12 +366,12 @@ class TargetMatrixTest {
     project.pluginManager.apply("io.github.aryapreetam.parikshan")
     evaluate(project)
 
-    assertNotNull(project.tasks.findByName("e2eIosTest"))
-    kotlin.test.assertNull(project.tasks.findByName("e2eDesktopTest"))
-    kotlin.test.assertNull(project.tasks.findByName("e2eAndroidTest"))
-
-    val e2eTask = project.tasks.findByName("e2eTest") as E2ETestTask
-    assertEquals("ios", e2eTask.targets)
+    val exception = kotlin.test.assertFailsWith<Throwable> {
+      project.tasks.getByName("e2eTest")
+    }
+    val fullMessage = generateSequence(exception) { it.cause }.mapNotNull { it.message }.joinToString(" ")
+    assertTrue(fullMessage.contains("No JVM host target found"), "Message should mention missing JVM host target: $fullMessage")
+    assertTrue(fullMessage.contains("known-limitations/#host-jvm-target-requirement"), "Message should include docs link: $fullMessage")
   }
 
   @Test
@@ -436,6 +464,7 @@ class TargetMatrixTest {
     project.extensions.extraProperties.set("parikshan.e2e.active", "true")
     project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+    kmp.jvm("desktop")
     kmp.iosSimulatorArm64()
 
     project.pluginManager.apply("io.github.aryapreetam.parikshan")

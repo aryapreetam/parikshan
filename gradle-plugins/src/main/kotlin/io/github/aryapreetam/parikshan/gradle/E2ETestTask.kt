@@ -76,6 +76,9 @@ abstract class E2ETestTask : DefaultTask() {
   @set:Option(option = "app-mode", description = "Launches target client in standalone app mode (hiding browser chrome/toolbars for Wasm).")
   var appMode: Boolean = false
 
+  @get:Input
+  @set:Option(option = "video", description = "Enable MP4 video recording across running targets.")
+  var video: Boolean = false
 
   @get:Input
   @set:Option(option = "reclaim-ports", description = "Force terminate conflicting active sessions of other applications on default ports.")
@@ -1307,6 +1310,9 @@ abstract class E2ETestTask : DefaultTask() {
     if (keepAlive) {
       pbArgs.add("-Dparikshan.keepAlive=true")
     }
+    if (video) {
+      pbArgs.add("-Dparikshan.video.enabled=true")
+    }
 
     val reportsDir = File(buildDir.get().asFile, "test-results/e2eTest/$target/$testClass").absolutePath
     pbArgs.add("-Dparikshan.video.outputDir=" + File(buildDir.get().asFile, "parikshan/videos/$target").absolutePath)
@@ -1404,6 +1410,9 @@ abstract class E2ETestTask : DefaultTask() {
     }
     if (keepAlive) {
       pbArgs.add("-Dparikshan.keepAlive=true")
+    }
+    if (video) {
+      pbArgs.add("-Dparikshan.video.enabled=true")
     }
 
     val reportsDirFile = File(buildDir.get().asFile, "test-results/e2eTest/$target")

@@ -5,7 +5,7 @@ import io.github.aryapreetam.parikshan.protocol.Command
 import io.github.aryapreetam.parikshan.protocol.Response
 import java.io.File
 
-class DesktopVideoRecorder(
+internal class DesktopVideoRecorder(
   @Volatile private var driver: TestDriver,
   private val config: ParikshanVideoConfig
 ) : VideoRecorder {
@@ -86,6 +86,10 @@ class DesktopVideoRecorder(
     if (!isRecording) return null
     isRecording = false
     
+    if (config.postRollMs > 0) {
+      kotlinx.coroutines.delay(config.postRollMs)
+    }
+
     val path = currentOutputPath
     val outputDir = currentOutputDir
     val session = activeSessionName

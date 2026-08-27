@@ -18,7 +18,6 @@ internal object IosTargetConfigurer {
     isBackgroundRequested: Boolean,
     isVideoRequested: Boolean,
     e2eTestClasses: List<String>,
-    hostTestTask: TaskProvider<Test>,
     prepareIosBootSourceTask: TaskProvider<Task>?
   ) {
     val iosProjectDirVal = project.projectDir
@@ -104,7 +103,6 @@ internal object IosTargetConfigurer {
       dependsOn(startIosAppTask)
       finalizedBy(stopIosAppTask)
       configureE2eHostTestExecution(
-        hostTestTaskProvider = hostTestTask,
         e2eTestClasses = e2eTestClasses,
         target = "iOS",
         logger = logger

@@ -3,7 +3,7 @@ package io.github.aryapreetam.parikshan.client
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-class IosVideoRecorder(
+internal class IosVideoRecorder(
   private val udid: String,
   private val postRollMs: Long
 ) : VideoRecorder {

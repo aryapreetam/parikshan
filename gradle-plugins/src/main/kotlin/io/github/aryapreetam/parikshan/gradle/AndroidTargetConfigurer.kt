@@ -18,8 +18,7 @@ internal object AndroidTargetConfigurer {
     isE2EActive: Boolean,
     isBackgroundRequested: Boolean,
     isVideoRequested: Boolean,
-    e2eTestClasses: List<String>,
-    hostTestTask: org.gradle.api.tasks.TaskProvider<Test>
+    e2eTestClasses: List<String>
   ) {
     val androidProjectDirVal = project.projectDir
     
@@ -80,10 +79,10 @@ internal object AndroidTargetConfigurer {
     val stopAndroidAppTask = project.tasks.register("stopParikshanAndroidApp", ParikshanStopAndroidTask::class.java)
     stopAndroidAppTask.configure {
       group = "verification"
-      androidSerial.set(androidSerialVal)
-      port.set(portProvider)
-      applicationId.set(androidApplicationIdProvider)
-      projectDir.set(projDirProvider.asFile)
+      this.androidSerial.set(androidSerialVal)
+      this.port.set(portProvider)
+      this.applicationId.set(androidApplicationIdProvider)
+      this.projectDir.set(projDirProvider.asFile)
     }
 
     val startAndroidAppTask = project.tasks.register("startParikshanAndroidApp", ParikshanStartAndroidTask::class.java)
@@ -107,7 +106,6 @@ internal object AndroidTargetConfigurer {
       dependsOn(startAndroidAppTask)
       finalizedBy("stopParikshanAndroidApp")
       configureE2eHostTestExecution(
-        hostTestTaskProvider = hostTestTask,
         e2eTestClasses = e2eTestClasses,
         target = "Android",
         logger = logger

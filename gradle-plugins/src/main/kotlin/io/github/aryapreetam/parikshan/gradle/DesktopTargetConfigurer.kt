@@ -19,7 +19,6 @@ internal object DesktopTargetConfigurer {
     isBackgroundRequested: Boolean,
     isVideoRequested: Boolean,
     e2eTestClasses: List<String>,
-    hostTestTask: TaskProvider<Test>,
     desktopLaunchManifestFile: File,
     targetName: String
   ) {
@@ -134,7 +133,6 @@ internal object DesktopTargetConfigurer {
       finalizedBy(stopTaskName)
 
       configureE2eHostTestExecution(
-        hostTestTaskProvider = hostTestTask,
         e2eTestClasses = e2eTestClasses,
         target = capitalizedTarget,
         logger = logger

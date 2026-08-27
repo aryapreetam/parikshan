@@ -3,7 +3,7 @@ package io.github.aryapreetam.parikshan.client
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-class AndroidVideoRecorder(
+internal class AndroidVideoRecorder(
   private val serial: String,
   private val postRollMs: Long
 ) : VideoRecorder {

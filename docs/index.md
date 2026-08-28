@@ -9,8 +9,8 @@
   <a href="https://github.com/aryapreetam/parikshan/actions/workflows/release.yml">
     <img src="https://github.com/aryapreetam/parikshan/actions/workflows/release.yml/badge.svg" alt="Release status">
   </a>
-  <a href="https://mvnrepository.com/artifact/io.github.aryapreetam/parikshan">
-    <img src="https://img.shields.io/maven-central/v/io.github.aryapreetam/parikshan?label=Maven%20Central&color=blue" alt="Maven Central Version">
+  <a href="https://mvnrepository.com/artifact/io.github.aryapreetam.parikshan/parikshan">
+    <img src="https://img.shields.io/maven-central/v/io.github.aryapreetam.parikshan/parikshan?label=Maven%20Central&color=blue" alt="Maven Central Version">
   </a>
   <a href="https://github.com/aryapreetam/parikshan/actions/workflows/push-ci.yml">
     <img src="https://img.shields.io/badge/Coverage-Kover-brightgreen" alt="Code Coverage">
@@ -41,7 +41,7 @@ In your shared library module (e.g. `:composeApp`) `build.gradle.kts`:
 
 ```kotlin
 plugins {
-  id("io.github.aryapreetam.parikshan") version "0.0.8"
+  id("io.github.aryapreetam.parikshan") version "0.0.9"
 }
 ```
 

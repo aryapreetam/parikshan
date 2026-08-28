@@ -5,7 +5,7 @@ import io.github.aryapreetam.parikshan.protocol.Command
 import java.io.File
 import kotlin.random.Random
 
-class WasmVideoRecorder(
+internal class WasmVideoRecorder(
   private val driver: TestDriver
 ) : VideoRecorder {
   private var activePath: String? = null

@@ -29,31 +29,6 @@ public final class io/github/aryapreetam/parikshan/MultiTargetFailureException :
 	public fun <init> (Ljava/lang/String;)V
 }
 
-public final class io/github/aryapreetam/parikshan/client/AndroidVideoRecorder : io/github/aryapreetam/parikshan/client/VideoRecorder {
-	public static final field $stable I
-	public fun <init> (Ljava/lang/String;J)V
-	public fun start (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public fun stop (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-}
-
-public final class io/github/aryapreetam/parikshan/client/DesktopVideoRecorder : io/github/aryapreetam/parikshan/client/VideoRecorder {
-	public static final field $stable I
-	public fun <init> (Lio/github/aryapreetam/parikshan/TestDriver;Lio/github/aryapreetam/parikshan/client/ParikshanVideoConfig;)V
-	public final fun getSegments ()Ljava/util/List;
-	public final fun pause ()V
-	public final fun resume ()V
-	public fun start (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public fun stop (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public final fun updateDriver (Lio/github/aryapreetam/parikshan/TestDriver;)V
-}
-
-public final class io/github/aryapreetam/parikshan/client/IosVideoRecorder : io/github/aryapreetam/parikshan/client/VideoRecorder {
-	public static final field $stable I
-	public fun <init> (Ljava/lang/String;J)V
-	public fun start (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public fun stop (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-}
-
 public final class io/github/aryapreetam/parikshan/client/ParikshanClient {
 	public static final field $stable I
 	public fun <init> ()V
@@ -170,18 +145,5 @@ public final class io/github/aryapreetam/parikshan/client/VideoGranularity : jav
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lio/github/aryapreetam/parikshan/client/VideoGranularity;
 	public static fun values ()[Lio/github/aryapreetam/parikshan/client/VideoGranularity;
-}
-
-public final class io/github/aryapreetam/parikshan/client/VideoRecorderFactory {
-	public static final field $stable I
-	public static final field INSTANCE Lio/github/aryapreetam/parikshan/client/VideoRecorderFactory;
-	public final fun create (Ljava/lang/String;Lio/github/aryapreetam/parikshan/TestDriver;Lio/github/aryapreetam/parikshan/client/ParikshanVideoConfig;)Lio/github/aryapreetam/parikshan/client/VideoRecorder;
-}
-
-public final class io/github/aryapreetam/parikshan/client/WasmVideoRecorder : io/github/aryapreetam/parikshan/client/VideoRecorder {
-	public static final field $stable I
-	public fun <init> (Lio/github/aryapreetam/parikshan/TestDriver;)V
-	public fun start (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public fun stop (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 

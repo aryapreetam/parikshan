@@ -18,11 +18,11 @@ on:
   workflow_dispatch:
     inputs:
       include_api:
-        description: 'Build and deploy Dokka API Docs (/api)'
+        description: 'Build API Docs from current branch (main) instead of latest release tag'
         type: boolean
         default: false
       include_demo:
-        description: 'Build and deploy Wasm Demo (/demo)'
+        description: 'Build Wasm Demo from current branch (main) instead of latest release tag'
         type: boolean
         default: false
 
@@ -42,6 +42,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -60,34 +62,68 @@ jobs:
         run: touch site/.nojekyll
 
       - name: Set up JDK for Gradle
-        if: github.event_name == 'workflow_dispatch' && (inputs.include_api || inputs.include_demo)
+        if: github.event_name != 'pull_request'
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '21'
 
       - name: Setup Gradle
-        if: github.event_name == 'workflow_dispatch' && (inputs.include_api || inputs.include_demo)
+        if: github.event_name != 'pull_request'
         uses: gradle/actions/setup-gradle@v3
 
-      # Build API Docs (Only if manually requested via workflow_dispatch)
+      # Build API Docs (From main if flag is set, otherwise from latest release tag)
       - name: Build & Prepare API Docs
-        if: github.event_name == 'workflow_dispatch' && inputs.include_api
+        if: github.event_name != 'pull_request'
         run: |
-          ./gradlew :parikshan:dokkaGeneratePublicationHtml
+          if [ "${{ github.event_name == 'workflow_dispatch' && inputs.include_api }}" = "true" ]; then
+            echo "==> Building Dokka API Docs from current branch..."
+            ./gradlew :parikshan:dokkaGeneratePublicationHtml
+          else
+            echo "==> Building Dokka API Docs from latest release tag..."
+            INITIAL_REF=$(git rev-parse HEAD)
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -n "$LATEST_TAG" ]; then
+              echo "Found release tag: $LATEST_TAG"
+              git checkout -q "$LATEST_TAG"
+            else
+              echo "No release tag found, falling back to current branch"
+            fi
+            ./gradlew :parikshan:dokkaGeneratePublicationHtml
+            if [ -n "$LATEST_TAG" ]; then
+              git checkout -q "$INITIAL_REF"
+            fi
+          fi
           mkdir -p site/api
           cp -r parikshan/build/dokka/html/* site/api/
 
-      # Build Wasm Demo (Only if manually requested via workflow_dispatch)
+      # Build Wasm Demo (From main if flag is set, otherwise from latest release tag)
       - name: Build & Prepare Wasm Demo
-        if: github.event_name == 'workflow_dispatch' && inputs.include_demo
+        if: github.event_name != 'pull_request'
         run: |
-          ./gradlew :samples:multiplatform-showcase:composeApp:wasmJsBrowserDistribution
+          if [ "${{ github.event_name == 'workflow_dispatch' && inputs.include_demo }}" = "true" ]; then
+            echo "==> Building Wasm Demo from current branch..."
+            ./gradlew :samples:multiplatform-showcase:composeApp:wasmJsBrowserDistribution
+          else
+            echo "==> Building Wasm Demo from latest release tag..."
+            INITIAL_REF=$(git rev-parse HEAD)
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            if [ -n "$LATEST_TAG" ]; then
+              echo "Found release tag: $LATEST_TAG"
+              git checkout -q "$LATEST_TAG"
+            else
+              echo "No release tag found, falling back to current branch"
+            fi
+            ./gradlew :samples:multiplatform-showcase:composeApp:wasmJsBrowserDistribution
+            if [ -n "$LATEST_TAG" ]; then
+              git checkout -q "$INITIAL_REF"
+            fi
+          fi
           mkdir -p site/demo
           cp -r samples/multiplatform-showcase/composeApp/build/dist/wasmJs/productionExecutable/* site/demo/
 
       - name: Upload Pages Artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
@@ -95,7 +131,7 @@ jobs:
   deploy-pages:
     name: Deploy to GitHub Pages
     needs: [ build-and-verify ]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

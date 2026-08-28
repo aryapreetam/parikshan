@@ -3,7 +3,7 @@ package io.github.aryapreetam.parikshan.client
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-class IosVideoRecorder(
+internal class IosVideoRecorder(
   private val udid: String,
   private val postRollMs: Long
 ) : VideoRecorder {
@@ -11,37 +11,35 @@ class IosVideoRecorder(
   private var activeProcess: Process? = null
 
   override suspend fun start(sessionName: String, outputDirectory: String) {
-    stop() // stop any existing session
+    stop() // stop any existing active recording session
 
     val simpleName = sessionName.substringAfterLast('.').replace('$', '_')
     val file = File(outputDirectory, "$simpleName.mp4").absoluteFile
     file.parentFile?.mkdirs()
     activePath = file.absolutePath
 
-    cleanupSimctlRecording()
+    cleanupSimctlRecording(udid)
 
     val pb = ProcessBuilder(
       "xcrun", "simctl", "io", udid, "recordVideo", "--codec=h264", "--force", file.absolutePath
     )
 
     try {
-      val process = pb.start()
+      var process = pb.start()
       activeProcess = process
-      Thread.sleep(2000)
+      kotlinx.coroutines.delay(150)
       if (!process.isAlive) {
         val error = process.errorStream?.bufferedReader()?.readText() ?: "Unknown error"
         if (error.contains("Resource busy", ignoreCase = true)) {
-          cleanupSimctlRecording()
-          Thread.sleep(1000)
-          val retryProcess = pb.start()
-          activeProcess = retryProcess
-          Thread.sleep(2000)
-          if (!retryProcess.isAlive) {
-            val finalError = retryProcess.errorStream?.bufferedReader()?.readText() ?: error
-            System.err.println("IosVideoRecorder: Failed to start simctl recording (udid=$udid): $finalError")
-          }
-        } else {
-          System.err.println("IosVideoRecorder: Failed to start simctl recording (udid=$udid): $error")
+          cleanupSimctlRecording(udid)
+          kotlinx.coroutines.delay(150)
+          process = pb.start()
+          activeProcess = process
+          kotlinx.coroutines.delay(150)
+        }
+        if (!process.isAlive) {
+          val finalError = process.errorStream?.bufferedReader()?.readText() ?: error
+          System.err.println("IosVideoRecorder: Failed to start simctl recording (udid=$udid): $finalError")
         }
       }
     } catch (e: Exception) {
@@ -49,13 +47,12 @@ class IosVideoRecorder(
     }
   }
 
-  private fun cleanupSimctlRecording() {
+  private suspend fun cleanupSimctlRecording(udid: String) {
     try {
       ProcessBuilder("pkill", "-INT", "-f", "simctl io $udid recordVideo").start().waitFor()
-      Thread.sleep(500)
+      kotlinx.coroutines.delay(100)
       ProcessBuilder("pkill", "-9", "-f", "simctl io $udid recordVideo").start().waitFor()
-    } catch (e: Exception) {
-      // Ignore pkill errors
+    } catch (_: Exception) {
     }
   }
 
@@ -66,26 +63,25 @@ class IosVideoRecorder(
     val process = activeProcess
     activeProcess = null
 
-    if (process != null) {
-      try {
-        val pid = process.pid()
-        ProcessBuilder("kill", "-2", pid.toString()).start().waitFor()
+    if (postRollMs > 0) {
+      kotlinx.coroutines.delay(postRollMs)
+    } else {
+      kotlinx.coroutines.delay(1000)
+    }
+
+    try {
+      cleanupSimctlRecording(udid)
+      if (process != null) {
         if (!process.waitFor(5, TimeUnit.SECONDS)) {
           process.destroy()
-          if (!process.waitFor(2, TimeUnit.SECONDS)) {
-            process.destroyForcibly()
-          }
         }
-      } catch (e: Exception) {
-        process.destroy()
       }
+    } catch (e: Exception) {
+      process?.destroy()
     }
 
-    if (postRollMs > 0) {
-      runCatching { Thread.sleep(postRollMs) }
-    }
-
-    if (path.isNotEmpty() && File(path).exists()) {
+    val hostFile = File(path)
+    if (hostFile.exists()) {
       try {
         val tempFile = File(path + ".tmp.mp4")
         val ffmpegPb = ProcessBuilder(
@@ -93,13 +89,12 @@ class IosVideoRecorder(
         )
         val ffmpegProcess = ffmpegPb.start()
         if (ffmpegProcess.waitFor(10, TimeUnit.SECONDS) && ffmpegProcess.exitValue() == 0) {
-          File(path).delete()
-          tempFile.renameTo(File(path))
+          hostFile.delete()
+          tempFile.renameTo(hostFile)
         } else {
           tempFile.delete()
         }
-      } catch (e: Exception) {
-        // ffmpeg is optional or failed
+      } catch (_: Exception) {
       }
     }
 

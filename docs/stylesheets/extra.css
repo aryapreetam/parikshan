@@ -60,3 +60,137 @@ pre,
     border-radius: 6px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
+
+/* Side-by-side step comparison with vertically centered transition arrow */
+.md-typeset .step-comparison {
+    margin: 1.5rem 0;
+    width: 100%;
+}
+
+.md-typeset .step-comparison .step-images-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    width: 100%;
+}
+
+.md-typeset .step-comparison .step-before {
+    flex: 7;
+    text-align: center;
+}
+
+.md-typeset .step-comparison .step-arrow {
+    flex: 0 0 auto;
+    font-size: 2.2rem;
+    font-weight: bold;
+    opacity: 0.65;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.md-typeset .step-comparison .step-after {
+    flex: 3;
+    text-align: center;
+}
+
+.md-typeset .step-comparison .step-images-row img,
+.md-typeset .step-comparison .step-before img,
+.md-typeset .step-comparison .step-after img,
+.md-typeset .step-comparison .step-images-row video,
+.md-typeset .step-comparison .step-before video,
+.md-typeset .step-comparison .step-after video {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    display: block;
+    margin: 0 auto;
+    padding: 0 !important;
+    border: none !important;
+    border-radius: 4px;
+    box-shadow: none !important;
+}
+
+.md-typeset .step-comparison .step-images-row p {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.md-typeset .step-comparison .step-captions-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 0.6rem;
+    width: 100%;
+    font-size: 0.85em;
+    opacity: 0.85;
+}
+
+.md-typeset .step-comparison .caption-before {
+    flex: 7;
+    text-align: center;
+}
+
+.md-typeset .step-comparison .caption-arrow {
+    flex: 0 0 2rem;
+}
+
+.md-typeset .step-comparison .caption-after {
+    flex: 3;
+    text-align: center;
+}
+
+/* Ensure portrait mobile screenshots scale cleanly to match IDE desktop screenshots */
+.md-typeset .step-comparison .step-images-row img.step-portrait-img,
+.md-typeset .step-comparison .step-after img.step-portrait-img {
+    width: auto !important;
+    max-height: 270px !important;
+    object-fit: contain;
+    margin: 0 auto;
+}
+
+/* Compact sizing and padding for gutter icon warning screenshot */
+.md-typeset .gutter-warning-img {
+    max-width: 480px !important;
+    width: 100% !important;
+    height: auto !important;
+    display: block !important;
+    margin: 1.2rem auto !important;
+    padding: 0.6rem !important;
+    border-radius: 8px !important;
+    border: 1px solid var(--md-default-fg-color--lightest, rgba(128, 128, 128, 0.2)) !important;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Layout specifically for wide IDE (1.58:1) + tall phone screenshot (0.45:1) comparison */
+.md-typeset .step-comparison.step-ide-phone .step-before {
+    flex: 7.8;
+}
+
+.md-typeset .step-comparison.step-ide-phone .step-after {
+    flex: 2.2;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.md-typeset .step-comparison.step-ide-phone .step-after img,
+.md-typeset .step-comparison.step-ide-phone .step-images-row img.step-portrait-img {
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    border-radius: 6px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+}
+
+.md-typeset .step-comparison.step-ide-phone .caption-before {
+    flex: 7.8;
+    text-align: center;
+}
+
+.md-typeset .step-comparison.step-ide-phone .caption-after {
+    flex: 2.2;
+    text-align: center;
+}

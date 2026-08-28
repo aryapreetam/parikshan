@@ -17,7 +17,6 @@ internal object WasmTargetConfigurer {
     isBackgroundRequested: Boolean,
     isVideoRequested: Boolean,
     e2eTestClasses: List<String>,
-    hostTestTask: TaskProvider<Test>,
     wasmOutputDir: File,
     wasmPortFile: File,
     prepareWasmAssetsTask: TaskProvider<Task>,
@@ -65,7 +64,6 @@ internal object WasmTargetConfigurer {
       dependsOn(installPlaywrightTask, startWasmTask)
       finalizedBy("stopParikshanWasmApp")
       configureE2eHostTestExecution(
-        hostTestTaskProvider = hostTestTask,
         e2eTestClasses = e2eTestClasses,
         target = "Wasm",
         logger = logger
@@ -97,8 +95,26 @@ internal object WasmTargetConfigurer {
       if (isBackgroundRequested) {
         systemProperty("parikshan.wasm.headless", "true")
       }
+      val videosDir = project.layout.buildDirectory.dir("parikshan/videos/wasm").get().asFile.absolutePath
+      systemProperty("parikshan.video.outputDir", videosDir)
       if (isVideoRequested) {
         systemProperty("parikshan.video.enabled", "true")
+      }
+      val fps = project.findProperty("parikshan.video.fps")?.toString()
+      if (!fps.isNullOrBlank()) {
+        systemProperty("parikshan.video.fps", fps)
+      }
+      val stepDelay = project.findProperty("parikshan.video.stepDelayMs")?.toString()
+      if (!stepDelay.isNullOrBlank()) {
+        systemProperty("parikshan.video.stepDelayMs", stepDelay)
+      }
+      val postRoll = project.findProperty("parikshan.video.postRollMs")?.toString()
+      if (!postRoll.isNullOrBlank()) {
+        systemProperty("parikshan.video.postRollMs", postRoll)
+      }
+      val granularity = project.findProperty("parikshan.video.granularity")?.toString()
+      if (!granularity.isNullOrBlank()) {
+        systemProperty("parikshan.video.granularity", granularity)
       }
       testLogging {
         showStandardStreams = true

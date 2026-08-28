@@ -3,7 +3,7 @@ package io.github.aryapreetam.parikshan.client
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-class AndroidVideoRecorder(
+internal class AndroidVideoRecorder(
   private val serial: String,
   private val postRollMs: Long
 ) : VideoRecorder {
@@ -23,15 +23,15 @@ class AndroidVideoRecorder(
 
     // Clean up any existing file on device to avoid resource conflicts
     runCatching {
-      ProcessBuilder(adbPrefix + listOf("shell", "rm", "/data/local/tmp/parikshan_video.mp4")).start().waitFor()
+      ProcessBuilder(adbPrefix + listOf("shell", "rm", "-f", "/data/local/tmp/parikshan_video.mp4")).start().waitFor()
     }
 
     val pb = ProcessBuilder(adbPrefix + listOf("shell", "screenrecord", "/data/local/tmp/parikshan_video.mp4"))
     try {
       val process = pb.start()
       activeProcess = process
-      // Wait a moment for recording to start
-      Thread.sleep(1000)
+      // Check if process failed to start within a brief latch (100ms)
+      kotlinx.coroutines.delay(100)
       if (!process.isAlive) {
         val error = process.errorStream?.bufferedReader()?.readText() ?: "Unknown error"
         System.err.println("AndroidVideoRecorder: Failed to start adb screenrecord: $error")
@@ -48,34 +48,47 @@ class AndroidVideoRecorder(
     val process = activeProcess
     activeProcess = null
 
-    if (process != null) {
-      try {
-        val pidProcess = ProcessBuilder(adbPrefix + listOf("shell", "pidof", "screenrecord")).start()
-        val pid = pidProcess.inputStream.bufferedReader().readText().trim()
-
-        if (pid.isNotEmpty()) {
-          ProcessBuilder(adbPrefix + listOf("shell", "kill", "-2", pid)).start().waitFor()
-        } else {
-          ProcessBuilder(adbPrefix + listOf("shell", "pkill", "-2", "screenrecord")).start().waitFor()
-        }
-        if (!process.waitFor(10, TimeUnit.SECONDS)) {
-          process.destroy()
-        }
-      } catch (e: Exception) {
-        process.destroy()
-      }
+    if (postRollMs > 0) {
+      kotlinx.coroutines.delay(postRollMs)
+    } else {
+      kotlinx.coroutines.delay(1000)
     }
 
-    if (postRollMs > 0) {
-      runCatching { Thread.sleep(postRollMs) }
-    } else {
-      Thread.sleep(2000)
+    try {
+      val pidProcess = ProcessBuilder(adbPrefix + listOf("shell", "pidof", "screenrecord")).start()
+      val pidOutput = pidProcess.inputStream.bufferedReader().readText().trim()
+      val pids = pidOutput.split(Regex("\\s+")).filter { it.isNotBlank() }
+
+      if (pids.isNotEmpty()) {
+        for (pid in pids) {
+          ProcessBuilder(adbPrefix + listOf("shell", "kill", "-2", pid)).start().waitFor()
+        }
+      } else {
+        ProcessBuilder(adbPrefix + listOf("shell", "pkill", "-2", "screenrecord")).start().waitFor()
+      }
+      if (process != null) {
+        if (!process.waitFor(5, TimeUnit.SECONDS)) {
+          process.destroy()
+        }
+      }
+
+      // Wait until screenrecord terminates on device (up to 3 seconds in 50ms intervals)
+      var remainingAttempts = 60
+      while (remainingAttempts > 0) {
+        val checkPid = ProcessBuilder(adbPrefix + listOf("shell", "pidof", "screenrecord")).start()
+        val runningPids = checkPid.inputStream.bufferedReader().readText().trim()
+        if (runningPids.isBlank()) break
+        kotlinx.coroutines.delay(50)
+        remainingAttempts--
+      }
+    } catch (e: Exception) {
+      process?.destroy()
     }
 
     val hostFile = File(path)
     hostFile.parentFile?.mkdirs()
     try {
-      val checkFile = ProcessBuilder(adbPrefix + listOf("shell", "ls", "/data/local/tmp/parikshan_video.mp4"))
+      val checkFile = ProcessBuilder(adbPrefix + listOf("shell", "ls", "-l", "/data/local/tmp/parikshan_video.mp4"))
         .start()
         .waitFor()
 
@@ -86,7 +99,7 @@ class AndroidVideoRecorder(
           val error = pullProcess.errorStream.bufferedReader().readText()
           System.err.println("AndroidVideoRecorder: Failed to pull video: $error")
         } else {
-          ProcessBuilder(adbPrefix + listOf("shell", "rm", "/data/local/tmp/parikshan_video.mp4")).start().waitFor()
+          ProcessBuilder(adbPrefix + listOf("shell", "rm", "-f", "/data/local/tmp/parikshan_video.mp4")).start().waitFor()
         }
       } else {
         System.err.println("AndroidVideoRecorder: Video file /data/local/tmp/parikshan_video.mp4 not found on device.")

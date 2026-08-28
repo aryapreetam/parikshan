@@ -26,15 +26,18 @@ class TargetMatrixTest {
     System.setProperty("parikshan.os.arch", "aarch64")
     System.setProperty("parikshan.os.name", "Mac OS X")
     testProjectDir = kotlin.io.path.createTempDirectory("parikshan-matrix-test").toFile()
-    val sdkDir = System.getenv("ANDROID_HOME")
-      ?: listOf(
-        "${System.getProperty("user.home")}/Library/Android/sdk",
-        "${System.getProperty("user.home")}/Android/Sdk",
-        "/usr/local/lib/android/sdk"
-      ).firstOrNull { File(it).exists() }
-    if (sdkDir != null && File(sdkDir).exists()) {
-      File(testProjectDir, "local.properties").writeText("sdk.dir=${sdkDir.replace("\\", "/")}\n")
+    val realSdk = System.getenv("ANDROID_HOME") ?: System.getenv("ANDROID_SDK_ROOT")
+    val sdkPath = if (realSdk != null && File(realSdk).exists()) {
+      realSdk
+    } else {
+      val mockSdk = File(testProjectDir, "mock-android-sdk").apply { mkdirs() }
+      for (api in 34..37) {
+        val platformDir = File(mockSdk, "platforms/android-$api").apply { mkdirs() }
+        File(platformDir, "android.jar").createNewFile()
+      }
+      mockSdk.absolutePath
     }
+    File(testProjectDir, "local.properties").writeText("sdk.dir=${sdkPath.replace('\\', '/')}\n")
   }
 
   @kotlin.test.AfterTest
@@ -82,7 +85,7 @@ class TargetMatrixTest {
   }
 
   @Test
-  fun `test Wasm only project configuration`() {
+  fun `test Wasm only project configuration without JVM target emits guidance`() {
     val project = createProject()
     project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
@@ -90,8 +93,12 @@ class TargetMatrixTest {
     project.pluginManager.apply("io.github.aryapreetam.parikshan")
     evaluate(project)
 
-    assertNotNull(project.tasks.findByName("e2eWasmTest"), "e2eWasmTest task should be registered")
-    assertNotNull(project.tasks.findByName("e2eTest"), "e2eTest task should be registered")
+    val exception = kotlin.test.assertFailsWith<Throwable> {
+      project.tasks.getByName("e2eTest")
+    }
+    val fullMessage = generateSequence(exception) { it.cause }.mapNotNull { it.message }.joinToString(" ")
+    assertTrue(fullMessage.contains("No JVM host target found"), "Message should mention missing JVM host target: $fullMessage")
+    assertTrue(fullMessage.contains("known-limitations/#host-jvm-target-requirement"), "Message should include docs link: $fullMessage")
   }
 
   @Test
@@ -108,7 +115,7 @@ class TargetMatrixTest {
   }
 
   @Test
-  fun `test iOS only project configuration`() {
+  fun `test iOS only project configuration without JVM target emits guidance`() {
     val project = createProject()
     project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
@@ -116,7 +123,30 @@ class TargetMatrixTest {
     project.pluginManager.apply("io.github.aryapreetam.parikshan")
     evaluate(project)
 
-    assertNotNull(project.tasks.findByName("e2eIosTest"), "e2eIosTest task should be registered")
+    val exception = kotlin.test.assertFailsWith<Throwable> {
+      project.tasks.getByName("e2eTest")
+    }
+    val fullMessage = generateSequence(exception) { it.cause }.mapNotNull { it.message }.joinToString(" ")
+    assertTrue(fullMessage.contains("No JVM host target found"), "Message should mention missing JVM host target: $fullMessage")
+    assertTrue(fullMessage.contains("known-limitations/#host-jvm-target-requirement"), "Message should include docs link: $fullMessage")
+  }
+
+  @Test
+  fun `test Wasm and iOS only project configuration without JVM target emits guidance`() {
+    val project = createProject()
+    project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+    val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+    kmp.wasmJs { browser() }
+    kmp.iosSimulatorArm64()
+    project.pluginManager.apply("io.github.aryapreetam.parikshan")
+    evaluate(project)
+
+    val exception = kotlin.test.assertFailsWith<Throwable> {
+      project.tasks.getByName("e2eTest")
+    }
+    val fullMessage = generateSequence(exception) { it.cause }.mapNotNull { it.message }.joinToString(" ")
+    assertTrue(fullMessage.contains("No JVM host target found"), "Message should mention missing JVM host target: $fullMessage")
+    assertTrue(fullMessage.contains("known-limitations/#host-jvm-target-requirement"), "Message should include docs link: $fullMessage")
   }
 
   @Test
@@ -135,8 +165,6 @@ class TargetMatrixTest {
 
   @Test
   fun `test KMP Mobile Android target with iOS project configuration`() {
-    val sdkEnv = System.getenv("ANDROID_HOME")
-    if (sdkEnv == null || !File(sdkEnv).exists()) return
     val project = createProject()
     project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     project.pluginManager.apply("com.android.kotlin.multiplatform.library")
@@ -149,7 +177,7 @@ class TargetMatrixTest {
 
     assertNotNull(project.tasks.findByName("e2eAndroidTest"), "e2eAndroidTest task should be registered")
     assertNotNull(project.tasks.findByName("e2eIosTest"), "e2eIosTest task should be registered")
-    assertNotNull(project.tasks.findByName("parikshanHostTest"), "parikshanHostTest fallback should be registered")
+    assertNotNull(project.tasks.findByName("e2eTest"), "e2eTest task should be registered")
   }
 
   @Test
@@ -267,10 +295,11 @@ class TargetMatrixTest {
   }
 
   @Test
-  fun `test Wasm only project registers Playwright and Wasm asset tasks`() {
+  fun `test Wasm project registers Playwright and Wasm asset tasks`() {
     val project = createProject()
     project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+    kmp.jvm("desktop")
     kmp.wasmJs { browser() }
 
     project.pluginManager.apply("io.github.aryapreetam.parikshan")
@@ -312,8 +341,6 @@ class TargetMatrixTest {
 
   @Test
   fun `test Android KMP library project without JVM does not crash`() {
-    val sdkEnv = System.getenv("ANDROID_HOME")
-    if (sdkEnv == null || !File(sdkEnv).exists()) return
     val project = createProject()
     project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     project.pluginManager.apply("com.android.kotlin.multiplatform.library")
@@ -329,7 +356,7 @@ class TargetMatrixTest {
   }
 
   @Test
-  fun `test iOS only KMP project without Android or JVM does not crash`() {
+  fun `test iOS only KMP project without Android or JVM emits guidance`() {
     val project = createProject()
     project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
@@ -338,12 +365,12 @@ class TargetMatrixTest {
     project.pluginManager.apply("io.github.aryapreetam.parikshan")
     evaluate(project)
 
-    assertNotNull(project.tasks.findByName("e2eIosTest"))
-    kotlin.test.assertNull(project.tasks.findByName("e2eDesktopTest"))
-    kotlin.test.assertNull(project.tasks.findByName("e2eAndroidTest"))
-
-    val e2eTask = project.tasks.findByName("e2eTest") as E2ETestTask
-    assertEquals("ios", e2eTask.targets)
+    val exception = kotlin.test.assertFailsWith<Throwable> {
+      project.tasks.getByName("e2eTest")
+    }
+    val fullMessage = generateSequence(exception) { it.cause }.mapNotNull { it.message }.joinToString(" ")
+    assertTrue(fullMessage.contains("No JVM host target found"), "Message should mention missing JVM host target: $fullMessage")
+    assertTrue(fullMessage.contains("known-limitations/#host-jvm-target-requirement"), "Message should include docs link: $fullMessage")
   }
 
   @Test
@@ -436,6 +463,7 @@ class TargetMatrixTest {
     project.extensions.extraProperties.set("parikshan.e2e.active", "true")
     project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
     val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+    kmp.jvm("desktop")
     kmp.iosSimulatorArm64()
 
     project.pluginManager.apply("io.github.aryapreetam.parikshan")
@@ -477,14 +505,11 @@ class TargetMatrixTest {
 
   @Test
   fun `test Single-Module Monolithic Layout (Old Structure) registers all 4 target tasks`() {
-    val sdkEnv = System.getenv("ANDROID_HOME")
     val project = createProject()
     project.gradle.startParameter.setTaskNames(listOf("tasks"))
     project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-    if (sdkEnv != null && File(sdkEnv).exists()) {
-      project.pluginManager.apply("com.android.kotlin.multiplatform.library")
-      configureAndroidDsl(project)
-    }
+    project.pluginManager.apply("com.android.kotlin.multiplatform.library")
+    configureAndroidDsl(project)
     val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
     kmp.jvm()
     kmp.wasmJs { browser() }
@@ -497,14 +522,11 @@ class TargetMatrixTest {
     assertNotNull(project.tasks.findByName("e2eWasmTest"), "e2eWasmTest task should be registered on single-module layout")
     assertNotNull(project.tasks.findByName("e2eIosTest"), "e2eIosTest task should be registered on single-module layout")
     assertNotNull(project.tasks.findByName("e2eTest"), "e2eTest task should be registered on single-module layout")
-    if (sdkEnv != null && File(sdkEnv).exists()) {
-      assertNotNull(project.tasks.findByName("e2eAndroidTest"), "e2eAndroidTest task should be registered on single-module layout")
-    }
+    assertNotNull(project.tasks.findByName("e2eAndroidTest"), "e2eAndroidTest task should be registered on single-module layout")
   }
 
   @Test
   fun `test Flat Multi-Module Layout (New Structure) registers all 4 target tasks`() {
-    val sdkEnv = System.getenv("ANDROID_HOME")
     val root = createProject()
     val subProject = ProjectBuilder.builder()
       .withParent(root)
@@ -512,10 +534,8 @@ class TargetMatrixTest {
       .build()
     root.gradle.startParameter.setTaskNames(listOf(":shared:tasks"))
     subProject.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-    if (sdkEnv != null && File(sdkEnv).exists()) {
-      subProject.pluginManager.apply("com.android.kotlin.multiplatform.library")
-      configureAndroidDsl(subProject)
-    }
+    subProject.pluginManager.apply("com.android.kotlin.multiplatform.library")
+    configureAndroidDsl(subProject)
     val kmp = subProject.extensions.getByType(KotlinMultiplatformExtension::class.java)
     kmp.jvm()
     kmp.wasmJs { browser() }
@@ -528,14 +548,11 @@ class TargetMatrixTest {
     assertNotNull(subProject.tasks.findByName("e2eWasmTest"), "e2eWasmTest task should be registered on flat shared module")
     assertNotNull(subProject.tasks.findByName("e2eIosTest"), "e2eIosTest task should be registered on flat shared module")
     assertNotNull(subProject.tasks.findByName("e2eTest"), "e2eTest task should be registered on flat shared module")
-    if (sdkEnv != null && File(sdkEnv).exists()) {
-      assertNotNull(subProject.tasks.findByName("e2eAndroidTest"), "e2eAndroidTest task should be registered on flat shared module")
-    }
+    assertNotNull(subProject.tasks.findByName("e2eAndroidTest"), "e2eAndroidTest task should be registered on flat shared module")
   }
 
   @Test
   fun `test Nested Multi-Module with Server Module Layout (New Structure with app-shared) registers all 4 target tasks`() {
-    val sdkEnv = System.getenv("ANDROID_HOME")
     val root = createProject()
     val subProject = ProjectBuilder.builder()
       .withParent(root)
@@ -543,10 +560,8 @@ class TargetMatrixTest {
       .build()
     root.gradle.startParameter.setTaskNames(listOf(":app:shared:tasks"))
     subProject.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-    if (sdkEnv != null && File(sdkEnv).exists()) {
-      subProject.pluginManager.apply("com.android.kotlin.multiplatform.library")
-      configureAndroidDsl(subProject)
-    }
+    subProject.pluginManager.apply("com.android.kotlin.multiplatform.library")
+    configureAndroidDsl(subProject)
     val kmp = subProject.extensions.getByType(KotlinMultiplatformExtension::class.java)
     kmp.jvm()
     kmp.wasmJs { browser() }
@@ -559,14 +574,11 @@ class TargetMatrixTest {
     assertNotNull(subProject.tasks.findByName("e2eWasmTest"), "e2eWasmTest task should be registered when gradlew tasks is invoked")
     assertNotNull(subProject.tasks.findByName("e2eIosTest"), "e2eIosTest task should be registered when gradlew tasks is invoked")
     assertNotNull(subProject.tasks.findByName("e2eTest"), "e2eTest task should be registered when gradlew tasks is invoked")
-    if (sdkEnv != null && File(sdkEnv).exists()) {
-      assertNotNull(subProject.tasks.findByName("e2eAndroidTest"), "e2eAndroidTest task should be registered when gradlew tasks is invoked")
-    }
+    assertNotNull(subProject.tasks.findByName("e2eAndroidTest"), "e2eAndroidTest task should be registered when gradlew tasks is invoked")
   }
 
   @Test
   fun `test Mobile-Only KMP Layout (New Structure with Mobile-Only targets) registers mobile target tasks without JVM requirement`() {
-    val sdkEnv = System.getenv("ANDROID_HOME")
     val root = createProject()
     val subProject = ProjectBuilder.builder()
       .withParent(root)
@@ -574,10 +586,8 @@ class TargetMatrixTest {
       .build()
     root.gradle.startParameter.setTaskNames(listOf(":shared:tasks"))
     subProject.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-    if (sdkEnv != null && File(sdkEnv).exists()) {
-      subProject.pluginManager.apply("com.android.kotlin.multiplatform.library")
-      configureAndroidDsl(subProject)
-    }
+    subProject.pluginManager.apply("com.android.kotlin.multiplatform.library")
+    configureAndroidDsl(subProject)
     val kmp = subProject.extensions.getByType(KotlinMultiplatformExtension::class.java)
     kmp.iosSimulatorArm64()
 
@@ -586,9 +596,7 @@ class TargetMatrixTest {
 
     assertNotNull(subProject.tasks.findByName("e2eIosTest"), "e2eIosTest task should be registered on mobile-only layout")
     assertNotNull(subProject.tasks.findByName("e2eTest"), "e2eTest task should be registered on mobile-only layout")
-    if (sdkEnv != null && File(sdkEnv).exists()) {
-      assertNotNull(subProject.tasks.findByName("e2eAndroidTest"), "e2eAndroidTest task should be registered on mobile-only layout")
-    }
+    assertNotNull(subProject.tasks.findByName("e2eAndroidTest"), "e2eAndroidTest task should be registered on mobile-only layout")
     kotlin.test.assertNull(subProject.tasks.findByName("e2eJvmTest"), "e2eJvmTest should be null for mobile-only project")
     kotlin.test.assertNull(subProject.tasks.findByName("e2eWasmTest"), "e2eWasmTest should be null for mobile-only project")
   }
@@ -638,7 +646,6 @@ class TargetMatrixTest {
 
   @Test
   fun `test New Structure with JVM+Android targets registers e2eJvmTest and e2eAndroidTest`() {
-    val sdkEnv = System.getenv("ANDROID_HOME")
     val root = createProject()
     val subProject = ProjectBuilder.builder()
       .withParent(root)
@@ -646,10 +653,8 @@ class TargetMatrixTest {
       .build()
     root.gradle.startParameter.setTaskNames(listOf(":shared:tasks"))
     subProject.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
-    if (sdkEnv != null && File(sdkEnv).exists()) {
-      subProject.pluginManager.apply("com.android.kotlin.multiplatform.library")
-      configureAndroidDsl(subProject)
-    }
+    subProject.pluginManager.apply("com.android.kotlin.multiplatform.library")
+    configureAndroidDsl(subProject)
     val kmp = subProject.extensions.getByType(KotlinMultiplatformExtension::class.java)
     kmp.jvm()
 
@@ -658,9 +663,7 @@ class TargetMatrixTest {
 
     assertNotNull(subProject.tasks.findByName("e2eJvmTest"))
     assertNotNull(subProject.tasks.findByName("e2eTest"))
-    if (sdkEnv != null && File(sdkEnv).exists()) {
-      assertNotNull(subProject.tasks.findByName("e2eAndroidTest"))
-    }
+    assertNotNull(subProject.tasks.findByName("e2eAndroidTest"))
     kotlin.test.assertNull(subProject.tasks.findByName("e2eWasmTest"))
     kotlin.test.assertNull(subProject.tasks.findByName("e2eIosTest"))
   }
@@ -702,7 +705,33 @@ class TargetMatrixTest {
       System.setProperty("parikshan.os.name", "Mac OS X")
     }
   }
+
+  @Test
+  fun `test video system properties configured across registered tasks`() {
+    val project = createProject()
+    project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+    val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+    kmp.jvm()
+    kmp.iosArm64()
+
+    project.pluginManager.apply("io.github.aryapreetam.parikshan")
+    evaluate(project)
+
+    val jvmTask = project.tasks.findByName("e2eJvmTest") as? org.gradle.api.tasks.testing.Test
+    assertNotNull(jvmTask, "e2eJvmTest task should be registered")
+    val jvmVideoDir = jvmTask.systemProperties["parikshan.video.outputDir"]?.toString()
+    assertNotNull(jvmVideoDir, "parikshan.video.outputDir must be configured for e2eJvmTest")
+    assertTrue(jvmVideoDir.endsWith("parikshan/videos/jvm"), "Video output dir must end with parikshan/videos/jvm")
+
+    val iosTask = project.tasks.findByName("e2eIosTest") as? org.gradle.api.tasks.testing.Test
+    if (iosTask != null) {
+      val iosVideoDir = iosTask.systemProperties["parikshan.video.outputDir"]?.toString()
+      assertNotNull(iosVideoDir, "parikshan.video.outputDir must be configured for e2eIosTest")
+      assertTrue(iosVideoDir.endsWith("parikshan/videos/ios"), "Video output dir must end with parikshan/videos/ios")
+    }
+  }
 }
+
 
 
 

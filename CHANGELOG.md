@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [0.0.9] - 2026-08-28
+
+### Added
+- **Video Recording Flags**: Added `--video`, `--granularity`, `--post-roll-ms`, and `--step-delay-ms` options on `e2eTest`, and `video` task prefix for all target-specific runs (`./gradlew video e2eAndroidTest`, `e2eIosTest`, `e2eDesktopTest`, `e2eWasmTest`).
+- **Host Test Classpath Resolver**: Extracted `HostTestClasspathResolver` to uniformly discover host test classpaths and compilation tasks across KMP and Android application modules.
+- **Standalone Android Guide**: Added guide for integrating Parikshan into standalone Jetpack Compose Android applications.
+
+### Fixed & Resolved Issues
+- **Standalone Android Dependencies**: Fixed dependency resolution for published Maven artifacts in standalone Android projects without the KMP plugin.
+- **Test Task Isolation**: Isolated Parikshan E2E scenarios from standard Android unit test tasks (`testDebugUnitTest`).
+- **Target Video Propagation**: Fixed missing video recording flag propagation on `e2eAndroidTest` and `e2eIosTest` tasks.
+- **Wasm Expression-Body Support**: Auto-initialized JS bridge hooks inside `ParikshanComposeViewport` to support single-expression `fun main() = ComposeViewport(...)` entry points.
+- **API Visibility**: Scoped internal video recorder classes to `internal`.
+
+### CI & Documentation
+- Split GitHub Pages workflow into separate build and deploy jobs.
+- Automated tag-based Dokka API reference and Wasm demo builds in `deploy-docs.yml`.
+
 ## [0.0.8] - 2026-08-20
 
 ### Added

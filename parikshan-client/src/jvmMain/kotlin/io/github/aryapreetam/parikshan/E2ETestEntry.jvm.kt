@@ -7,6 +7,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import io.github.aryapreetam.parikshan.client.ParikshanVideoConfig
 import io.github.aryapreetam.parikshan.client.ParikshanVideoSessionManager
+import io.github.aryapreetam.parikshan.client.inferCallerClassName
+import io.github.aryapreetam.parikshan.client.inferCallerMethodName
 import kotlin.math.max
 
 actual fun e2eTest(
@@ -125,46 +127,4 @@ actual fun e2eTest(
       )
     }
   }
-}
-
-private fun inferCallerClassName(): String {
-  val stack = Throwable().stackTrace
-
-  for (element in stack) {
-    val className = element.className
-    if (!className.startsWith("io.github.aryapreetam.parikshan.") &&
-      !className.startsWith("kotlin.") &&
-      !className.startsWith("kotlinx.coroutines.") &&
-      !className.startsWith("org.junit.") &&
-      !className.startsWith("org.gradle.") &&
-      !className.startsWith("worker.") &&
-      !className.startsWith("sun.reflect.") &&
-      !className.startsWith("java.")
-    ) {
-      return className.substringAfterLast('.')
-    }
-  }
-
-  return "unknown_test"
-}
-
-private fun inferCallerMethodName(): String {
-  val stack = Throwable().stackTrace
-
-  for (element in stack) {
-    val className = element.className
-    if (!className.startsWith("io.github.aryapreetam.parikshan.") &&
-      !className.startsWith("kotlin.") &&
-      !className.startsWith("kotlinx.coroutines.") &&
-      !className.startsWith("org.junit.") &&
-      !className.startsWith("org.gradle.") &&
-      !className.startsWith("worker.") &&
-      !className.startsWith("sun.reflect.") &&
-      !className.startsWith("java.")
-    ) {
-      return element.methodName
-    }
-  }
-
-  return "unknown_method"
 }

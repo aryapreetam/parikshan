@@ -2,9 +2,12 @@ package io.github.aryapreetam.parikshan.gradle
 
 import org.gradle.api.Action
 import org.gradle.api.GradleException
+import org.gradle.api.Named
+import org.gradle.api.NamedDomainObjectCollection
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.Task
+import org.gradle.api.file.FileCollection
 import org.gradle.api.tasks.JavaExec
 import org.gradle.api.tasks.TaskProvider
 import org.gradle.api.tasks.bundling.Zip
@@ -69,7 +72,13 @@ class ParikshanPlugin : Plugin<Project> {
         group = "verification"
         mainClass.set("com.microsoft.playwright.CLI")
         args = listOf("install", "chromium")
+        val playwrightConfig = project.configurations.detachedConfiguration(
+            project.dependencies.create("com.microsoft.playwright:playwright:1.58.0")
+        )
+        classpath = playwrightConfig
     }
+
+
 
     project.pluginManager.withPlugin("com.android.application") {
       project.configureAndroidInstrumentationDefaults()
@@ -137,7 +146,15 @@ class ParikshanPlugin : Plugin<Project> {
       project.configureParikshanDependencies(isE2EActive)
 
       val e2eTestClasses = project.discoverE2eTestClasses()
-      val hostTestTask = project.findOrRegisterHostTestTask(extension.desktopTestTaskName.orNull)
+      val jvmTargets = project.findJvmTargets()
+
+      if (hasKmp && jvmTargets.isEmpty() && !hasAndroid && (project.findWasmTargets().isNotEmpty() || project.findIosTargets().isNotEmpty())) {
+        project.logger.warn(
+          "Parikshan: No JVM host target found in project '${project.path}'. " +
+          "Parikshan E2E orchestration requires at least one JVM/Desktop target (e.g., `jvm()`) to compile and execute host-side test runners. " +
+          "See: https://aryapreetam.github.io/parikshan/getting-started/known-limitations/#host-jvm-target-requirement"
+        )
+      }
 
       val wasmOutputDirProvider = wasmOutputDir
       val gradleLogger = project.logger
@@ -151,7 +168,6 @@ class ParikshanPlugin : Plugin<Project> {
             isBackgroundRequested = isBackgroundRequested,
             isVideoRequested = isVideoRequested,
             e2eTestClasses = e2eTestClasses,
-            hostTestTask = hostTestTask,
             wasmOutputDir = wasmOutputDir.get().asFile,
             wasmPortFile = wasmPortFile.get().asFile,
             prepareWasmAssetsTask = prepareWasmAssetsTask,
@@ -257,7 +273,6 @@ class ParikshanPlugin : Plugin<Project> {
               isBackgroundRequested = isBackgroundRequested,
               isVideoRequested = isVideoRequested,
               e2eTestClasses = e2eTestClasses,
-              hostTestTask = hostTestTaskForTarget,
               desktopLaunchManifestFile = project.layout.buildDirectory.file("parikshan/${targetName.lowercase()}-launch.properties").get().asFile,
               targetName = targetName
             )
@@ -275,7 +290,6 @@ class ParikshanPlugin : Plugin<Project> {
               isBackgroundRequested = isBackgroundRequested,
               isVideoRequested = isVideoRequested,
               e2eTestClasses = e2eTestClasses,
-              hostTestTask = hostTestTask,
               prepareIosBootSourceTask = prepareIosBootSourceTask
             )
           } else {
@@ -293,8 +307,7 @@ class ParikshanPlugin : Plugin<Project> {
             isE2EActive = isE2EActive,
             isBackgroundRequested = isBackgroundRequested,
             isVideoRequested = isVideoRequested,
-            e2eTestClasses = e2eTestClasses,
-            hostTestTask = hostTestTask
+            e2eTestClasses = e2eTestClasses
           )
         } catch (e: Throwable) {
           project.logger.warn("Parikshan Android: Skipped Android target task configuration: ${e.message}")
@@ -364,8 +377,12 @@ class ParikshanPlugin : Plugin<Project> {
         description = "Run E2E tests for multiple targets concurrently (e.g. desktop,wasm)"
         
         finalizedBy(e2eTestReport)
-        
-        dependsOn(hostTestTask.map { it.testClassesDirs.buildDependencies })
+
+        val hostClasspathSpec = project.resolveHostTestClasspathSpec()
+        hostTestClassesDirs.setFrom(hostClasspathSpec.testClassesDirs)
+        hostTestClasspath.setFrom(hostClasspathSpec.runtimeClasspath)
+        dependsOn(hostClasspathSpec.compileDependencies)
+
         if (hasKmp) {
           val jarTaskName = extension.appJarTaskName.get()
           val desktopAppProject = project.resolveDesktopAppProject(
@@ -390,34 +407,6 @@ class ParikshanPlugin : Plugin<Project> {
             tasksToDependOn
           })
         }
-        
-        val compileTestTask = project.tasks.findByName("compileTestKotlinJvm")
-          ?: project.tasks.findByName("jvmTestClasses")
-        val e2eTestDirs = if (compileTestTask != null) {
-          project.files(compileTestTask.outputs.files.filter { it.isDirectory })
-        } else {
-          project.files(hostTestTask.flatMap { project.provider { it.testClassesDirs.files } })
-        }
-
-        hostTestClassesDirs.setFrom(e2eTestDirs)
-        val jvmRuntimeConfig = project.configurations.findByName("jvmTestRuntimeClasspath")
-          ?: project.configurations.findByName("desktopTestRuntimeClasspath")
-
-        val hostClasspathList = mutableListOf<Any>()
-        val clientProject = project.rootProject.findProject(":parikshan-client")
-        if (clientProject != null) {
-          val clientDep = project.dependencies.project(mapOf("path" to clientProject.path))
-          val hostJvmConfig = project.configurations.detachedConfiguration(clientDep)
-          hostClasspathList.add(hostJvmConfig.incoming.files)
-        }
-        if (jvmRuntimeConfig != null) {
-          hostClasspathList.add(project.files(jvmRuntimeConfig))
-          hostClasspathList.add(e2eTestDirs)
-        } else {
-          hostClasspathList.add(hostTestTask.flatMap { project.provider { it.classpath.files } })
-        }
-
-        hostTestClasspath.setFrom(hostClasspathList)
         junitConsoleJars.setFrom(junitConsoleConfig.incoming.files)
         this.e2eTestClasses.set(e2eTestClasses)
         this.projectPath.set(project.path)
@@ -426,6 +415,9 @@ class ParikshanPlugin : Plugin<Project> {
         this.originalWasmPort.set(extension.wasmServerPort)
         this.androidPort.set(extension.androidPort)
         this.iosPort.set(extension.iosPort)
+        if (isVideoRequested) {
+          this.video = true
+        }
         
         val configuredTargets = buildList {
           if (hasKmp) {

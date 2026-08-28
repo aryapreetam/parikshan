@@ -33,6 +33,7 @@ fun initializeParikshanWasm() {
 @OptIn(ExperimentalComposeUiApi::class)
 @Suppress("FunctionName")
 fun ParikshanComposeViewport(viewportContainer: HTMLElement, content: @Composable () -> Unit) {
+    initializeParikshanWasm()
     ComposeViewport(viewportContainer) {
         Box(modifier = Modifier.fillMaxSize().then(ParikshanSemanticsGrabberElement)) {
             content()
@@ -46,6 +47,7 @@ fun ParikshanComposeViewport(viewportContainer: HTMLElement, content: @Composabl
 @OptIn(ExperimentalComposeUiApi::class)
 @Suppress("FunctionName")
 fun ParikshanComposeViewport(viewportContainerId: String, content: @Composable () -> Unit) {
+    initializeParikshanWasm()
     ComposeViewport(viewportContainerId) {
         Box(modifier = Modifier.fillMaxSize().then(ParikshanSemanticsGrabberElement)) {
             content()
@@ -59,6 +61,7 @@ fun ParikshanComposeViewport(viewportContainerId: String, content: @Composable (
 @OptIn(ExperimentalComposeUiApi::class)
 @Suppress("FunctionName")
 fun ParikshanComposeViewport(content: @Composable () -> Unit) {
+    initializeParikshanWasm()
     ComposeViewport {
         Box(modifier = Modifier.fillMaxSize().then(ParikshanSemanticsGrabberElement)) {
             content()

@@ -178,8 +178,17 @@ public final class io/github/aryapreetam/parikshan/TestDriver$DefaultImpls {
 }
 
 public abstract interface class io/github/aryapreetam/parikshan/client/VideoRecorder {
+	public fun pause ()V
+	public fun resume ()V
 	public abstract fun start (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun stop (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun updateDriver (Lio/github/aryapreetam/parikshan/TestDriver;)V
+}
+
+public final class io/github/aryapreetam/parikshan/client/VideoRecorder$DefaultImpls {
+	public static fun pause (Lio/github/aryapreetam/parikshan/client/VideoRecorder;)V
+	public static fun resume (Lio/github/aryapreetam/parikshan/client/VideoRecorder;)V
+	public static fun updateDriver (Lio/github/aryapreetam/parikshan/client/VideoRecorder;Lio/github/aryapreetam/parikshan/TestDriver;)V
 }
 
 public final class io/github/aryapreetam/parikshan/protocol/Bounds {

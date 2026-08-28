@@ -12,7 +12,6 @@ import org.gradle.process.CommandLineArgumentProvider
 import java.io.File
 
 internal fun Test.configureE2eHostTestExecution(
-  hostTestTaskProvider: TaskProvider<Test>,
   e2eTestClasses: List<String>,
   target: String,
   logger: Logger
@@ -29,7 +28,7 @@ internal fun Test.configureE2eHostTestExecution(
       .orElse(project.providers.systemProperty("parikshan.video.granularity"))
       .orElse("class")
 
-  val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.8"
+  val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.9"
   val clientDep = project.rootProject.findProject(":parikshan-client")
     ?.let { project.dependencies.project(mapOf("path" to it.path)) }
     ?: "io.github.aryapreetam.parikshan:parikshan-client:$pluginVersion"
@@ -40,19 +39,19 @@ internal fun Test.configureE2eHostTestExecution(
       project.dependencies.create("org.junit.jupiter:junit-jupiter-engine:5.10.2"),
       project.dependencies.create("org.junit.vintage:junit-vintage-engine:5.10.2")
   )
-  testClassesDirs = project.files(hostTestTaskProvider.map { it.testClassesDirs })
-  classpath = launcherConfig.plus(project.files(hostTestTaskProvider.map { it.classpath }))
+
+  val hostClasspathSpec = project.resolveHostTestClasspathSpec()
+  testClassesDirs = hostClasspathSpec.testClassesDirs
+  classpath = launcherConfig.plus(hostClasspathSpec.runtimeClasspath)
+  dependsOn(hostClasspathSpec.compileDependencies)
 
   reports.junitXml.outputLocation.set(
     project.layout.buildDirectory.dir("test-results/e2eTest/${target.lowercase()}")
   )
-  dependsOn(testClassesDirs.buildDependencies)
 
   filter {
     isFailOnNoMatchingTests = true
-    if (includePatterns.isEmpty()) {
-        e2eTestClasses.forEach { includeTestsMatching(it) }
-    }
+    setIncludePatterns(*e2eTestClasses.toTypedArray())
   }
 
   doFirst {
@@ -143,127 +142,6 @@ internal fun Test.configureE2eHostTestExecution(
   })
 }
 
-internal fun Project.findOrRegisterHostTestTask(override: String?): TaskProvider<Test> {
-  if (override != null && tasks.names.contains(override)) {
-    val existing = tasks.findByName(override)
-    if (existing is Test) {
-      return tasks.named(override, Test::class.java)
-    }
-  }
-
-  val kmp = extensions.findByName("kotlin")
-  val isKmp = kmp != null && runCatching { kmp.javaClass.getMethod("getTargets") }.isSuccess
-
-  if (isKmp && kmp != null) {
-    try {
-      @Suppress("UNCHECKED_CAST")
-      val targets = kmp.javaClass.getMethod("getTargets").invoke(kmp) as NamedDomainObjectCollection<Any>
-      
-      val jvmTargets = targets.filter { target ->
-        val targetName = (target as Named).name
-        val className = target.javaClass.name
-        className.contains("KotlinJvmTarget", ignoreCase = true) || 
-          targetName.contains("jvm", ignoreCase = true) || 
-          targetName.contains("desktop", ignoreCase = true)
-      }
-      
-      val target = jvmTargets.find { (it as Named).name in listOf("desktop", "jvm") }
-        ?: jvmTargets.firstOrNull()
-          
-      if (target != null) {
-        val name = (target as Named).name
-        val taskName = "${name}Test"
-        if (tasks.names.contains(taskName)) {
-          val existing = tasks.findByName(taskName)
-          if (existing is Test) {
-            return tasks.named(taskName, Test::class.java)
-          }
-        }
-      }
-    } catch (_: Exception) {}
-  }
-
-  for (candidate in listOf("test", "jvmTest", "desktopTest", "testDebugUnitTest", "testAndroidHostTest")) {
-    if (tasks.names.contains(candidate)) {
-      val existing = tasks.findByName(candidate)
-      if (existing is Test) {
-        return tasks.named(candidate, Test::class.java)
-      }
-    }
-  }
-
-  val fallbackName = "parikshanHostTest"
-  val hostTaskProvider = if (tasks.names.contains(fallbackName)) {
-    tasks.named(fallbackName, Test::class.java)
-  } else {
-    tasks.register(fallbackName, Test::class.java) {
-      group = "verification"
-      description = "Host JVM test execution task for Parikshan E2E orchestration"
-      useJUnitPlatform()
-    }
-  }
-
-  afterEvaluate {
-    val compileTask = tasks.findByName("compileAndroidHostTest")
-      ?: tasks.findByName("compileDebugUnitTestKotlin")
-      ?: tasks.names.filter { it.contains("compile", ignoreCase = true) && (it.contains("HostTest", ignoreCase = true) || it.contains("UnitTest", ignoreCase = true)) }
-        .mapNotNull { tasks.findByName(it) }.firstOrNull()
-
-    val existingTestTask = tasks.findByName("testAndroidHostTest") as? Test
-      ?: tasks.findByName("testDebugUnitTest") as? Test
-      ?: tasks.findByName("testUnitTest") as? Test
-      ?: tasks.withType(Test::class.java).firstOrNull { it.name.contains("HostTest", ignoreCase = true) || it.name.contains("UnitTest", ignoreCase = true) }
-
-    val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.8"
-    val clientDep = project.rootProject.findProject(":parikshan-client")
-      ?.let { project.dependencies.project(mapOf("path" to it.path)) }
-      ?: "io.github.aryapreetam.parikshan:parikshan-client:$pluginVersion"
-
-    val hostLauncherConfig = project.configurations.detachedConfiguration(
-        project.dependencies.create(clientDep),
-        project.dependencies.create("org.junit.platform:junit-platform-launcher:1.10.2"),
-        project.dependencies.create("org.junit.jupiter:junit-jupiter-engine:5.10.2"),
-        project.dependencies.create("org.junit.vintage:junit-vintage-engine:5.10.2")
-    )
-
-    hostTaskProvider.configure {
-      if (compileTask != null) {
-        val classDirs = compileTask.outputs.files.filter { dir ->
-          dir.isDirectory && (dir.path.contains("classes") || dir.name == "hostTest")
-        }
-        testClassesDirs = project.files(classDirs)
-        val runtimeConfig = configurations.findByName("androidHostTestRuntimeClasspath")
-          ?: configurations.findByName("androidUnitTestRuntimeClasspath")
-          ?: configurations.findByName("commonTestImplementation")
-        val baseClasspath = if (runtimeConfig != null) {
-          val artifactTypeAttr = org.gradle.api.attributes.Attribute.of("artifactType", String::class.java)
-          val resolvedJars = runtimeConfig.incoming.artifactView {
-            attributes { attribute(artifactTypeAttr, "jar") }
-            lenient(true)
-          }.files
-          project.files(resolvedJars).plus(project.files(classDirs))
-        } else {
-          project.files(classDirs)
-        }
-        classpath = hostLauncherConfig.plus(baseClasspath)
-        dependsOn(compileTask)
-        filter.isFailOnNoMatchingTests = false
-      } else if (existingTestTask != null) {
-        testClassesDirs = existingTestTask.testClassesDirs
-        classpath = hostLauncherConfig.plus(existingTestTask.classpath)
-        dependsOn(existingTestTask.testClassesDirs.buildDependencies)
-        filter.isFailOnNoMatchingTests = false
-        existingTestTask.filter.isFailOnNoMatchingTests = false
-      }
-    }
-  }
-
-  return hostTaskProvider
-}
-
-internal fun Project.resolveHostTestTaskName(override: String?): String {
-  return findOrRegisterHostTestTask(override).name
-}
 
 internal fun Project.findWasmTargets(): List<String> {
   val kmp = extensions.findByName("kotlin") ?: return emptyList()
@@ -592,35 +470,26 @@ private fun String.maskKotlinCommentsAndLiterals(): String {
 
 internal fun Project.configureParikshanDependencies(isE2EActive: Boolean) {
   // Resolve version dynamically from loaded plugin class metadata.
-  val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.8"
+  val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.9"
 
   val hasKmp = pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform")
   if (hasKmp) {
-      addParikshanDependency("commonTestImplementation", ":parikshan", "io.github.aryapreetam.parikshan:parikshan:$pluginVersion")
+      addParikshanDependency("commonTestImplementation", ":parikshan-core", "io.github.aryapreetam.parikshan:parikshan-core:$pluginVersion")
       addParikshanDependency("commonTestImplementation", ":parikshan-client", "io.github.aryapreetam.parikshan:parikshan-client:$pluginVersion")
-  } else if (pluginManager.hasPlugin("com.android.application")) {
-      addParikshanDependency("testImplementation", ":parikshan", "io.github.aryapreetam.parikshan:parikshan:$pluginVersion")
+  } else if (pluginManager.hasPlugin("com.android.application") || pluginManager.hasPlugin("com.android.library") || pluginManager.hasPlugin("com.android.kotlin.multiplatform.library")) {
+      addParikshanDependency("testImplementation", ":parikshan-core", "io.github.aryapreetam.parikshan:parikshan-core:$pluginVersion")
       addParikshanDependency("testImplementation", ":parikshan-client", "io.github.aryapreetam.parikshan:parikshan-client:$pluginVersion")
       addParikshanDependency("testImplementation", "org.junit.platform:junit-platform-launcher:1.10.2", "org.junit.platform:junit-platform-launcher:1.10.2")
       addParikshanDependency("testImplementation", "org.junit.vintage:junit-vintage-engine:5.10.2", "org.junit.vintage:junit-vintage-engine:5.10.2")
   }
 
-  if (!hasKmp && !isE2EActive) {
-      configurations.configureEach {
-          if (name.contains("UnitTest", ignoreCase = true) || name.startsWith("test")) {
-              exclude(mapOf("group" to "io.github.aryapreetam.parikshan", "module" to "parikshan-client"))
-              exclude(mapOf("group" to "io.github.aryapreetam.parikshan", "module" to "parikshan"))
-          }
+  configurations.configureEach {
+      if (name.startsWith("jvmTest")) {
+          exclude(mapOf("group" to "org.jetbrains.kotlin", "module" to "kotlin-test-junit"))
       }
-  } else {
-      configurations.configureEach {
-          if (name.startsWith("jvmTest")) {
-              exclude(mapOf("group" to "org.jetbrains.kotlin", "module" to "kotlin-test-junit"))
-          }
-      }
-      tasks.withType(Test::class.java).configureEach {
-          filter.isFailOnNoMatchingTests = false
-      }
+  }
+  tasks.withType(Test::class.java).configureEach {
+      filter.isFailOnNoMatchingTests = false
   }
 
   // The client engine is only injected into the production binary during active E2E tasks.
@@ -691,9 +560,10 @@ internal fun Project.findJvmTargets(): List<String> {
       targets.forEach { target ->
         val targetName = (target as Named).name
         val className = target.javaClass.name
-        if (className.contains("KotlinJvmTarget", ignoreCase = true) || 
-            targetName.contains("jvm", ignoreCase = true) || 
-            targetName.contains("desktop", ignoreCase = true)) {
+        if (targetName != "parikshanHost" && targetName != "__parikshanHost" &&
+            (className.contains("KotlinJvmTarget", ignoreCase = true) || 
+             targetName.contains("jvm", ignoreCase = true) || 
+             targetName.contains("desktop", ignoreCase = true))) {
           jvmTargetNames.add(targetName)
         }
       }

@@ -25,6 +25,16 @@ class OverlayIntegrationTest : E2ETestLifecycle {
   }
 
   override suspend fun E2ETestScope.afterEach() {
+    val tree = getTree()
+    if (tree.any { it.tag == "date_picker_dialog" && it.visible }) {
+      runCatching { click(Selector.Tag("date_picker_dismiss_button")) }
+    } else if (tree.any { it.tag == "time_picker_dialog" && it.visible }) {
+      runCatching { click(Selector.Tag("time_picker_dismiss_button")) }
+    } else if (tree.any { it.tag == "alert_dialog_popup" && it.visible }) {
+      runCatching { click(Selector.Tag("dialog_dismiss_button")) }
+    } else if (tree.any { it.tag == "bottom_sheet_content" && it.visible }) {
+      runCatching { click(Selector.Tag("sheet_action_a_button")) }
+    }
     navigateToSection("nav_home_screen")
   }
 

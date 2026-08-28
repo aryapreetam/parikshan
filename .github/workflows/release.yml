@@ -55,17 +55,10 @@ jobs:
           GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
           GRADLE_PUBLISH_SECRET: ${{ secrets.GRADLE_PUBLISH_SECRET }}
 
-  deploy-site:
-    name: Deploy GitHub Pages (Landing, API, Demo)
+  build-site:
+    name: Build Site (Landing, API, Demo)
     runs-on: ubuntu-latest
     needs: [ publish-library ]
-    permissions:
-      pages: write
-      id-token: write
-      contents: read
-    environment:
-      name: github-pages
-      url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
     steps:
       - name: Checkout Sources
         uses: actions/checkout@v4
@@ -109,13 +102,24 @@ jobs:
           mkdir -p site/demo
           cp -r samples/multiplatform-showcase/composeApp/build/dist/wasmJs/productionExecutable/* site/demo/
 
-      # 5. Deploy to GitHub Pages
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
+      # 5. Upload Pages Artifact
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
+
+  deploy-pages:
+    name: Deploy to GitHub Pages
+    needs: [ build-site ]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+    environment:
+      name: github-pages
+      url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

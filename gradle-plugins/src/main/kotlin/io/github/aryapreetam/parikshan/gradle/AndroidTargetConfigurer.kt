@@ -18,8 +18,7 @@ internal object AndroidTargetConfigurer {
     isE2EActive: Boolean,
     isBackgroundRequested: Boolean,
     isVideoRequested: Boolean,
-    e2eTestClasses: List<String>,
-    hostTestTask: org.gradle.api.tasks.TaskProvider<Test>
+    e2eTestClasses: List<String>
   ) {
     val androidProjectDirVal = project.projectDir
     
@@ -80,10 +79,10 @@ internal object AndroidTargetConfigurer {
     val stopAndroidAppTask = project.tasks.register("stopParikshanAndroidApp", ParikshanStopAndroidTask::class.java)
     stopAndroidAppTask.configure {
       group = "verification"
-      androidSerial.set(androidSerialVal)
-      port.set(portProvider)
-      applicationId.set(androidApplicationIdProvider)
-      projectDir.set(projDirProvider.asFile)
+      this.androidSerial.set(androidSerialVal)
+      this.port.set(portProvider)
+      this.applicationId.set(androidApplicationIdProvider)
+      this.projectDir.set(projDirProvider.asFile)
     }
 
     val startAndroidAppTask = project.tasks.register("startParikshanAndroidApp", ParikshanStartAndroidTask::class.java)
@@ -107,7 +106,6 @@ internal object AndroidTargetConfigurer {
       dependsOn(startAndroidAppTask)
       finalizedBy("stopParikshanAndroidApp")
       configureE2eHostTestExecution(
-        hostTestTaskProvider = hostTestTask,
         e2eTestClasses = e2eTestClasses,
         target = "Android",
         logger = logger
@@ -116,6 +114,27 @@ internal object AndroidTargetConfigurer {
       systemProperty("parikshan.host", "127.0.0.1")
       systemProperty("parikshan.port", "9879")
       systemProperty("parikshan.token", sessionTokenVal)
+      val videosDir = project.layout.buildDirectory.dir("parikshan/videos/android").get().asFile.absolutePath
+      systemProperty("parikshan.video.outputDir", videosDir)
+      if (isVideoRequested) {
+        systemProperty("parikshan.video.enabled", "true")
+      }
+      val fps = project.findProperty("parikshan.video.fps")?.toString()
+      if (!fps.isNullOrBlank()) {
+        systemProperty("parikshan.video.fps", fps)
+      }
+      val stepDelay = project.findProperty("parikshan.video.stepDelayMs")?.toString()
+      if (!stepDelay.isNullOrBlank()) {
+        systemProperty("parikshan.video.stepDelayMs", stepDelay)
+      }
+      val postRoll = project.findProperty("parikshan.video.postRollMs")?.toString()
+      if (!postRoll.isNullOrBlank()) {
+        systemProperty("parikshan.video.postRollMs", postRoll)
+      }
+      val granularity = project.findProperty("parikshan.video.granularity")?.toString()
+      if (!granularity.isNullOrBlank()) {
+        systemProperty("parikshan.video.granularity", granularity)
+      }
       doFirst {
         val serial = AndroidRecorder.resolveDeviceSerial(logger, androidProjectDirVal, androidSerialVal)
         systemProperty("parikshan.android.serial", serial)

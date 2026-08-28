@@ -110,7 +110,7 @@ private fun Project.replaceKotlinSourceDirs(
 ) {
   val name = (sourceSet as? org.gradle.api.Named)?.name ?: "unknown"
   val kotlinSrc = sourceSet.javaClass.getMethod("getKotlin").invoke(sourceSet) as SourceDirectorySet
-  val physicalSrcDirPrefix = File(projectDir, "src").absolutePath
+  val physicalSrcDirPrefix = File(projectDir, "src/$name").absolutePath
 
   kotlinSrc.exclude(object : org.gradle.api.specs.Spec<org.gradle.api.file.FileTreeElement> {
     override fun isSatisfiedBy(element: org.gradle.api.file.FileTreeElement): Boolean {
@@ -185,11 +185,11 @@ private fun instrumentComposeWasmSource(source: String): String {
     ""
   ).replace("ComposeViewport", "ParikshanComposeViewport")
   
-  // 2. Inject Parikshan imports and initializer
+  // 2. Inject Parikshan imports
   result = addKotlinImport(result, "import io.github.aryapreetam.parikshan.ParikshanComposeViewport")
   result = addKotlinImport(result, "import io.github.aryapreetam.parikshan.initializeParikshanWasm")
   
-  // 3. Inject initializeParikshanWasm() at the start of main()
+  // 3. Inject initializeParikshanWasm() if block body main is present (expression body is handled automatically by ParikshanComposeViewport)
   val mainMatch = Regex("""fun\s+main\s*\([^)]*\)\s*\{""").find(result)
   if (mainMatch != null) {
       result = result.replaceRange(

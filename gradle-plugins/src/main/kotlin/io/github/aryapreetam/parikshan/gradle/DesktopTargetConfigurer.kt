@@ -166,11 +166,29 @@ internal object DesktopTargetConfigurer {
       systemProperty("parikshan.target", targetName.lowercase())
       systemProperty("parikshan.token", tokenVal)
       systemProperty("parikshan.desktop.launchManifest", manifestFileVal.absolutePath)
+      val videosDir = project.layout.buildDirectory.dir("parikshan/videos/$targetName").get().asFile.absolutePath
+      systemProperty("parikshan.video.outputDir", videosDir)
       if (isBackgroundRequested) {
         systemProperty("parikshan.background", "true")
       }
       if (isVideoRequested) {
         systemProperty("parikshan.video.enabled", "true")
+      }
+      val fps = project.findProperty("parikshan.video.fps")?.toString()
+      if (!fps.isNullOrBlank()) {
+        systemProperty("parikshan.video.fps", fps)
+      }
+      val stepDelay = project.findProperty("parikshan.video.stepDelayMs")?.toString()
+      if (!stepDelay.isNullOrBlank()) {
+        systemProperty("parikshan.video.stepDelayMs", stepDelay)
+      }
+      val postRoll = project.findProperty("parikshan.video.postRollMs")?.toString()
+      if (!postRoll.isNullOrBlank()) {
+        systemProperty("parikshan.video.postRollMs", postRoll)
+      }
+      val granularity = project.findProperty("parikshan.video.granularity")?.toString()
+      if (!granularity.isNullOrBlank()) {
+        systemProperty("parikshan.video.granularity", granularity)
       }
     }
   }

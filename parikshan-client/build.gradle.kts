@@ -55,6 +55,19 @@ kotlin {
   iosSimulatorArm64()
 
   sourceSets {
+    val jvmAndAndroidMain by creating {
+      dependsOn(commonMain.get())
+    }
+    jvmMain.get().dependsOn(jvmAndAndroidMain)
+    androidMain.get().dependsOn(jvmAndAndroidMain)
+
+    val iosMain by creating {
+      dependsOn(commonMain.get())
+    }
+    listOf(iosX64Main, iosArm64Main, iosSimulatorArm64Main).forEach {
+      it.get().dependsOn(iosMain)
+    }
+
     commonMain.dependencies {
       api(project(":parikshan-core"))
       implementation(compose.runtime)
@@ -87,11 +100,9 @@ kotlin {
       implementation(libs.androidx.test.runner)
     }
 
-    val iosMain by creating {
-      dependencies {
-        @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
-        implementation(compose.uiTest)
-      }
+    iosMain.dependencies {
+      @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+      implementation(compose.uiTest)
     }
 
     wasmJsMain.dependencies {

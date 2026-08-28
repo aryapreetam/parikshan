@@ -32,11 +32,11 @@ internal object ParikshanVideoSessionManager {
   }
 
   fun pauseRecording() {
-    (activeRecorder as? DesktopVideoRecorder)?.pause()
+    activeRecorder?.pause()
   }
 
   fun resumeRecording(newDriver: TestDriver) {
-    val recorder = activeRecorder as? DesktopVideoRecorder ?: return
+    val recorder = activeRecorder ?: return
     recorder.updateDriver(newDriver)
     recorder.resume()
   }
@@ -62,9 +62,9 @@ internal object ParikshanVideoSessionManager {
 
     if (shutdownHookInstalled.compareAndSet(false, true)) {
       Runtime.getRuntime().addShutdownHook(Thread({
-        val target = System.getProperty("parikshan.target")?.lowercase()
+        val currentTarget = System.getProperty("parikshan.target")?.lowercase()
         // Wasm target manages its own video lifecycle via WasmDriver's shutdown hook.
-        if (target == "wasm" || target == "web") {
+        if (currentTarget == "wasm" || currentTarget == "web") {
           return@Thread
         }
 
@@ -86,26 +86,20 @@ internal object ParikshanVideoSessionManager {
     lock.withLock {
       if (config.granularity == VideoGranularity.RUN) {
         if (!sessionRecordingStarted) {
-          val target = System.getProperty("parikshan.target")?.lowercase() ?: "desktop"
-          val recorder = VideoRecorderFactory.create(target, driver, config)
+          val currentTarget = System.getProperty("parikshan.target")?.lowercase() ?: "desktop"
+          val recorder = VideoRecorderFactory.create(currentTarget, driver, config)
           activeRecorder = recorder
           recorder.start("e2e_session", config.outputDir)
           sessionRecordingStarted = true
         } else {
-          val recorder = activeRecorder
-          if (recorder is DesktopVideoRecorder) {
-            recorder.updateDriver(driver)
-          }
+          activeRecorder?.updateDriver(driver)
         }
         return
       }
 
       if (config.granularity == VideoGranularity.CLASS) {
         if (activeClassName == className) {
-          val recorder = activeRecorder
-          if (recorder is DesktopVideoRecorder) {
-            recorder.updateDriver(driver)
-          }
+          activeRecorder?.updateDriver(driver)
           return
         }
         val previousRecorder = activeRecorder
@@ -116,8 +110,8 @@ internal object ParikshanVideoSessionManager {
             registerVideoPath(path)
           }
         }
-        val target = System.getProperty("parikshan.target")?.lowercase() ?: "desktop"
-        val recorder = VideoRecorderFactory.create(target, driver, config)
+        val currentTarget = System.getProperty("parikshan.target")?.lowercase() ?: "desktop"
+        val recorder = VideoRecorderFactory.create(currentTarget, driver, config)
         activeRecorder = recorder
         recorder.start(className, config.outputDir)
         activeClassName = className
@@ -133,8 +127,8 @@ internal object ParikshanVideoSessionManager {
             registerVideoPath(path)
           }
         }
-        val target = System.getProperty("parikshan.target")?.lowercase() ?: "desktop"
-        val recorder = VideoRecorderFactory.create(target, driver, config)
+        val currentTarget = System.getProperty("parikshan.target")?.lowercase() ?: "desktop"
+        val recorder = VideoRecorderFactory.create(currentTarget, driver, config)
         activeRecorder = recorder
         recorder.start("${className}_$methodName", config.outputDir)
       }

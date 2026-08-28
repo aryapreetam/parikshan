@@ -111,6 +111,27 @@ internal object IosTargetConfigurer {
       systemProperty("parikshan.host", "127.0.0.1")
       systemProperty("parikshan.port", iosPortVal.toString())
       systemProperty("parikshan.token", sessionTokenVal)
+      val videosDir = project.layout.buildDirectory.dir("parikshan/videos/ios").get().asFile.absolutePath
+      systemProperty("parikshan.video.outputDir", videosDir)
+      if (isVideoRequested) {
+        systemProperty("parikshan.video.enabled", "true")
+      }
+      val fps = project.findProperty("parikshan.video.fps")?.toString()
+      if (!fps.isNullOrBlank()) {
+        systemProperty("parikshan.video.fps", fps)
+      }
+      val stepDelay = project.findProperty("parikshan.video.stepDelayMs")?.toString()
+      if (!stepDelay.isNullOrBlank()) {
+        systemProperty("parikshan.video.stepDelayMs", stepDelay)
+      }
+      val postRoll = project.findProperty("parikshan.video.postRollMs")?.toString()
+      if (!postRoll.isNullOrBlank()) {
+        systemProperty("parikshan.video.postRollMs", postRoll)
+      }
+      val granularity = project.findProperty("parikshan.video.granularity")?.toString()
+      if (!granularity.isNullOrBlank()) {
+        systemProperty("parikshan.video.granularity", granularity)
+      }
       val iosPortFileVal = project.layout.buildDirectory.file("parikshan/ios-port.txt").get().asFile
       doFirst {
         val osName = System.getProperty("os.name").orEmpty().lowercase()

@@ -26,6 +26,9 @@ Parikshan supports execution configuration through Gradle command-line flags on 
 | `--targets` | String | Configured targets | Comma-separated list of targets (`desktop`, `wasm`, `android`, `ios`) | `--targets=desktop,wasm` | N/A |
 | `--tests` | String | All tests | Class or method filter pattern | `--tests="sample.app.LoginTest"` | `--tests="..."` |
 | `--video` | Flag | `false` | Enables MP4 video recording per test execution (not supported with `--sync` or `--watch`) | `--video` | `-Dparikshan.video.enabled=true` |
+| `--granularity` | String | `class` | Video recording granularity (`session`, `run`, `class`, `test`) | `--granularity=session` | `-Dparikshan.video.granularity=...` |
+| `--post-roll-ms` | String | `1000` | Post-roll pause duration in milliseconds before stopping recording | `--post-roll-ms=2000` | `-Dparikshan.video.postRollMs=...` |
+| `--step-delay-ms` | String | `0` | Delay in milliseconds inserted after each UI command during video recording | `--step-delay-ms=250` | `-Dparikshan.video.stepDelayMs=...` |
 | `--background` | Flag | `false` | Runs tests in headless / background mode | `--background` | `-Dparikshan.background=true` |
 | `--layout` | String | `default` | Layout presentation mode: `default` or `side-by-side` | `--layout=side-by-side` | N/A |
 | `--window-size` | String | Target default | Global window geometry applied uniformly to Desktop and Wasm | `--window-size=360x720` | `-Dparikshan.desktop.width=...` |

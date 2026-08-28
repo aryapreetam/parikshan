@@ -81,6 +81,31 @@ abstract class E2ETestTask : DefaultTask() {
   var video: Boolean = false
 
   @get:Input
+  @get:Optional
+  @set:Option(option = "post-roll-ms", description = "Post-roll pause duration in milliseconds before stopping video recording.")
+  var postRollMs: String? = null
+
+  @Option(option = "postRollMs", description = "Post-roll pause duration in milliseconds before stopping video recording (alias).")
+  fun setPostRollMsAlias(value: String) {
+    this.postRollMs = value
+  }
+
+  @get:Input
+  @get:Optional
+  @set:Option(option = "step-delay-ms", description = "Delay in milliseconds inserted after each UI command during video recording.")
+  var stepDelayMs: String? = null
+
+  @Option(option = "stepDelayMs", description = "Delay in milliseconds inserted after each UI command during video recording (alias).")
+  fun setStepDelayMsAlias(value: String) {
+    this.stepDelayMs = value
+  }
+
+  @get:Input
+  @get:Optional
+  @set:Option(option = "granularity", description = "Video recording granularity: session, run, class, or test.")
+  var granularity: String? = null
+
+  @get:Input
   @set:Option(option = "reclaim-ports", description = "Force terminate conflicting active sessions of other applications on default ports.")
   var reclaimPorts: Boolean = false
 
@@ -220,10 +245,16 @@ abstract class E2ETestTask : DefaultTask() {
   fun runOrchestratedTests() {
     val logger = logger
     
-    // Clear stale test results from previous runs
+    // Clear stale test results and artifacts from previous runs
     val testResultsDir = File(buildDir.get().asFile, "test-results/e2eTest")
     testResultsDir.deleteRecursively()
     testResultsDir.mkdirs()
+
+    val videosDir = File(buildDir.get().asFile, "parikshan/videos")
+    videosDir.deleteRecursively()
+
+    val logsDir = File(buildDir.get().asFile, "parikshan/logs")
+    logsDir.deleteRecursively()
 
     val discoveredClasses = e2eTestClasses.get()
     
@@ -852,8 +883,13 @@ abstract class E2ETestTask : DefaultTask() {
           "parikshan.port" to activePort.toString(),
           "parikshan.token" to activeToken
         )
-        if (!finalAndroidSerial.isNullOrBlank()) {
-          testSystemProps["parikshan.android.serial"] = finalAndroidSerial
+        val resolvedSerial = try {
+          AndroidTargetConfigurer.AndroidRecorder.resolveDeviceSerial(logger, File(projectRootDir.get()), finalAndroidSerial)
+        } catch (_: Exception) {
+          finalAndroidSerial.orEmpty()
+        }
+        if (!resolvedSerial.isNullOrBlank()) {
+          testSystemProps["parikshan.android.serial"] = resolvedSerial
         }
         val exitCode = spawnTestJvmForClasses(
           target = "android",
@@ -1313,6 +1349,15 @@ abstract class E2ETestTask : DefaultTask() {
     if (video) {
       pbArgs.add("-Dparikshan.video.enabled=true")
     }
+    if (!postRollMs.isNullOrEmpty()) {
+      pbArgs.add("-Dparikshan.video.postRollMs=$postRollMs")
+    }
+    if (!stepDelayMs.isNullOrEmpty()) {
+      pbArgs.add("-Dparikshan.video.stepDelayMs=$stepDelayMs")
+    }
+    if (!granularity.isNullOrEmpty()) {
+      pbArgs.add("-Dparikshan.video.granularity=$granularity")
+    }
 
     val reportsDir = File(buildDir.get().asFile, "test-results/e2eTest/$target/$testClass").absolutePath
     pbArgs.add("-Dparikshan.video.outputDir=" + File(buildDir.get().asFile, "parikshan/videos/$target").absolutePath)
@@ -1413,6 +1458,15 @@ abstract class E2ETestTask : DefaultTask() {
     }
     if (video) {
       pbArgs.add("-Dparikshan.video.enabled=true")
+    }
+    if (!postRollMs.isNullOrEmpty()) {
+      pbArgs.add("-Dparikshan.video.postRollMs=$postRollMs")
+    }
+    if (!stepDelayMs.isNullOrEmpty()) {
+      pbArgs.add("-Dparikshan.video.stepDelayMs=$stepDelayMs")
+    }
+    if (!granularity.isNullOrEmpty()) {
+      pbArgs.add("-Dparikshan.video.granularity=$granularity")
     }
 
     val reportsDirFile = File(buildDir.get().asFile, "test-results/e2eTest/$target")

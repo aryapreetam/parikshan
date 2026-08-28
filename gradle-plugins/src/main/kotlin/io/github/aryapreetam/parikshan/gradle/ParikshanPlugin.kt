@@ -415,6 +415,9 @@ class ParikshanPlugin : Plugin<Project> {
         this.originalWasmPort.set(extension.wasmServerPort)
         this.androidPort.set(extension.androidPort)
         this.iosPort.set(extension.iosPort)
+        if (isVideoRequested) {
+          this.video = true
+        }
         
         val configuredTargets = buildList {
           if (hasKmp) {

@@ -20,7 +20,7 @@ internal class DesktopVideoRecorder(
     segments.toList()
   }
 
-  fun updateDriver(newDriver: TestDriver) {
+  override fun updateDriver(newDriver: TestDriver) {
     this.driver = newDriver
     if (isRecording) {
       val session = activeSessionName
@@ -51,11 +51,11 @@ internal class DesktopVideoRecorder(
     }
   }
 
-  fun pause() {
+  override fun pause() {
     // No-op for server-side recording, driver coordinates itself
   }
 
-  fun resume() {
+  override fun resume() {
     // No-op for server-side recording, driver coordinates itself
   }
 
@@ -129,11 +129,19 @@ internal class DesktopVideoRecorder(
         e.printStackTrace()
       }
     }
-    
+
+    if (path != null && outputDir != null) {
+      val indexFile = File(outputDir, "video-index.txt")
+      runCatching {
+        indexFile.parentFile?.mkdirs()
+        indexFile.appendText(path + "\n")
+      }
+    }
+
     return path
   }
 
-  private fun mergeMp4Files(files: List<File>, outputFile: File) {
+  private suspend fun mergeMp4Files(files: List<File>, outputFile: File) {
     val movies = files.mapNotNull { file ->
       if (!file.exists() || file.length() < 100) return@mapNotNull null
       
@@ -149,7 +157,7 @@ internal class DesktopVideoRecorder(
             e.printStackTrace()
           } else {
             System.err.println("WARN: Temporary failure building movie for ${file.name} (attempt $attempt), retrying in ${delayMs}ms...")
-            Thread.sleep(delayMs)
+            kotlinx.coroutines.delay(delayMs)
             delayMs *= 2
           }
         }

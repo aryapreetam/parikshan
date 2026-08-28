@@ -13,9 +13,12 @@ format_duration() {
 
 # Parse optional flags
 PUBLISH_MAVEN=false
+ENABLE_VIDEO=false
 for arg in "$@"; do
   if [ "${arg}" == "--publish" ]; then
     PUBLISH_MAVEN=true
+  elif [ "${arg}" == "--video" ] || [ "${arg}" == "video" ]; then
+    ENABLE_VIDEO=true
   fi
 done
 
@@ -42,8 +45,35 @@ verify_tasks_exist() {
   done
 }
 
+# Helper to verify recorded video artifact existence and report linking
+verify_video_recorded() {
+  local video_path="$1"
+  local report_path="$2"
+  echo "==> Verifying video generated at: ${video_path}..."
+  if [ ! -f "${video_path}" ]; then
+    echo "ERROR: Video file '${video_path}' was not generated!"
+    exit 1
+  fi
+  local file_size
+  file_size=$(wc -c < "${video_path}" | tr -d ' ')
+  if [ "${file_size}" -lt 1000 ]; then
+    echo "ERROR: Video file '${video_path}' is corrupted or empty (${file_size} bytes)!"
+    exit 1
+  fi
+  if [ -n "${report_path}" ] && [ -f "${report_path}" ]; then
+    if ! grep -Eq "\.(mp4|webm)" "${report_path}"; then
+      echo "ERROR: Video not referenced in HTML report '${report_path}'!"
+      exit 1
+    fi
+  fi
+  echo "✅ Valid video verified (${file_size} bytes) and linked in report."
+}
+
 echo "============================================================="
 echo " PARIKSHAN E2E VERIFICATION SUITE"
+if [ "${ENABLE_VIDEO}" = true ]; then
+  echo " Mode: Video Recording ENABLED"
+fi
 echo "============================================================="
 
 # -------------------------------------------------------------
@@ -57,11 +87,37 @@ run_gradle :parikshan-core:jvmTest :parikshan-server:test :parikshan-client:jvmT
 # -------------------------------------------------------------
 echo "==> Step 2a: Testing multiplatform-showcase..."
 verify_tasks_exist "" ":samples:multiplatform-showcase:composeApp" "e2eTest" "e2eJvmTest" "e2eWasmTest" "e2eAndroidTest" "e2eIosTest"
+
+video_jvm_opt=()
+if [ "${ENABLE_VIDEO}" = true ]; then
+  video_jvm_opt=("-Dparikshan.video.enabled=true")
+fi
+
 echo "==> Verifying if target specific tasks work..."
-run_gradle :samples:multiplatform-showcase:composeApp:e2eJvmTest --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"
-run_gradle :samples:multiplatform-showcase:composeApp:e2eWasmTest --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"
-run_gradle :samples:multiplatform-showcase:composeApp:e2eAndroidTest --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"
-run_gradle :samples:multiplatform-showcase:composeApp:e2eIosTest --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"
+run_gradle :samples:multiplatform-showcase:composeApp:e2eJvmTest --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching" "${video_jvm_opt[@]}"
+if [ "${ENABLE_VIDEO}" = true ]; then
+  verify_video_recorded "${PARIKSHAN_ROOT}/samples/multiplatform-showcase/composeApp/build/parikshan/videos/jvm/AccessibilityIntegrationTest.mp4" \
+    "${PARIKSHAN_ROOT}/samples/multiplatform-showcase/composeApp/build/reports/tests/e2eTest/jvm/index.html"
+fi
+
+run_gradle :samples:multiplatform-showcase:composeApp:e2eWasmTest --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching" "${video_jvm_opt[@]}"
+if [ "${ENABLE_VIDEO}" = true ]; then
+  verify_video_recorded "${PARIKSHAN_ROOT}/samples/multiplatform-showcase/composeApp/build/parikshan/videos/wasm/AccessibilityIntegrationTest.webm" \
+    "${PARIKSHAN_ROOT}/samples/multiplatform-showcase/composeApp/build/reports/tests/e2eTest/wasm/index.html"
+fi
+
+run_gradle :samples:multiplatform-showcase:composeApp:e2eAndroidTest --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching" "${video_jvm_opt[@]}"
+if [ "${ENABLE_VIDEO}" = true ]; then
+  verify_video_recorded "${PARIKSHAN_ROOT}/samples/multiplatform-showcase/composeApp/build/parikshan/videos/android/AccessibilityIntegrationTest.mp4" \
+    "${PARIKSHAN_ROOT}/samples/multiplatform-showcase/composeApp/build/reports/tests/e2eTest/android/index.html"
+fi
+
+run_gradle :samples:multiplatform-showcase:composeApp:e2eIosTest --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching" "${video_jvm_opt[@]}"
+if [ "${ENABLE_VIDEO}" = true ]; then
+  verify_video_recorded "${PARIKSHAN_ROOT}/samples/multiplatform-showcase/composeApp/build/parikshan/videos/ios/AccessibilityIntegrationTest.mp4" \
+    "${PARIKSHAN_ROOT}/samples/multiplatform-showcase/composeApp/build/reports/tests/e2eTest/ios/index.html"
+fi
+
 echo "==> Running all tests for all target...(verify e2eTest)"
 run_gradle :samples:multiplatform-showcase:composeApp:e2eTest
 echo "==> Verifying sync mode..."
@@ -91,7 +147,17 @@ run_gradle "-p samples/issue-playground" --stop
 
 echo "==> Step 2e: Testing standalone-android..."
 verify_tasks_exist "-p samples/standalone-android" ":app" "e2eTest" "e2eAndroidTest"
-run_gradle -p samples/standalone-android :app:e2eTest
+
+standalone_video_opt=()
+if [ "${ENABLE_VIDEO}" = true ]; then
+  standalone_video_opt=("--video")
+fi
+
+run_gradle -p samples/standalone-android :app:e2eTest "${standalone_video_opt[@]}"
+if [ "${ENABLE_VIDEO}" = true ]; then
+  verify_video_recorded "${PARIKSHAN_ROOT}/samples/standalone-android/app/build/parikshan/videos/android/CalculatorE2ETest.mp4" \
+    "${PARIKSHAN_ROOT}/samples/standalone-android/app/build/reports/tests/e2eTest/index.html"
+fi
 
 run_gradle "-p samples/standalone-android" --stop
 
@@ -99,19 +165,25 @@ run_gradle "-p samples/standalone-android" --stop
 # 3. Publish to Maven Local (Required ONLY for external kmp-mobile)
 # -------------------------------------------------------------
 if [ "${PUBLISH_MAVEN}" = true ]; then
-  echo "==> Step 2: Publishing Parikshan library to Maven Local..."
+  echo "==> Step 3: Publishing Parikshan library to Maven Local..."
   run_gradle publishToMavenLocal
 else
-  echo "==> Step 2: Skipping publishToMavenLocal (pass --publish to enable)."
+  echo "==> Step 3: Skipping publishToMavenLocal (pass --publish to enable)."
 fi
 
 # -------------------------------------------------------------                                                                                                             
 # 4. External Repository Test: ~/projects/kmp-mobile                                                                                                                        
 # -------------------------------------------------------------                                                                                                             
-KMP_MOBILE_SCRIPT="${HOME}/projects/kmp-mobile/scripts/verify-all-cmp.sh"                                                                                                   
-if [ -x "${KMP_MOBILE_SCRIPT}" ] || [ -f "${KMP_MOBILE_SCRIPT}" ]; then                                                                                                     
-  echo "==> Step 4: Running external tests for ~/projects/kmp-mobile..."                                                                                                    
-  bash "${KMP_MOBILE_SCRIPT}"                                                                                                                                               
+KMP_MOBILE_SCRIPT="${HOME}/projects/kmp-mobile/scripts/verify-all-cmp.sh"
+if [ -x "${KMP_MOBILE_SCRIPT}" ] || [ -f "${KMP_MOBILE_SCRIPT}" ]; then
+  echo "==> Step 4: Running external tests for ~/projects/kmp-mobile..."
+  if [ "${ENABLE_VIDEO}" = true ]; then
+    bash "${KMP_MOBILE_SCRIPT}" --video
+    verify_video_recorded "${HOME}/projects/kmp-mobile/shared/build/parikshan/videos/ios/AppTest.mp4" \
+      "${HOME}/projects/kmp-mobile/shared/build/reports/tests/e2eTest/index.html"
+  else
+    bash "${KMP_MOBILE_SCRIPT}"
+  fi
 fi
                                                                                                                                                                   
 pkill -f '.*org.gradle.launcher.daemon.bootstrap.GradleDaemon.*' || true
@@ -121,12 +193,3 @@ echo " SUCCESS: All library unit tests, sample project matrix E2E"
 echo " tests, task existence audits, and external project tests PASSED!"
 echo " Total Execution Time: $(format_duration)"
 echo "============================================================="
-
-
-# ./gradlew :samples:multiplatform-showcase:composeApp:e2eTest --targets=jvm --tests="sample.app.FormIntegrationTest"  && 
-# ./gradlew -p samples/composables-sample :shared:e2eTest --targets=jvm && 
-# ./gradlew -p samples/issue-playground :shared:e2eTest --targets=jvm && 
-# ./gradlew -p samples/cmp-latest :app:shared:e2eTest --targets=jvm && 
-# ./gradlew -p samples/standalone-android :app:e2eTest && 
-# ./gradlew -p ~/projects/kmp-mobile e2eTest --targets=android &&
-# ./gradlew --stop

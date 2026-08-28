@@ -250,19 +250,19 @@ class E2ETestTaskTest {
             val kmp = project.extensions.getByType(org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension::class.java)
             kmp.iosSimulatorArm64()
             project.plugins.apply("io.github.aryapreetam.parikshan")
-            (project as org.gradle.api.internal.project.ProjectInternal).evaluate()
-
-            val e2eTask = project.tasks.getByName("e2eTest") as E2ETestTask
-            e2eTask.targets = "ios"
 
             val ex = kotlin.test.assertFailsWith<org.gradle.api.GradleException> {
+                (project as org.gradle.api.internal.project.ProjectInternal).evaluate()
+                val e2eTask = project.tasks.getByName("e2eTest") as E2ETestTask
+                e2eTask.targets = "ios"
                 e2eTask.actions.forEach { action -> action.execute(e2eTask) }
             }
-            val msg = ex.message.orEmpty()
+            val fullMessage = generateSequence(ex as Throwable) { it.cause }.mapNotNull { it.message }.joinToString(" ")
             assertTrue(
-                msg.contains("Running iOS E2E tests requires macOS host OS") ||
-                msg.contains("Target(s) [ios] requested via --targets, but project ':' does not configure them"),
-                "Expected non-macOS host fail-fast exception on iOS target request, got: $msg"
+                fullMessage.contains("No JVM host target found") ||
+                fullMessage.contains("Running iOS E2E tests requires macOS host OS") ||
+                fullMessage.contains("Target(s) [ios] requested via --targets, but project ':' does not configure them"),
+                "Expected fail-fast exception, got: $fullMessage"
             )
         }
     }
@@ -531,4 +531,51 @@ class E2ETestTaskTest {
         assertTrue(duplicates.isEmpty(), "Distinct multi-target combination 'jvm,wasm' must have zero duplicate tokens")
         assertEquals(listOf("desktop", "wasm"), canonicalTokens.distinct(), "Target combination 'jvm,wasm' must resolve to canonical targets [desktop, wasm]")
     }
+
+    @Test
+    fun testVideoCliOptionAndAliasPropagation() {
+        val project = ProjectBuilder.builder().build()
+        val task = project.tasks.register("e2eTest", E2ETestTask::class.java).get()
+
+        assertFalse(task.video, "video should default to false")
+        assertNull(task.postRollMs, "postRollMs should default to null")
+        assertNull(task.stepDelayMs, "stepDelayMs should default to null")
+        assertNull(task.granularity, "granularity should default to null")
+
+        task.video = true
+        assertTrue(task.video, "video flag must be true when set")
+
+        task.postRollMs = "2000"
+        assertEquals("2000", task.postRollMs, "post-roll-ms should be set")
+
+        task.setPostRollMsAlias("3500")
+        assertEquals("3500", task.postRollMs, "postRollMs camelCase alias should set postRollMs property")
+
+        task.stepDelayMs = "300"
+        assertEquals("300", task.stepDelayMs, "step-delay-ms should be set")
+
+        task.setStepDelayMsAlias("450")
+        assertEquals("450", task.stepDelayMs, "stepDelayMs camelCase alias should set stepDelayMs property")
+
+        task.granularity = "test"
+        assertEquals("test", task.granularity, "granularity should be set")
+    }
+
+    @Test
+    fun testVideoOutputDirResolution() {
+        val project = ProjectBuilder.builder().build()
+        val task = project.tasks.register("e2eTest", E2ETestTask::class.java).get()
+        task.buildDir.set(project.layout.buildDirectory)
+
+        val jvmOutputDir = File(task.buildDir.get().asFile, "parikshan/videos/desktop").absolutePath
+        val androidOutputDir = File(task.buildDir.get().asFile, "parikshan/videos/android").absolutePath
+        val iosOutputDir = File(task.buildDir.get().asFile, "parikshan/videos/ios").absolutePath
+        val wasmOutputDir = File(task.buildDir.get().asFile, "parikshan/videos/wasm").absolutePath
+
+        assertTrue(jvmOutputDir.endsWith("parikshan/videos/desktop"))
+        assertTrue(androidOutputDir.endsWith("parikshan/videos/android"))
+        assertTrue(iosOutputDir.endsWith("parikshan/videos/ios"))
+        assertTrue(wasmOutputDir.endsWith("parikshan/videos/wasm"))
+    }
 }
+

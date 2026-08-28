@@ -9,7 +9,7 @@ import java.net.HttpURLConnection
 import java.net.URI
 
 /**
- * JVM-side driver that communicates with the ParikshanAndroidServer
+ * JVM/Android-side driver that communicates with the ParikshanAndroidServer
  * running inside the real Android app on the emulator/device.
  * Uses HTTP POST over an adb forwarded port (e.g. 9879).
  */
@@ -19,16 +19,14 @@ internal class AndroidRemoteDriver private constructor(
 ) : TestDriver {
   override val targetPlatform: String = "android"
 
-  // State is now managed in companion object to persist across driver instances
-
   override suspend fun send(command: Command): Response {
     command.token = sessionToken
-    
+
     if (command is Command.StartRecording) {
-        return startHostRecording(command)
+      return startHostRecording(command)
     }
     if (command is Command.StopRecording) {
-        return stopHostRecording(command)
+      return stopHostRecording(command)
     }
 
     val json = ProtocolJson.encodeCommand(command)
@@ -36,105 +34,103 @@ internal class AndroidRemoteDriver private constructor(
     return ProtocolJson.decodeResponse(responseJson)
   }
 
-  private fun startHostRecording(command: Command.StartRecording): Response {
+  private suspend fun startHostRecording(command: Command.StartRecording): Response {
     val serial = System.getProperty("parikshan.android.serial") ?: ""
     val adbPrefix = if (serial.isNotEmpty()) listOf("adb", "-s", serial) else listOf("adb")
     val stateKey = serial.ifEmpty { "default" }
-    
+
     // Stop any existing recording
     stopHostRecording(Command.StopRecording(command.id, command.sessionName))
-    
+
     activeVideoPaths[stateKey] = command.path
-    
+
     // Clean up any existing file on device
     ProcessBuilder(adbPrefix + listOf("shell", "rm", "/data/local/tmp/parikshan_video.mp4")).start().waitFor()
-    
+
     val pb = ProcessBuilder(adbPrefix + listOf("shell", "screenrecord", "/data/local/tmp/parikshan_video.mp4"))
     try {
-        val process = pb.start()
-        activeRecordingProcesses[stateKey] = process
-        // Wait a bit to ensure it started
-        Thread.sleep(1000)
-        if (process.isAlive == false) {
-             val error = process.errorStream?.bufferedReader()?.readText() ?: "Unknown error"
-             return Response.Error(command.id, "Failed to start adb screenrecord: $error")
-        }
-        return Response.Ok(command.id)
+      val process = pb.start()
+      activeRecordingProcesses[stateKey] = process
+      // Check if process failed to start within a brief latch (100ms)
+      delay(100)
+      if (!process.isAlive) {
+        val error = process.errorStream?.bufferedReader()?.readText() ?: "Unknown error"
+        return Response.Error(command.id, "Failed to start adb screenrecord: $error")
+      }
+      return Response.Ok(command.id)
     } catch (e: Exception) {
-        return Response.Error(command.id, "Exception starting adb screenrecord: ${e.message}")
+      return Response.Error(command.id, "Exception starting adb screenrecord: ${e.message}")
     }
   }
 
-  private fun stopHostRecording(command: Command.StopRecording): Response {
+  private suspend fun stopHostRecording(command: Command.StopRecording): Response {
     val serial = System.getProperty("parikshan.android.serial") ?: ""
     val adbPrefix = if (serial.isNotEmpty()) listOf("adb", "-s", serial) else listOf("adb")
     val stateKey = serial.ifEmpty { "default" }
-    
+
     val process = activeRecordingProcesses.remove(stateKey)
     if (process != null) {
-        try {
-            // Try to find the PID of screenrecord on device
-            val pidProcess = ProcessBuilder(adbPrefix + listOf("shell", "pidof", "screenrecord")).start()
-            val pidOutput = pidProcess.inputStream.bufferedReader().readText().trim()
-            
-            if (pidOutput.isNotEmpty()) {
-                // pidof may return multiple space-separated PIDs
-                pidOutput.split("\\s+".toRegex()).filter { it.isNotEmpty() }.forEach { pid ->
-                    ProcessBuilder(adbPrefix + listOf("shell", "kill", "-2", pid)).start().waitFor()
-                }
-            } else {
-                // Fallback to pkill if pidof fails or returns nothing
-                ProcessBuilder(adbPrefix + listOf("shell", "pkill", "-2", "screenrecord")).start().waitFor()
-            }
-            
-            // Wait for the adb shell process to finish
-            if (!process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) {
-                process.destroy()
-            }
-        } catch (e: Exception) {
-            process.destroy()
+      try {
+        val pidProcess = ProcessBuilder(adbPrefix + listOf("shell", "pidof", "screenrecord")).start()
+        val pidOutput = pidProcess.inputStream.bufferedReader().readText().trim()
+
+        if (pidOutput.isNotEmpty()) {
+          pidOutput.split("\\s+".toRegex()).filter { it.isNotEmpty() }.forEach { pid ->
+            ProcessBuilder(adbPrefix + listOf("shell", "kill", "-2", pid)).start().waitFor()
+          }
+        } else {
+          ProcessBuilder(adbPrefix + listOf("shell", "pkill", "-2", "screenrecord")).start().waitFor()
         }
+
+        if (!process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) {
+          process.destroy()
+        }
+
+        // Wait until screenrecord terminates on device (up to 3 seconds in 50ms intervals)
+        var remainingAttempts = 60
+        while (remainingAttempts > 0) {
+          val checkPid = ProcessBuilder(adbPrefix + listOf("shell", "pidof", "screenrecord")).start()
+          val runningPids = checkPid.inputStream.bufferedReader().readText().trim()
+          if (runningPids.isBlank()) break
+          delay(50)
+          remainingAttempts--
+        }
+      } catch (e: Exception) {
+        process.destroy()
+      }
     }
-    
-    // Give the device a moment to finalize the file
-    Thread.sleep(2000)
-    
-    // Pull the file from device to host
+
     val hostPath = activeVideoPaths.remove(stateKey)
     if (hostPath != null) {
-        val hostFile = java.io.File(hostPath)
-        hostFile.parentFile?.mkdirs()
-        try {
-            // Check if file exists on device first
-            val checkFile = ProcessBuilder(adbPrefix + listOf("shell", "ls", "/data/local/tmp/parikshan_video.mp4"))
-                .start()
-                .waitFor()
-            
-            if (checkFile == 0) {
-                val pullPb = ProcessBuilder(adbPrefix + listOf("pull", "/data/local/tmp/parikshan_video.mp4", hostFile.absolutePath))
-                val pullProcess = pullPb.start()
-                val pullResult = pullProcess.waitFor()
-                if (pullResult != 0) {
-                    val error = pullProcess.errorStream.bufferedReader().readText()
-                    System.err.println("Failed to pull video from Android device: exit code $pullResult. Error: $error")
-                } else {
-                    // Success! Now remove it from device
-                    ProcessBuilder(adbPrefix + listOf("shell", "rm", "/data/local/tmp/parikshan_video.mp4")).start().waitFor()
-                }
-            } else {
-                System.err.println("Video file /data/local/tmp/parikshan_video.mp4 not found on Android device.")
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
+      val hostFile = java.io.File(hostPath)
+      hostFile.parentFile?.mkdirs()
+      try {
+        val checkFile = ProcessBuilder(adbPrefix + listOf("shell", "ls", "/data/local/tmp/parikshan_video.mp4"))
+          .start()
+          .waitFor()
+
+        if (checkFile == 0) {
+          val pullPb = ProcessBuilder(adbPrefix + listOf("pull", "/data/local/tmp/parikshan_video.mp4", hostFile.absolutePath))
+          val pullProcess = pullPb.start()
+          val pullResult = pullProcess.waitFor()
+          if (pullResult != 0) {
+            val error = pullProcess.errorStream.bufferedReader().readText()
+            System.err.println("Failed to pull video from Android device: exit code $pullResult. Error: $error")
+          } else {
+            ProcessBuilder(adbPrefix + listOf("shell", "rm", "/data/local/tmp/parikshan_video.mp4")).start().waitFor()
+          }
+        } else {
+          System.err.println("Video file /data/local/tmp/parikshan_video.mp4 not found on Android device.")
         }
+      } catch (e: Exception) {
+        e.printStackTrace()
+      }
     }
-    
+
     return Response.Ok(command.id)
   }
 
   override suspend fun close() {
-    // The server lifecycle is managed by the Gradle plugin.
-    // Do not send Shutdown, otherwise subsequent tests in the suite will fail to connect.
   }
 
   private fun httpPost(body: String): String {
@@ -142,7 +138,7 @@ internal class AndroidRemoteDriver private constructor(
     val conn = url.openConnection() as HttpURLConnection
     conn.requestMethod = "POST"
     conn.setRequestProperty("Content-Type", "application/json")
-    conn.setRequestProperty("Connection", "close") // Android server uses close
+    conn.setRequestProperty("Connection", "close")
     conn.doOutput = true
     conn.connectTimeout = 10_000
     conn.readTimeout = 30_000
@@ -178,9 +174,8 @@ internal class AndroidRemoteDriver private constructor(
       val baseUrl = "http://${config.host}:${config.port}/"
       val driver = AndroidRemoteDriver(baseUrl)
 
-      val retries = 300 // Android instrumentation can take a long time to boot
+      val retries = 300
 
-      // Wait for the Android server to become available
       repeat(retries) { attempt ->
         try {
           val resp = driver.send(Command.Ping(id = "ping-connect"))

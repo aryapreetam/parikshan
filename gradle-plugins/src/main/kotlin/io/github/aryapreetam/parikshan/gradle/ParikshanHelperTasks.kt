@@ -108,6 +108,10 @@ abstract class ParikshanStartIosTask : DefaultTask() {
   @get:Input
   abstract val xcodeTimeout: Property<Long>
 
+  @get:Input
+  @get:Optional
+  abstract val cmpProfile: Property<String>
+
   @get:Internal
   abstract val projectDir: DirectoryProperty
 
@@ -277,10 +281,12 @@ abstract class ParikshanStartIosTask : DefaultTask() {
     val absoluteGradlew = File(rootDirFile, "gradlew").absolutePath
     val javaHomeVal = System.getProperty("java.home") ?: System.getenv("JAVA_HOME") ?: ""
     val javaHomeExport = if (javaHomeVal.isNotBlank()) "export JAVA_HOME=\"$javaHomeVal\"\nexport PATH=\"$javaHomeVal/bin:\$PATH\"\n" else ""
+    val cmpProfileVal = cmpProfile.orNull?.takeIf { it.isNotBlank() }
+    val profileArg = if (cmpProfileVal != null) " -PcmpProfile=$cmpProfileVal" else ""
     val gradlewShim = File(generatedIosAppDir, "gradlew")
     val shimContent = """
         #!/bin/sh
-        $javaHomeExport exec "$absoluteGradlew" -p "${rootDirFile.absolutePath}" --no-daemon --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.targets=ios -Pparikshan.token=$tokenVal "${'$'}@"
+        $javaHomeExport exec "$absoluteGradlew" -p "${rootDirFile.absolutePath}" --no-daemon --no-configuration-cache -Pparikshan.e2e.active=true -Pparikshan.targets=ios -Pparikshan.token=$tokenVal$profileArg "${'$'}@"
         """.trimIndent()
     gradlewShim.writeText(shimContent)
     gradlewShim.setExecutable(true)

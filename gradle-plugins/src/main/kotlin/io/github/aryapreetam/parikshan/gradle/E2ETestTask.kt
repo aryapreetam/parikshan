@@ -1475,6 +1475,7 @@ abstract class E2ETestTask : DefaultTask() {
     pbArgs.add("-Dparikshan.video.outputDir=" + File(buildDir.get().asFile, "parikshan/videos/$target").absolutePath)
     pbArgs.add("org.junit.platform.console.ConsoleLauncher")
     pbArgs.add("execute")
+    pbArgs.add("--disable-ansi-colors")
     pbArgs.add("--reports-dir")
     pbArgs.add(reportsDir)
 
@@ -1503,15 +1504,17 @@ abstract class E2ETestTask : DefaultTask() {
 
     var currentClass: String? = testClasses.firstOrNull()
     val headerLines = mutableListOf<String>()
-    val summaryLines = mutableListOf<String>()
-    var inSummary = false
 
     try {
       process.inputStream.bufferedReader().forEachLine { line ->
+        val cleanLine = line.replace(Regex("\u001B\\[[;\\d]*[ -/]*[@-~]"), "").trimEnd()
         var matchedClass: String? = null
         for (clazz in testClasses) {
           val simple = clazz.substringAfterLast('.')
-          if (line.contains("└─  $simple") || line.contains("├─  $simple") || line.contains("Test Failures for $clazz") || line.contains("Test Failures for $simple")) {
+          if (cleanLine.contains("└─  $simple") || cleanLine.contains("├─  $simple") ||
+              cleanLine.contains("└─ $simple") || cleanLine.contains("├─ $simple") ||
+              cleanLine.contains("Test Failures for $clazz") || cleanLine.contains("Test Failures for $simple") ||
+              cleanLine.contains("JUnit Jupiter:$simple:") || cleanLine.contains("className = '$clazz'") || cleanLine.contains("className = '$simple'")) {
             matchedClass = clazz
             break
           }
@@ -1545,6 +1548,10 @@ abstract class E2ETestTask : DefaultTask() {
   }
 
   private fun printTestFailures(target: String, testClass: String) {
+    val metrics = parseTestMetrics(target, testClass)
+    if (metrics != null && metrics.failed == 0) {
+      return
+    }
     val logFile = File(buildDir.get().asFile, "parikshan/logs/${target}-${testClass}.log")
     val logger = logger
     if (logFile.exists()) {

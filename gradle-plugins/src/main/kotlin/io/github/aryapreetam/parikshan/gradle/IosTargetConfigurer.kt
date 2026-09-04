@@ -94,6 +94,7 @@ internal object IosTargetConfigurer {
       this.xcodeTimeout.set(xcodebuildTimeoutProvider)
       this.projectDir.set(projDirProvider.asFile)
       this.rootDir.set(iosRootDirVal)
+      this.cmpProfile.set(project.providers.gradleProperty("cmpProfile").orElse(""))
       this.derivedDataDir.set(buildDirProvider.dir("parikshan/ios-build").get().asFile)
       this.buildDir.set(buildDirProvider.get().asFile)
     }

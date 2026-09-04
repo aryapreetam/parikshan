@@ -106,10 +106,14 @@ jobs:
           if-no-files-found: ignore
 
   e2e-android:
-    name: E2E Android (emulator)
+    name: E2E Android (CMP ${{ matrix.profile }})
     runs-on: ubuntu-latest
     needs: [ unit-tests ]
     if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'android')"
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ['1.10', '1.11', '1.12']
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -132,20 +136,24 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew :samples:multiplatform-showcase:composeApp:e2eAndroidTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"
+          script: ./gradlew :samples:multiplatform-showcase:composeApp:e2eAndroidTest -PcmpProfile=${{ matrix.profile }} -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"
       - name: Upload Android Videos
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: parikshan-android-videos
+          name: parikshan-android-videos-${{ matrix.profile }}
           path: samples/multiplatform-showcase/composeApp/build/parikshan/videos/android/
           if-no-files-found: ignore
 
   e2e-desktop:
-    name: E2E Desktop
+    name: E2E Desktop (CMP ${{ matrix.profile }})
     runs-on: ubuntu-latest
     needs: [ unit-tests ]
     if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'desktop')"
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ['1.10', '1.11', '1.12']
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -159,20 +167,24 @@ jobs:
       - name: Run Parikshan Desktop E2E tests
         uses: aryapreetam/parikshan-desktop-action@v1
         with:
-          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eJvmTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"'
+          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eJvmTest -PcmpProfile=${{ matrix.profile }} -Dparikshan.video.enabled=true --no-configuration-cache'
       - name: Upload Desktop Videos
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: parikshan-desktop-videos
+          name: parikshan-desktop-videos-${{ matrix.profile }}
           path: samples/multiplatform-showcase/composeApp/build/parikshan/videos/desktop/
           if-no-files-found: ignore
 
   e2e-wasm:
-    name: E2E Wasm
+    name: E2E Wasm (CMP ${{ matrix.profile }})
     runs-on: ubuntu-latest
     needs: [ unit-tests ]
     if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'wasm')"
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ['1.10', '1.11', '1.12']
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -186,13 +198,42 @@ jobs:
       - name: Run Parikshan Wasm E2E tests
         uses: aryapreetam/parikshan-wasm-action@v1
         with:
-          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eWasmTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"'
+          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eWasmTest -PcmpProfile=${{ matrix.profile }} -Dparikshan.video.enabled=true --no-configuration-cache'
       - name: Upload Wasm Videos
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: parikshan-wasm-videos
+          name: parikshan-wasm-videos-${{ matrix.profile }}
           path: samples/multiplatform-showcase/composeApp/build/parikshan/videos/wasm/
+          if-no-files-found: ignore
+
+  e2e-windows:
+    name: E2E Windows (JVM + Wasm, CMP 1.10)
+    runs-on: windows-latest
+    needs: [ unit-tests ]
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'windows')"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+      - name: Run Windows E2E tests (JVM + Wasm)
+        shell: bash
+        run: |
+          ./gradlew :samples:multiplatform-showcase:composeApp:e2eTest --targets=jvm,wasm -PcmpProfile=1.10 --no-configuration-cache
+      - name: Upload Windows E2E Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parikshan-windows-e2e-reports
+          path: |
+            samples/multiplatform-showcase/composeApp/build/parikshan/logs/
+            samples/multiplatform-showcase/composeApp/build/reports/tests/
           if-no-files-found: ignore
 
   e2e-sync:
@@ -262,10 +303,14 @@ jobs:
           if-no-files-found: ignore
 
   e2e-ios-showcase:
-    name: E2E iOS Showcase
+    name: E2E iOS Showcase (CMP ${{ matrix.profile }})
     runs-on: macos-latest
     needs: [ unit-tests ]
     if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'ios-showcase')"
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ['1.10', '1.11', '1.12']
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -287,15 +332,15 @@ jobs:
           xcrun simctl list devices available
       - name: Pre-compile Kotlin Native Framework
         run: |
-          ./gradlew :samples:multiplatform-showcase:composeApp:linkDebugFrameworkIosSimulatorArm64 -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
+          ./gradlew :samples:multiplatform-showcase:composeApp:linkDebugFrameworkIosSimulatorArm64 -PcmpProfile=${{ matrix.profile }} -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
       - name: Run Showcase iOS E2E tests
         run: |
-          ./gradlew :samples:multiplatform-showcase:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching" -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Dparikshan.xcodebuild.timeout=1800
+          ./gradlew :samples:multiplatform-showcase:composeApp:e2eIosTest -PcmpProfile=${{ matrix.profile }} -Dparikshan.video.enabled=true --no-configuration-cache --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching" -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Dparikshan.xcodebuild.timeout=1800
       - name: Upload iOS E2E Results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: parikshan-ios-showcase-results
+          name: parikshan-ios-showcase-results-${{ matrix.profile }}
           path: |
             samples/multiplatform-showcase/composeApp/build/parikshan/
             samples/multiplatform-showcase/composeApp/build/reports/
@@ -494,96 +539,3 @@ jobs:
             exit 1
           fi
           echo "✅ All required CI jobs completed successfully!"
-
-
-#  compatibility-matrix-non-ios:
-#    name: Compatibility Matrix Non-iOS (Kotlin ${{ matrix.kotlin }}, Compose ${{ matrix.compose }})
-#    runs-on: ubuntu-latest
-#    needs: [ lint ]
-#    strategy:
-#      fail-fast: false
-#      matrix:
-#        include:
-#          - kotlin: '2.0.21'
-#            compose: '1.7.0'
-#          - kotlin: '2.1.0'
-#            compose: '1.7.3'
-#          - kotlin: '2.3.21'
-#            compose: '1.10.1'
-#          - kotlin: '2.3.21'
-#            compose: '1.11.0'
-#          - kotlin: '2.4.0'
-#            compose: '1.11.1'
-#    steps:
-#      - name: Checkout repository
-#        uses: actions/checkout@v4
-#      - name: Cache Gradle Wrapper
-#        uses: actions/cache@v4
-#        with:
-#          path: ~/.gradle/wrapper/dists
-#          key: gradle-wrapper-${{ runner.os }}-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties') }}
-#          restore-keys: gradle-wrapper-${{ runner.os }}-
-#      - name: Set up JDK
-#        uses: actions/setup-java@v4
-#        with:
-#          distribution: 'zulu'
-#          java-version: ${{ env.JAVA_VERSION }}
-#      - name: Setup Gradle
-#        uses: gradle/actions/setup-gradle@v3
-#      - name: Run unit tests
-#        run: |
-#          ./gradlew :parikshan-server:test :parikshan-core:jvmTest :parikshan-client:jvmTest :samples:multiplatform-showcase:composeApp:jvmTest \
-#                    :parikshan-core:wasmJsBrowserTest :parikshan-client:wasmJsBrowserTest :samples:multiplatform-showcase:composeApp:wasmJsBrowserTest \
-#                    :parikshan-client:testAndroid :samples:multiplatform-showcase:androidApp:testDebugUnitTest \
-#                    -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}
-#      - name: Run E2E Desktop tests
-#        uses: aryapreetam/parikshan-desktop-action@v1
-#        with:
-#          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eDesktopTest -Dparikshan.video.enabled=true --no-configuration-cache -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}'
-#      - name: Run E2E Wasm tests
-#        uses: aryapreetam/parikshan-wasm-action@v1
-#        with:
-#          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eWasmTest -Dparikshan.video.enabled=true --no-configuration-cache -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}'
-#
-#  compatibility-matrix-ios:
-#    name: Compatibility Matrix iOS (Kotlin ${{ matrix.kotlin }}, Compose ${{ matrix.compose }})
-#    runs-on: macos-latest
-#    needs: [ lint ]
-#    strategy:
-#      fail-fast: false
-#      matrix:
-#        include:
-#          - kotlin: '2.0.21'
-#            compose: '1.7.0'
-#          - kotlin: '2.1.0'
-#            compose: '1.7.3'
-#          - kotlin: '2.3.21'
-#            compose: '1.10.1'
-#          - kotlin: '2.3.21'
-#            compose: '1.11.0'
-#          - kotlin: '2.4.0'
-#            compose: '1.11.1'
-#    steps:
-#      - name: Checkout repository
-#        uses: actions/checkout@v4
-#      - name: Set up JDK
-#        uses: actions/setup-java@v4
-#        with:
-#          distribution: 'zulu'
-#          java-version: ${{ env.JAVA_VERSION }}
-#      - name: Cache Kotlin/Native (~/.konan)
-#        uses: actions/cache@v4
-#        with:
-#          path: ~/.konan
-#          key: konan-${{ runner.os }}-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml', '**/gradle-wrapper.properties') }}
-#          restore-keys: konan-${{ runner.os }}-
-#      - name: Setup Gradle
-#        uses: gradle/actions/setup-gradle@v3
-#      - name: Run unit tests
-#        run: |
-#          ./gradlew :parikshan-core:iosSimulatorArm64Test :parikshan-client:iosSimulatorArm64Test :samples:multiplatform-showcase:composeApp:iosSimulatorArm64Test \
-#                    -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}
-#      - name: Run E2E iOS tests
-#        run: |
-#          ./gradlew :samples:multiplatform-showcase:composeApp:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache \
-#                    -PkotlinVersion=${{ matrix.kotlin }} -PcomposeVersion=${{ matrix.compose }}

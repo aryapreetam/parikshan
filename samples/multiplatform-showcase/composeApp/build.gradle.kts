@@ -30,10 +30,12 @@ kotlin {
     browser()
     binaries.executable()
   }
+  val cmpProfile = providers.gradleProperty("cmpProfile").orNull ?: "1.10"
   listOf(
-    iosX64(),
     iosArm64(),
     iosSimulatorArm64()
+  ).plus(
+    if (cmpProfile == "1.10") listOf(iosX64()) else emptyList()
   ).forEach {
     it.binaries.framework {
       baseName = "ComposeApp"

@@ -444,12 +444,14 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
     delay(1000)
     val finalTree = getTree()
     
-    // Attempt semantic match first (e.g. "Monday, 15 June 2026")
+    // Attempt semantic match (order-agnostic across US and UK date formats)
     val monthName = sample.app.getMonthName(month)
-    val dayTarget = "$day $monthName $year" // Material 3 format in dump
     val dayNode = finalTree.find { 
         val text = it.text ?: ""
-        text.contains(dayTarget) && !text.contains("\n")
+        !text.contains("\n") &&
+        text.contains(monthName, ignoreCase = true) &&
+        text.contains(year.toString()) &&
+        text.split(Regex("[\\s,]+")).contains(day.toString())
     }
     
     if (dayNode != null) {
@@ -498,7 +500,13 @@ private suspend fun E2ETestScope.selectTimeFromDialNative(hourText: String, minu
     delay(500)
     if (!is24Hour) {
         val hInt = hourText.toInt()
-        click(Selector.Text(if (hInt >= 12) "p.m." else "a.m.").atIndex(-1))
+        val isPm = hInt >= 12
+        val tree = getTree()
+        val targetCandidates = if (isPm) listOf("PM", "p.m.", "pm") else listOf("AM", "a.m.", "am")
+        val matchedText = tree.findLast { n ->
+            targetCandidates.any { candidate -> n.text?.equals(candidate, ignoreCase = true) == true }
+        }?.text ?: (if (isPm) "PM" else "AM")
+        click(Selector.Text(matchedText).atIndex(-1))
         delay(300)
     }
     click(Selector.Auto("Select hour").atIndex(-1))

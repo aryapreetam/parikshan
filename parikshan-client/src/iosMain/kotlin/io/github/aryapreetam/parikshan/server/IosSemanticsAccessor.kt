@@ -848,6 +848,73 @@ internal object IosSemanticsAccessor {
     }
   }
 
+  private fun findSemanticsNode(tag: String, matchText: String?): SemanticsNode? {
+    val activeOwners = io.github.aryapreetam.parikshan.IosSemanticsRegistry.getActiveOwners()
+    logDebug("findSemanticsNode: tag='$tag', text='$matchText', activeOwners=${activeOwners.size}")
+    if (activeOwners.isEmpty()) return null
+
+    for (owner in activeOwners) {
+      @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+      var allNodes = owner.getAllSemanticsNodes(mergingEnabled = false)
+      var found = if (tag.isNotBlank()) {
+        allNodes.find {
+          it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag) == tag
+        }
+      } else null
+
+      if (found == null && !matchText.isNullOrBlank()) {
+        found = allNodes.find { n ->
+          val nodeTexts = n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)
+          val nodeTextStr = nodeTexts?.joinToString(" ") { it.text }
+          val nodeLabel = n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.ContentDescription)?.joinToString(" ")
+          (nodeTextStr != null && nodeTextStr.contains(matchText, ignoreCase = true)) ||
+              (nodeLabel != null && matchText != null && nodeLabel.contains(matchText, ignoreCase = true))
+        }
+      }
+      if (found != null) return found
+
+      @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+      allNodes = owner.getAllSemanticsNodes(mergingEnabled = true)
+      found = if (tag.isNotBlank()) {
+        allNodes.find {
+          it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag) == tag
+        }
+      } else null
+
+      if (found == null && !matchText.isNullOrBlank()) {
+        found = allNodes.find { n ->
+          val nodeTexts = n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)
+          val nodeTextStr = nodeTexts?.joinToString(" ") { it.text }
+          val nodeLabel = n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.ContentDescription)?.joinToString(" ")
+          (nodeTextStr != null && nodeTextStr.contains(matchText, ignoreCase = true)) ||
+              (nodeLabel != null && matchText != null && nodeLabel.contains(matchText, ignoreCase = true))
+        }
+      }
+      if (found != null) return found
+    }
+    return null
+  }
+
+  private fun findScrollAction(node: SemanticsNode): ((Float, Float) -> Boolean)? {
+    var currentNode: SemanticsNode? = node
+    while (currentNode != null) {
+      val action = currentNode.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.ScrollBy)?.action
+      if (action != null) return action
+      currentNode = currentNode.parent
+    }
+
+    val queue = mutableListOf<SemanticsNode>()
+    queue.addAll(node.children)
+    while (queue.isNotEmpty()) {
+      val child = queue.removeAt(0)
+      val action = child.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.ScrollBy)?.action
+      if (action != null) return action
+      queue.addAll(child.children)
+    }
+
+    return null
+  }
+
   fun performInputResult(tag: String, selector: Selector?, text: String): String {
     val activeSelector = selector ?: tag.takeIf { it.isNotBlank() }?.let { Selector.Auto(it) } ?: Selector.Auto("")
     val node = findNode(tag, selector) ?: return "Node not found for input: $activeSelector"
@@ -856,34 +923,7 @@ internal object IosSemanticsAccessor {
     logDebug("Kotlin class info: ${node::class.simpleName}, ${node::class.qualifiedName}")
     try {
       logDebug("Searching for target node via IosSemanticsRegistry active owners.")
-      val activeOwners = io.github.aryapreetam.parikshan.IosSemanticsRegistry.getActiveOwners()
-      logDebug("Found ${activeOwners.size} active semantics owners in registry.")
-      
-      var targetSemanticsNode: SemanticsNode? = null
-      for (owner in activeOwners) {
-        @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
-        val allNodes = owner.getAllSemanticsNodes(mergingEnabled = false)
-        var found = if (tag.isNotBlank()) {
-          allNodes.find { 
-            it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag) == tag
-          }
-        } else null
-        
-        if (found == null) {
-          found = allNodes.find { n ->
-            val nodeTexts = n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)
-            val nodeTextStr = nodeTexts?.joinToString(" ") { it.text }
-            val nodeLabel = n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.ContentDescription)?.joinToString(" ")
-            val matchText = snapshot.text
-            (nodeTextStr != null && matchText != null && nodeTextStr.contains(matchText, ignoreCase = true)) ||
-                (nodeLabel != null && matchText != null && nodeLabel.contains(matchText, ignoreCase = true))
-          }
-        }
-        if (found != null) {
-          targetSemanticsNode = found
-          break
-        }
-      }
+      var targetSemanticsNode: SemanticsNode? = findSemanticsNode(tag, snapshot.text)
       logDebug("Found target SemanticsNode via registry: $targetSemanticsNode")
       
       if (targetSemanticsNode != null) {
@@ -1118,32 +1158,94 @@ internal object IosSemanticsAccessor {
 
   fun performScrollResult(tag: String, selector: Selector?, direction: ScrollDirection): String {
     val activeSelector = selector ?: tag.takeIf { it.isNotBlank() }?.let { Selector.Auto(it) } ?: Selector.Auto("")
-    val node = findNode(tag, selector) ?: return "Node not found for scroll: $activeSelector"
-    val snapshot = snapshotNode(node)
+    logDebug("performScrollResult start: tag='$tag', selector=$selector, direction=$direction")
 
-    val startX = snapshot.bounds.centerX
-    val startY = snapshot.bounds.centerY
-    
-    val isHorizontal = direction == ScrollDirection.Left || direction == ScrollDirection.Right
-    val distance = if (isHorizontal) {
-      (snapshot.bounds.width * 0.5).coerceAtLeast(300.0)
-    } else {
-      (snapshot.bounds.height * 0.5).coerceAtLeast(300.0)
+    // 1. Try resolving via IosSemanticsRegistry and executing SemanticsActions.ScrollBy
+    try {
+      val effectiveTag = if (tag.isNotBlank()) tag else (selector as? Selector.Tag)?.raw.orEmpty()
+      val effectiveText = (selector as? Selector.Text)?.raw
+
+      var targetSemanticsNode = findSemanticsNode(effectiveTag, effectiveText)
+
+      // If not found directly, try finding the node in accessibility tree first to get its snapshot tag/text
+      val a11yNode = findNode(tag, selector)
+      val snapshot = a11yNode?.let { snapshotNode(it) }
+
+      if (targetSemanticsNode == null && snapshot != null) {
+        val snapTag = if (effectiveTag.isNotBlank()) effectiveTag else snapshot.tag
+        val snapText = if (!effectiveText.isNullOrBlank()) effectiveText else snapshot.text
+        targetSemanticsNode = findSemanticsNode(snapTag, snapText)
+      }
+
+      if (targetSemanticsNode != null) {
+        logDebug("Found targetSemanticsNode for scroll: $targetSemanticsNode")
+        val scrollAction = findScrollAction(targetSemanticsNode)
+        if (scrollAction != null) {
+          logDebug("Found ScrollBy action on semantics node. Calculating scroll deltas...")
+          val safeWidth = if (targetSemanticsNode.size.width > 0) targetSemanticsNode.size.width.toFloat() else 400f
+          val safeHeight = if (targetSemanticsNode.size.height > 0) targetSemanticsNode.size.height.toFloat() else 400f
+
+          val deltaX = (safeWidth * 0.5f).coerceAtLeast(300f)
+          val deltaY = (safeHeight * 0.5f).coerceAtLeast(300f)
+
+          val x = when (direction) {
+            ScrollDirection.Left -> -deltaX
+            ScrollDirection.Right -> deltaX
+            else -> 0f
+          }
+          val y = when (direction) {
+            ScrollDirection.Up -> -deltaY
+            ScrollDirection.Down -> deltaY
+            else -> 0f
+          }
+
+          logDebug("Invoking ScrollBy with x=$x, y=$y")
+          val success = scrollAction.invoke(x, y)
+          logDebug("ScrollBy action result: $success")
+          if (success) {
+            pumpRunLoop(iterations = 5, intervalSeconds = 0.01)
+            return "OK"
+          }
+        } else {
+          logDebug("No ScrollBy action found on targetSemanticsNode or its hierarchy.")
+        }
+      } else {
+        logDebug("No SemanticsNode found in IosSemanticsRegistry for tag='$effectiveTag', text='$effectiveText'")
+      }
+
+      // 2. Fallback: Perform coordinate drag via accessibility tree
+      if (a11yNode == null || snapshot == null) {
+        return "Node not found for scroll: $activeSelector"
+      }
+
+      val startX = snapshot.bounds.centerX
+      val startY = snapshot.bounds.centerY
+
+      val isHorizontal = direction == ScrollDirection.Left || direction == ScrollDirection.Right
+      val distance = if (isHorizontal) {
+        (snapshot.bounds.width * 0.5).coerceAtLeast(300.0)
+      } else {
+        (snapshot.bounds.height * 0.5).coerceAtLeast(300.0)
+      }
+
+      val endX = when (direction) {
+        ScrollDirection.Left -> startX + distance
+        ScrollDirection.Right -> startX - distance
+        else -> startX
+      }
+
+      val endY = when (direction) {
+        ScrollDirection.Up -> startY + distance
+        ScrollDirection.Down -> startY - distance
+        else -> startY
+      }
+
+      logDebug("Falling back to performDrag from ($startX, $startY) to ($endX, $endY)")
+      return performDrag(startX, startY, endX, endY, durationMs = 300)
+    } catch (e: Throwable) {
+      logDebug("Exception in performScrollResult: ${e.message}")
+      return "Scroll failed: ${e.message}"
     }
-
-    val endX = when (direction) {
-      ScrollDirection.Left -> startX + distance
-      ScrollDirection.Right -> startX - distance
-      else -> startX
-    }
-
-    val endY = when (direction) {
-      ScrollDirection.Up -> startY + distance
-      ScrollDirection.Down -> startY - distance
-      else -> startY
-    }
-
-    return performDrag(startX, startY, endX, endY, durationMs = 300)
   }
 
   fun performScroll(tag: String, selector: Selector?, direction: ScrollDirection): Boolean {

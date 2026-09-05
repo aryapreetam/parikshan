@@ -1383,6 +1383,9 @@ abstract class E2ETestTask : DefaultTask() {
     val pb = ProcessBuilder(pbArgs)
     cleanXcodeEnv(pb)
     pb.environment()["NSAppSleepDisabled"] = "YES"
+    if (target == "wasm") {
+      pb.environment()["PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD"] = "1"
+    }
     val process = pb
       .redirectOutput(ProcessBuilder.Redirect.to(logFile))
       .redirectError(ProcessBuilder.Redirect.to(logFile))
@@ -1495,6 +1498,9 @@ abstract class E2ETestTask : DefaultTask() {
     val pb = ProcessBuilder(pbArgs)
     cleanXcodeEnv(pb)
     pb.environment()["NSAppSleepDisabled"] = "YES"
+    if (target == "wasm") {
+      pb.environment()["PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD"] = "1"
+    }
     pb.redirectErrorStream(true)
     val process = pb.start()
 

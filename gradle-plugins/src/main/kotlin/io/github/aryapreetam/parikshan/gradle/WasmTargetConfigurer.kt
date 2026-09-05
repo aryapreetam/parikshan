@@ -70,6 +70,7 @@ internal object WasmTargetConfigurer {
       )
       systemProperty("parikshan.target", "wasm")
       systemProperty("parikshan.token", tokenVal)
+      environment("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1")
       doFirst {
         val portFile = wasmPortFileVal
         val port = if (portFile.exists()) portFile.readText().trim() else wasmServerPortVal.toString()

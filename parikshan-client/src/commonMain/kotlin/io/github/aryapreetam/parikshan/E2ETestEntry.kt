@@ -19,7 +19,7 @@ package io.github.aryapreetam.parikshan
  * }
  * ```
  *
- * @param config Optional [E2ETestConfig] to customize timeouts, screenshot behavior, and command delays.
+ * @param config Optional [E2ETestConfig] to customize timeouts, screenshot behavior, and step delays.
  * @param block The suspendable test scenario logic executed within [E2ETestScope].
  * @see E2ETestScope
  * @see E2ETestConfig
@@ -51,7 +51,7 @@ expect fun e2eTest(
  * }
  * ```
  *
- * @param config Optional [E2ETestConfig] to customize timeouts, screenshot behavior, and command delays.
+ * @param config Optional [E2ETestConfig] to customize timeouts, screenshot behavior, and step delays.
  * @param block The suspendable test scenario logic executed within [E2ETestScope].
  * @see E2ETestLifecycle
  * @see E2ETestScope

@@ -13,7 +13,7 @@ import kotlin.test.Test
 class HomeScreenTest : E2ETestLifecycle {
 
   override suspend fun E2ETestScope.beforeEach() {
-    openAppNavigation(); click("nav_home_screen")
+    navigateToSection("nav_home_screen")
   }
 
   override suspend fun E2ETestScope.afterEach() {

@@ -16,14 +16,29 @@ public final class io/github/aryapreetam/parikshan/E2ETestConfig {
 	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/E2ETestConfig;JJLjava/lang/String;ZILjava/lang/Object;)Lio/github/aryapreetam/parikshan/E2ETestConfig;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getCaptureScreenshotOnFailure ()Z
-	public final fun getCommandDelayMs ()J
 	public final fun getDefaultWaitTimeoutMs ()J
 	public final fun getFailureScreenshotPath ()Ljava/lang/String;
+	public final fun getStepDelayMs ()J
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class io/github/aryapreetam/parikshan/E2ETestConfigBuilder {
+	public fun <init> ()V
+	public final fun build ()Lio/github/aryapreetam/parikshan/E2ETestConfig;
+	public final fun getCaptureScreenshotOnFailure ()Z
+	public final fun getDefaultWaitTimeoutMs ()J
+	public final fun getFailureScreenshotPath ()Ljava/lang/String;
+	public final fun getStepDelayMs ()J
+	public final fun setCaptureScreenshotOnFailure (Z)V
+	public final fun setDefaultWaitTimeoutMs (J)V
+	public final fun setFailureScreenshotPath (Ljava/lang/String;)V
+	public final fun setStepDelayMs (J)V
+}
+
 public final class io/github/aryapreetam/parikshan/E2ETestDslKt {
+	public static final fun e2eConfig (Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function1;)Lio/github/aryapreetam/parikshan/E2ETestConfig;
+	public static synthetic fun e2eConfig$default (Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/E2ETestConfig;
 	public static final fun e2eTest (Lio/github/aryapreetam/parikshan/TestDriver;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun e2eTest$default (Lio/github/aryapreetam/parikshan/TestDriver;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static final fun isAndroid (Lio/github/aryapreetam/parikshan/E2ETestScope;)Z
@@ -67,6 +82,7 @@ public final class io/github/aryapreetam/parikshan/E2ETestScope {
 	public static synthetic fun drag$default (Lio/github/aryapreetam/parikshan/E2ETestScope;Lio/github/aryapreetam/parikshan/protocol/Selector;DDJLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun drag$default (Lio/github/aryapreetam/parikshan/E2ETestScope;Ljava/lang/String;DDJLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun executeParallel (Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun getStepDelayMs ()J
 	public final fun getTargetPlatform ()Ljava/lang/String;
 	public final fun getTree (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun hasVisibleNode (Lio/github/aryapreetam/parikshan/protocol/Selector;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;

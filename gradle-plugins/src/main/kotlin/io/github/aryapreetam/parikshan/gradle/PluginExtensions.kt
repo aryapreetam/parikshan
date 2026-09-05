@@ -106,7 +106,7 @@ internal fun Test.configureE2eHostTestExecution(
     "parikshan.video.enabled",
     "parikshan.video.fps",
     "parikshan.video.showCursor",
-    "parikshan.video.stepDelayMs",
+    "parikshan.stepDelayMs",
     "parikshan.video.postRollMs",
     "parikshan.video.granularity",
     "parikshan.video.width",

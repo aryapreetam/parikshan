@@ -92,10 +92,10 @@ abstract class E2ETestTask : DefaultTask() {
 
   @get:Input
   @get:Optional
-  @set:Option(option = "step-delay-ms", description = "Delay in milliseconds inserted after each UI command during video recording.")
+  @set:Option(option = "step-delay-ms", description = "Delay in milliseconds inserted after each UI command during test execution.")
   var stepDelayMs: String? = null
 
-  @Option(option = "stepDelayMs", description = "Delay in milliseconds inserted after each UI command during video recording (alias).")
+  @Option(option = "stepDelayMs", description = "Delay in milliseconds inserted after each UI command during test execution (alias).")
   fun setStepDelayMsAlias(value: String) {
     this.stepDelayMs = value
   }
@@ -1321,7 +1321,7 @@ abstract class E2ETestTask : DefaultTask() {
       "parikshan.video.enabled",
       "parikshan.video.fps",
       "parikshan.video.showCursor",
-      "parikshan.video.stepDelayMs",
+      "parikshan.stepDelayMs",
       "parikshan.video.postRollMs",
       "parikshan.video.granularity",
       "parikshan.video.width",
@@ -1353,7 +1353,7 @@ abstract class E2ETestTask : DefaultTask() {
       pbArgs.add("-Dparikshan.video.postRollMs=$postRollMs")
     }
     if (!stepDelayMs.isNullOrEmpty()) {
-      pbArgs.add("-Dparikshan.video.stepDelayMs=$stepDelayMs")
+      pbArgs.add("-Dparikshan.stepDelayMs=$stepDelayMs")
     }
     if (!granularity.isNullOrEmpty()) {
       pbArgs.add("-Dparikshan.video.granularity=$granularity")
@@ -1434,7 +1434,7 @@ abstract class E2ETestTask : DefaultTask() {
       "parikshan.video.enabled",
       "parikshan.video.fps",
       "parikshan.video.showCursor",
-      "parikshan.video.stepDelayMs",
+      "parikshan.stepDelayMs",
       "parikshan.video.postRollMs",
       "parikshan.video.granularity",
       "parikshan.video.width",
@@ -1466,7 +1466,7 @@ abstract class E2ETestTask : DefaultTask() {
       pbArgs.add("-Dparikshan.video.postRollMs=$postRollMs")
     }
     if (!stepDelayMs.isNullOrEmpty()) {
-      pbArgs.add("-Dparikshan.video.stepDelayMs=$stepDelayMs")
+      pbArgs.add("-Dparikshan.stepDelayMs=$stepDelayMs")
     }
     if (!granularity.isNullOrEmpty()) {
       pbArgs.add("-Dparikshan.video.granularity=$granularity")
@@ -1627,12 +1627,13 @@ abstract class E2ETestTask : DefaultTask() {
 
   private fun parseFailedTestNames(target: String, classes: List<String>): List<String> {
     val logsDir = File(buildDir.get().asFile, "parikshan/logs")
-    return WatchModeUtils.parseFailedTestNames(logsDir, target, classes)
+    return TestReportingUtils.parseFailedTestNames(logsDir, target, classes)
   }
 
   private fun formatFailedNamesPatternA(names: List<String>, totalFailed: Int): String {
-    return WatchModeUtils.formatFailedNamesPatternA(names, totalFailed)
+    return TestReportingUtils.formatFailedNamesPatternA(names, totalFailed)
   }
+
 
   private fun createTargetResult(target: String, success: Boolean, classes: List<String>, failureMessage: String? = null): TargetResult {
     var totalFound = 0

@@ -34,7 +34,7 @@ class SelectorScenarios : E2ETestLifecycle {
 }
 
 private suspend fun E2ETestScope.openInputForm() {
-  openAppNavigation(); click("nav_form_playground")
+  navigateToSection("nav_form_playground")
   assertVisible("form_playground_screen")
 }
 

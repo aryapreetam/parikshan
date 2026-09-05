@@ -661,11 +661,11 @@ internal object IosSemanticsAccessor {
     activeSimulatedTouches = touchSet
     try {
       dispatchTouchToAll(touch, UITouchPhase.UITouchPhaseBegan, window, event)
-      pumpRunLoop(iterations = 10, intervalSeconds = 0.01)
+      pumpRunLoop(iterations = 2, intervalSeconds = 0.005)
 
       touch.setPhase(UITouchPhase.UITouchPhaseEnded)
       dispatchTouchToAll(touch, UITouchPhase.UITouchPhaseEnded, window, event)
-      pumpRunLoop(iterations = 10, intervalSeconds = 0.01)
+      pumpRunLoop(iterations = 2, intervalSeconds = 0.005)
     } finally {
       activeSimulatedTouches = null
     }
@@ -682,7 +682,7 @@ internal object IosSemanticsAccessor {
       try {
         if (node.accessibilityActivate()) {
           logDebug("accessibilityActivate succeeded for: $activeSelector")
-          pumpRunLoop(iterations = 10, intervalSeconds = 0.01)
+          pumpRunLoop(iterations = 2, intervalSeconds = 0.005)
           return "OK"
         }
         logDebug("accessibilityActivate returned false for: $activeSelector. Falling back to coordinates.")
@@ -697,6 +697,12 @@ internal object IosSemanticsAccessor {
 
   fun performClick(tag: String, selector: Selector?): Boolean {
     return performClickResult(tag, selector) == "OK"
+  }
+
+  fun resignCurrentFirstResponder() {
+    try {
+      findFirstResponder()?.resignFirstResponder()
+    } catch (_: Throwable) {}
   }
 
   private fun findFirstResponder(): UIView? {
@@ -952,7 +958,7 @@ internal object IosSemanticsAccessor {
           val success = setTextAction.action?.invoke(androidx.compose.ui.text.AnnotatedString(text))
           logDebug("SetText action result: $success")
           if (success == true) {
-            pumpRunLoop(iterations = 10, intervalSeconds = 0.01)
+            pumpRunLoop(iterations = 2, intervalSeconds = 0.005)
             return "OK"
           }
         } else {
@@ -1029,10 +1035,15 @@ internal object IosSemanticsAccessor {
       if (clickRes != "OK") return "Click to focus failed: $clickRes"
     }
 
-    // Allow focus/keyboard state to update
-    pumpRunLoop(iterations = 15, intervalSeconds = 0.02)
-
-    val firstResponder = findFirstResponder()
+    // Allow focus/keyboard state to update by actively polling for first responder
+    var firstResponder = findFirstResponder()
+    if (firstResponder == null) {
+      for (i in 0 until 10) {
+        pumpRunLoop(iterations = 1, intervalSeconds = 0.005)
+        firstResponder = findFirstResponder()
+        if (firstResponder != null) break
+      }
+    }
     logDebug("findFirstResponder returned: $firstResponder, className=${firstResponder?.let { it::class.simpleName }}, implements UIKeyInput=${firstResponder is UIKeyInputProtocol}")
 
     if (firstResponder != null) {
@@ -1203,7 +1214,7 @@ internal object IosSemanticsAccessor {
           val success = scrollAction.invoke(x, y)
           logDebug("ScrollBy action result: $success")
           if (success) {
-            pumpRunLoop(iterations = 5, intervalSeconds = 0.01)
+            pumpRunLoop(iterations = 2, intervalSeconds = 0.005)
             return "OK"
           }
         } else {
@@ -1288,7 +1299,7 @@ internal object IosSemanticsAccessor {
       touch.setLocation(toPoint)
       touch.setPhase(UITouchPhase.UITouchPhaseEnded)
       dispatchTouchToAll(touch, UITouchPhase.UITouchPhaseEnded, window, event)
-      pumpRunLoop(iterations = 5, intervalSeconds = 0.01)
+      pumpRunLoop(iterations = 2, intervalSeconds = 0.005)
     } finally {
       activeSimulatedTouches = null
     }

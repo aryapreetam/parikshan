@@ -238,7 +238,7 @@ object IosServer {
     }
     val deadline = platform.posix.time(null) + 30
     while (done.value == 0 && platform.posix.time(null) < deadline) {
-      platform.posix.usleep(10_000u)
+      platform.posix.usleep(1_000u)
     }
     return result.value ?: Response.Error(command.id, "Timeout")
   }
@@ -251,19 +251,19 @@ object IosServer {
       is Command.Click -> {
         val res = IosSemanticsAccessor.performClickResult(command.tag, selector)
         if (res != "OK") return Response.Error(command.id, "Click failed: $res")
-        pumpRunLoop(iterations = 5, intervalSeconds = 0.05)
+        pumpRunLoop(iterations = 2, intervalSeconds = 0.005)
         Response.Ok(command.id)
       }
       is Command.Input -> {
         val res = IosSemanticsAccessor.performInputResult(command.tag, selector, command.text)
         if (res != "OK") return Response.Error(command.id, "Input failed: $res")
-        pumpRunLoop(iterations = 5, intervalSeconds = 0.05)
+        pumpRunLoop(iterations = 2, intervalSeconds = 0.005)
         Response.Ok(command.id)
       }
       is Command.Scroll -> {
         val res = IosSemanticsAccessor.performScrollResult(command.tag, selector, command.direction)
         if (res != "OK") return Response.Error(command.id, "Scroll failed: $res")
-        pumpRunLoop(iterations = 3, intervalSeconds = 0.05)
+        pumpRunLoop(iterations = 2, intervalSeconds = 0.005)
         Response.Ok(command.id)
       }
       is Command.AssertVisible -> {
@@ -287,7 +287,7 @@ object IosServer {
               return Response.NodeInfo(command.id, snapshot.bounds, visible = snapshot.visible, text = snapshot.text)
             }
           }
-          pumpRunLoop(iterations = 1, intervalSeconds = 0.05)
+          pumpRunLoop(iterations = 1, intervalSeconds = 0.005)
         }
         Response.Error(command.id, "Timed out waiting for '${selector.raw}' after ${command.timeoutMs}ms")
       }
@@ -307,13 +307,14 @@ object IosServer {
       is Command.Drag -> {
         val res = IosSemanticsAccessor.performDrag(command.fromX, command.fromY, command.toX, command.toY, command.durationMs)
         if (res != "OK") return Response.Error(command.id, "Drag failed: $res")
-        pumpRunLoop(iterations = 3, intervalSeconds = 0.05)
+        pumpRunLoop(iterations = 2, intervalSeconds = 0.005)
         Response.Ok(command.id)
       }
       is Command.Shutdown -> Response.Ok(command.id)
       is Command.Ping -> Response.Ok(command.id)
       is Command.Reset -> {
-        pumpRunLoop(iterations = 10, intervalSeconds = 0.05)
+        IosSemanticsAccessor.resignCurrentFirstResponder()
+        pumpRunLoop(iterations = 6, intervalSeconds = 0.05)
         Response.Ok(command.id)
       }
       else -> Response.Ok(command.id)
@@ -334,7 +335,9 @@ object IosServer {
  * Pumps the NSRunLoop to allow UIKit and Compose to process pending
  * layout, rendering, and recomposition work.
  */
-fun pumpRunLoop(iterations: Int = 5, intervalSeconds: Double = 0.05) {
+fun pumpRunLoop(iterations: Int = 2, intervalSeconds: Double = 0.005) {
+  val window = UIApplication.sharedApplication.keyWindow
+  window?.layoutIfNeeded()
   repeat(iterations) {
     platform.Foundation.NSRunLoop.mainRunLoop.runUntilDate(
       platform.Foundation.NSDate.dateWithTimeIntervalSinceNow(intervalSeconds)

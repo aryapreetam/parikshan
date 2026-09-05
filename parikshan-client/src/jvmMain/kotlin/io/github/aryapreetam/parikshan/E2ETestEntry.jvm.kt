@@ -96,21 +96,21 @@ actual fun e2eTest(
     val isIosActive = target == "ios" || (target == "sync" && System.getProperty("parikshan.sync.targets")?.contains("ios") == true)
     val isDesktopActive = target == "desktop" || target == null || target == "" || (target == "sync" && System.getProperty("parikshan.sync.targets")?.contains("desktop") == true)
 
-    val defaultDelay = if (isWasmActive) {
-      max(config.commandDelayMs, 150L)
-    } else if (isIosActive) {
-      max(config.commandDelayMs, 300L)
-    } else if (isDesktopActive && videoConfig.enabled) {
-      max(config.commandDelayMs, 10L)
-    } else {
-      config.commandDelayMs
+    val userConfigStepDelay = if (config.stepDelayMs > 0L) config.stepDelayMs else null
+    val globalSystemStepDelay = System.getProperty("parikshan.stepDelayMs")?.toLongOrNull()
+
+    val platformDefaultDelay = when {
+      isWasmActive -> 150L
+      isIosActive -> 50L
+      isDesktopActive && videoConfig.enabled -> 10L
+      else -> 0L
     }
 
-    val effectiveConfig = if (videoConfig.enabled) {
-      config.copy(commandDelayMs = max(defaultDelay, videoConfig.stepDelayMs))
-    } else {
-      config.copy(commandDelayMs = defaultDelay)
-    }
+    val effectiveStepDelay = userConfigStepDelay
+      ?: globalSystemStepDelay
+      ?: platformDefaultDelay
+
+    val effectiveConfig = config.copy(stepDelayMs = effectiveStepDelay)
 
     try {
       e2eTest(

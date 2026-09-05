@@ -130,7 +130,7 @@ internal class WasmDriver private constructor(
         if (!bridgeClicked) {
           performPhysicalClick(node.bounds.centerX, node.bounds.centerY)
         }
-        delay(200)
+        delay(10)
         Response.Ok(command.id)
       }
 
@@ -140,12 +140,12 @@ internal class WasmDriver private constructor(
         if (!invokeBridgeInput(selector, command.text)) {
           page.mouse().move(node.bounds.centerX, node.bounds.centerY)
           page.mouse().down()
-          delay(50)
+          delay(20)
           page.mouse().up()
           page.keyboard().press("ControlOrMeta+A")
           page.keyboard().type(command.text)
         }
-        delay(100)
+        delay(10)
         Response.Ok(command.id)
       }
 
@@ -174,16 +174,16 @@ internal class WasmDriver private constructor(
               io.github.aryapreetam.parikshan.protocol.ScrollDirection.Left -> -200.0 to 0.0
               io.github.aryapreetam.parikshan.protocol.ScrollDirection.Right -> 200.0 to 0.0
             }
-          val steps = 10
+          val steps = 5
           val stepX = deltaX / steps
           val stepY = deltaY / steps
-          val delayPerStep = 50L
+          val delayPerStep = 20L
           repeat(steps) {
             page.mouse().wheel(stepX, stepY)
             delay(delayPerStep)
           }
         }
-        delay(300) // Increased settling delay for Wasm
+        delay(50)
         Response.Ok(command.id)
       }
 
@@ -194,10 +194,11 @@ internal class WasmDriver private constructor(
           if (node?.visible == true) {
             return Response.NodeInfo(command.id, node.bounds, visible = true, text = node.text)
           }
-          delay(120)
+          delay(15)
         }
         Response.Error(command.id, "Timed out waiting for '${selector.raw}' after ${command.timeoutMs}ms")
       }
+
 
       is Command.Drag -> {
         page.mouse().move(command.fromX, command.fromY)

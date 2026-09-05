@@ -102,10 +102,15 @@ internal object WasmSemanticsAccessor {
   }
 
   fun snapshotNode(tag: String): NodeSnapshot? {
+    val explicitNode = findNodeByTag(tag)
+    if (explicitNode != null) {
+      return toNodeSnapshot(explicitNode)
+    }
     return snapshotTree().find {
       it.tag == tag || it.text?.contains(tag, ignoreCase = true) == true
     }
   }
+
 
   fun snapshotTree(): List<NodeSnapshot> {
     val explicit = findAllNodes().map { toNodeSnapshot(it) }

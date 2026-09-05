@@ -100,11 +100,13 @@ actual fun e2eTest(
     val globalSystemStepDelay = System.getProperty("parikshan.stepDelayMs")?.toLongOrNull()
 
     val platformDefaultDelay = when {
-      isWasmActive -> 150L
+      isWasmActive && videoConfig.enabled -> 10L
+      isWasmActive -> 0L
       isIosActive -> 50L
       isDesktopActive && videoConfig.enabled -> 10L
       else -> 0L
     }
+
 
     val effectiveStepDelay = userConfigStepDelay
       ?: globalSystemStepDelay

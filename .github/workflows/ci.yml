@@ -18,7 +18,7 @@ env:
 jobs:
   lint:
     name: Lint and code style
-    if: "inputs.target_job == 'all' || inputs.target_job == ''"
+    if: "inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'lint')"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -46,7 +46,7 @@ jobs:
   unit-tests:
     name: Unit Tests (${{ matrix.target }})
     needs: [ lint ]
-    if: "inputs.target_job == 'all' || inputs.target_job == ''"
+    if: "inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'unit-tests')"
     strategy:
       fail-fast: true
       matrix:
@@ -109,7 +109,7 @@ jobs:
     name: E2E Android (CMP ${{ matrix.profile }})
     runs-on: ubuntu-latest
     needs: [ unit-tests ]
-    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'android')"
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'android'))"
     strategy:
       fail-fast: false
       matrix:
@@ -117,6 +117,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
@@ -149,7 +151,7 @@ jobs:
     name: E2E Desktop (CMP ${{ matrix.profile }})
     runs-on: ubuntu-latest
     needs: [ unit-tests ]
-    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'desktop')"
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'desktop'))"
     strategy:
       fail-fast: false
       matrix:
@@ -180,7 +182,7 @@ jobs:
     name: E2E Wasm (CMP ${{ matrix.profile }})
     runs-on: ubuntu-latest
     needs: [ unit-tests ]
-    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'wasm')"
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'wasm'))"
     strategy:
       fail-fast: false
       matrix:
@@ -211,7 +213,7 @@ jobs:
     name: E2E Windows (JVM + Wasm, CMP 1.10)
     runs-on: windows-latest
     needs: [ unit-tests ]
-    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'windows')"
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'windows'))"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -240,7 +242,7 @@ jobs:
     name: E2E Sync (JVM + Wasm)
     runs-on: ubuntu-latest
     needs: [ unit-tests ]
-    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'sync')"
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'sync'))"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -267,7 +269,7 @@ jobs:
     name: E2E Watch Verification Script
     runs-on: ubuntu-latest
     needs: [ unit-tests ]
-    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'watch-script')"
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'watch-script'))"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -306,7 +308,7 @@ jobs:
     name: E2E iOS Showcase (CMP ${{ matrix.profile }})
     runs-on: macos-latest
     needs: [ unit-tests ]
-    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'ios-showcase')"
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'ios-showcase'))"
     strategy:
       fail-fast: false
       matrix:
@@ -350,7 +352,7 @@ jobs:
     name: E2E iOS cmp-latest
     runs-on: macos-latest
     needs: [ unit-tests ]
-    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'ios-cmp-latest')"
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'ios-cmp-latest'))"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -386,13 +388,13 @@ jobs:
           path: |
             samples/cmp-latest/app/shared/build/parikshan/
             samples/cmp-latest/app/shared/build/reports/
-          if-no-files-found: ignore
+            if-no-files-found: ignore
 
   e2e-ios-issue-playground:
     name: E2E iOS issue-playground
     runs-on: macos-latest
     needs: [ unit-tests ]
-    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'ios-issue-playground')"
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'ios-issue-playground'))"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -428,13 +430,13 @@ jobs:
           path: |
             samples/issue-playground/shared/build/parikshan/
             samples/issue-playground/shared/build/reports/
-          if-no-files-found: ignore
+            if-no-files-found: ignore
 
   e2e-ios-composables:
     name: E2E iOS composables-sample
     runs-on: macos-latest
     needs: [ unit-tests ]
-    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'ios-composables')"
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'ios-composables'))"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -470,13 +472,13 @@ jobs:
           path: |
             samples/composables-sample/shared/build/parikshan/
             samples/composables-sample/shared/build/reports/
-          if-no-files-found: ignore
+            if-no-files-found: ignore
 
   dex-pollution-audit:
     name: DEX Footprint Audit
     runs-on: ubuntu-latest
     needs: [ lint ]
-    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || inputs.target_job == 'dex-pollution-audit')"
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'dex-pollution-audit'))"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -522,6 +524,7 @@ jobs:
       - e2e-android
       - e2e-desktop
       - e2e-wasm
+      - e2e-windows
       - e2e-ios-showcase
       - e2e-ios-cmp-latest
       - e2e-ios-issue-playground

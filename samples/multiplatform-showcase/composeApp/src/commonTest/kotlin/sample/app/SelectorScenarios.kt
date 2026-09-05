@@ -21,8 +21,7 @@ class SelectorScenarios : E2ETestLifecycle {
 
   @Test
   fun testAmbiguousTextSelectorFailsClearly() = e2eTest {
-    openAppNavigation()
-    click("nav_selector_parity_playground")
+    navigateToSection("nav_selector_parity_playground")
     assertVisible("selector_parity_playground_screen")
 
     // Scroll to the second button to ensure BOTH "Duplicate Action" buttons are physically visible

@@ -16,9 +16,17 @@ group = "sample.app"
 kotlin {
   jvmToolchain(17)
 
+  val cmpProfile = providers.gradleProperty("cmpProfile").orNull ?: "1.10"
+  val androidCompileSdk = when (cmpProfile) {
+    "1.10" -> 35
+    "1.11" -> 36
+    "1.12" -> 37
+    else -> 35
+  }
+
   androidLibrary {
     namespace = "sample.app.shared"
-    compileSdk = 35
+    compileSdk = androidCompileSdk
     minSdk = 26
     withHostTest {}
     androidResources {
@@ -30,7 +38,6 @@ kotlin {
     browser()
     binaries.executable()
   }
-  val cmpProfile = providers.gradleProperty("cmpProfile").orNull ?: "1.10"
   listOf(
     iosArm64(),
     iosSimulatorArm64()

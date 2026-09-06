@@ -1,6 +1,6 @@
 # Your First Test (Compose Multiplatform)
 
-This step-by-step guide walks through creating and running your first multiplatform UI test from scratch using Parikshan in a Compose Multiplatform (KMP) application in under 60 seconds with **zero modifications to your UI code**.
+This step-by-step guide walks through creating and running your first multiplatform UI test from scratch using Parikshan in a Compose Multiplatform (KMP) application with **zero modifications to your UI code**.
 
 > **Building a standalone Android app instead?** See [Your First Android Test](first-test-android.md).  
 > **Prefer cloning a working project?** Clone the starter template: [github.com/aryapreetam/parikshan-kmp-sample](https://github.com/aryapreetam/parikshan-kmp-sample)

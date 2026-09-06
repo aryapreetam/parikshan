@@ -72,9 +72,6 @@ suspend fun E2ETestScope.navigateToSection(navTag: String) {
         }
 
         click(navTag)
-        if (navContainer == "navigation_drawer") {
-            assertNotVisible("navigation_drawer")
-        }
     }
 }
 

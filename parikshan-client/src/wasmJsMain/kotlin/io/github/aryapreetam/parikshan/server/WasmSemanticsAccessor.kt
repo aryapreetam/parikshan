@@ -451,11 +451,10 @@ private fun discoverA11yNodesJs(): String? = js(
       function extractText(el) {
         const aria = el.getAttribute && el.getAttribute('aria-label');
         if (aria && aria.trim()) return aria.trim();
-        // Only use innerText for leaf elements or elements with an explicit role (like buttons/menuitems)
-        // This prevents giant container elements from reporting the concatenated text of all their children.
-        const role = el.getAttribute && el.getAttribute('role');
+        // Containers must never report the concatenated innerText of all their descendants.
+        // Only leaf elements without element children should report innerText.
         const hasElementChildren = el.children && el.children.length > 0;
-        if (!hasElementChildren || role) {
+        if (!hasElementChildren) {
           const text = el.innerText || el.textContent;
           if (text && text.trim()) return text.trim();
         }
@@ -464,6 +463,12 @@ private fun discoverA11yNodesJs(): String? = js(
 
       function collect(el) {
         if (!el) return;
+        // Never collect the accessibility root container itself as a UI semantics node
+        if (el.id === 'cmp_a11y_root') {
+          const children = el.children || [];
+          for (let i = 0; i < children.length; i++) collect(children[i]);
+          return;
+        }
         try {
           const text = extractText(el);
           const rect = el.getBoundingClientRect();
@@ -550,11 +555,10 @@ private fun clickPendingA11yNodeJs(): Boolean = js(
       function extractText(el) {
         const aria = el.getAttribute && el.getAttribute('aria-label');
         if (aria && aria.trim()) return aria.trim();
-        // Only use innerText for leaf elements or elements with an explicit role (like buttons/menuitems)
-        // This prevents giant container elements from reporting the concatenated text of all their children.
-        const role = el.getAttribute && el.getAttribute('role');
+        // Containers must never report the concatenated innerText of all their descendants.
+        // Only leaf elements without element children should report innerText.
         const hasElementChildren = el.children && el.children.length > 0;
-        if (!hasElementChildren || role) {
+        if (!hasElementChildren) {
           const text = el.innerText || el.textContent;
           if (text && text.trim()) return text.trim();
         }
@@ -574,8 +578,10 @@ private fun clickPendingA11yNodeJs(): Boolean = js(
 
       function collectMatches(el, out) {
         if (!el) return;
-        const score = matchScore(el);
-        if (score >= 0) out.push({ el: el, score: score, len: (extractText(el) || '').length });
+        if (el.id !== 'cmp_a11y_root') {
+          const score = matchScore(el);
+          if (score >= 0) out.push({ el: el, score: score, len: (extractText(el) || '').length });
+        }
         const children = el.children || [];
         for (let i = 0; i < children.length; i++) collectMatches(children[i], out);
       }

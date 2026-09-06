@@ -339,7 +339,7 @@ jobs:
         run: |
           TEST_FILTER=""
           if [ "${{ matrix.profile }}" = "1.10" ]; then
-            TEST_FILTER='--tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"'
+            TEST_FILTER="--tests=sample.app.AccessibilityIntegrationTest.testSubtextMatching"
           fi
           ./gradlew :samples:multiplatform-showcase:composeApp:e2eIosTest \
             -PcmpProfile=${{ matrix.profile }} \

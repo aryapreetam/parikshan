@@ -142,7 +142,7 @@ suspend fun E2ETestScope.selectDateViaInput(dateText: String) {
 }
 
 private suspend fun E2ETestScope.selectDateViaInputNative(day: Int, month: Int, year: Int) {
-    click(Selector.Auto("Switch to text input mode"))
+    click("Switch to text input mode")
     delay(500)
     
     val tree = getTree()
@@ -286,7 +286,7 @@ private suspend fun E2ETestScope.selectDateFromCalendarNative(day: Int, month: I
         val yearTargetText = "Navigate to year $year"
         val target = Selector.Text(yearTargetText)
         
-        scrollUntilVisible(Selector.Auto("Navigate to year").atIndex(0), target, if (year > curYear) ScrollDirection.Down else ScrollDirection.Up)
+        scrollUntilVisible("Navigate to year", target, if (year > curYear) ScrollDirection.Down else ScrollDirection.Up)
         click(target.atIndex(-1))
         delay(1500)
         
@@ -315,9 +315,9 @@ private suspend fun E2ETestScope.selectDateFromCalendarNative(day: Int, month: I
         if (cMonth == month && cYear == year) break
         
         val nextSelector = if ((year * 12 + month) > (cYear * 12 + cMonth)) {
-            Selector.Auto("next month")
+            "next month"
         } else {
-            Selector.Auto("previous month")
+            "previous month"
         }
         click(nextSelector)
         
@@ -355,7 +355,9 @@ private suspend fun E2ETestScope.selectDateFromCalendarNative(day: Int, month: I
     if (dayNode != null) {
         click(Selector.Text(dayNode.text!!).atIndex(-1))
     } else {
-        val monHeader = finalTree.find { it.text == "Monday" } ?: throw AssertionError("Monday header missing for grid calibration")
+        val monHeader = finalTree.find { it.text == "Monday" || it.text == "Mon" }
+            ?: finalTree.find { it.text == "M" }
+            ?: throw AssertionError("Monday header missing for grid calibration")
         val dayList = finalTree.find { it.text?.contains(",") == true && it.bounds.top > monHeader.bounds.top } ?: throw AssertionError("Day grid missing")
         
         val gridTop = monHeader.bounds.bottom
@@ -400,8 +402,7 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
         val yearTargetText = "Navigate to year $year"
         val target = Selector.Text(yearTargetText)
         
-        // We use the first node starting with "Navigate to year" as the scroll container anchor if list tag is missing
-        scrollUntilVisible(Selector.Auto("Navigate to year").atIndex(0), target, if (year > curYear) ScrollDirection.Down else ScrollDirection.Up)
+        scrollUntilVisible("Navigate to year", target, if (year > curYear) ScrollDirection.Down else ScrollDirection.Up)
         click(target.atIndex(-1))
         delay(1500)
         
@@ -457,8 +458,9 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
     if (dayNode != null) {
         click(Selector.Text(dayNode.text!!).atIndex(-1))
     } else {
-        // Precise geometric fallback using Monday anchor
-        val monHeader = finalTree.find { it.text == "Monday" } ?: throw AssertionError("Monday header missing for grid calibration")
+        val monHeader = finalTree.find { it.text == "Monday" || it.text == "Mon" }
+            ?: finalTree.find { it.text == "M" }
+            ?: throw AssertionError("Monday header missing for grid calibration")
         val dayList = finalTree.find { it.text?.contains(",") == true && it.bounds.top > monHeader.bounds.top } ?: throw AssertionError("Day grid missing")
         
         val gridTop = monHeader.bounds.bottom
@@ -472,13 +474,21 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
     }
     
     delay(500)
-    click(Selector.Tag("date_picker_ok_button").atIndex(0))
+    click("date_picker_ok_button")
 }
 
 suspend fun E2ETestScope.dragSlider(selector: Selector, percent: Float) {
     val node = resolveNode(selector)
     val bounds = node.bounds
-    drag(fromX = bounds.centerX, fromY = bounds.centerY, toX = bounds.left + ((bounds.right - bounds.left) * percent), toY = bounds.centerY, durationMs = 500L)
+    // In Compose Material 3, the active slider track is inset by the thumb radius (10dp).
+    // Compose's gesture detector calculates value changes from drag delta relative to trackWidth.
+    val thumbRadius = 10.0
+    val trackStart = bounds.left + thumbRadius
+    val trackEnd = bounds.right - thumbRadius
+    val trackWidth = (trackEnd - trackStart).coerceAtLeast(1.0)
+    val startX = trackStart + (trackWidth * 0.5)
+    val targetX = trackStart + (trackWidth * percent)
+    drag(fromX = startX, fromY = bounds.centerY, toX = targetX, toY = bounds.centerY, durationMs = 500L)
 }
 
 suspend fun E2ETestScope.dragSlider(tag: String, percent: Float) {
@@ -486,8 +496,8 @@ suspend fun E2ETestScope.dragSlider(tag: String, percent: Float) {
 }
 
 suspend fun E2ETestScope.clickAt(x: Double, y: Double) {
-    drag(fromX = x, fromY = y, toX = x + 5.0, toY = y + 5.0, durationMs = 300L)
-    delay(1000L)
+    drag(fromX = x, fromY = y, toX = x, toY = y, durationMs = 50L)
+    delay(500L)
 }
 
 suspend fun E2ETestScope.selectTimeFromDial(hour: String, minute: String, is24Hour: Boolean = true) {

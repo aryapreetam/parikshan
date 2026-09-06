@@ -676,7 +676,7 @@ internal object IosSemanticsAccessor {
   fun performClickResult(tag: String, selector: Selector?): String {
     val activeSelector = selector ?: tag.takeIf { it.isNotBlank() }?.let { Selector.Auto(it) } ?: Selector.Auto("")
     val node = findNode(tag, selector) ?: return "Node not found for selector: $activeSelector"
-    
+
     if (node is NSObject) {
       logDebug("Found NSObject node for selector: $activeSelector. Attempting accessibilityActivate...")
       try {
@@ -690,7 +690,7 @@ internal object IosSemanticsAccessor {
         logDebug("accessibilityActivate threw exception for: $activeSelector. Error: ${e.message}. Falling back to coordinates.")
       }
     }
-    
+
     val snapshot = snapshotNode(node)
     return performClickAtCoordinates(snapshot.bounds.centerX, snapshot.bounds.centerY)
   }
@@ -701,6 +701,7 @@ internal object IosSemanticsAccessor {
 
   fun resignCurrentFirstResponder() {
     try {
+      getActiveWindows().forEach { it.endEditing(true) }
       findFirstResponder()?.resignFirstResponder()
     } catch (_: Throwable) {}
   }
@@ -788,18 +789,6 @@ internal object IosSemanticsAccessor {
     return windows.lastOrNull()
   }
 
-  private fun collectGestureRecognizers(view: UIView, list: MutableList<UIGestureRecognizer>) {
-    view.gestureRecognizers?.forEach { rec ->
-      if (rec is UIGestureRecognizer) {
-        list.add(rec)
-      }
-    }
-    view.subviews.forEach { subview ->
-      if (subview is UIView) {
-        collectGestureRecognizers(subview, list)
-      }
-    }
-  }
 
   private fun collectInputViews(view: UIView, list: MutableList<UIView>) {
     val className = view::class.simpleName ?: ""
@@ -811,6 +800,19 @@ internal object IosSemanticsAccessor {
       val subview = subviews[i] as? UIView
       if (subview != null) {
         collectInputViews(subview, list)
+      }
+    }
+  }
+
+  private fun collectGestureRecognizers(view: UIView, list: MutableList<UIGestureRecognizer>) {
+    view.gestureRecognizers?.forEach { rec ->
+      if (rec is UIGestureRecognizer) {
+        list.add(rec)
+      }
+    }
+    view.subviews.forEach { subview ->
+      if (subview is UIView) {
+        collectGestureRecognizers(subview, list)
       }
     }
   }
@@ -1264,6 +1266,10 @@ internal object IosSemanticsAccessor {
   }
 
   fun performDrag(fromX: Double, fromY: Double, toX: Double, toY: Double, durationMs: Long): String {
+    if (fromX == toX && fromY == toY) {
+      return performClickAtCoordinates(fromX, fromY)
+    }
+
     val scale = UIScreen.mainScreen.scale
     logDebug("performDrag: physical from=($fromX, $fromY), to=($toX, $toY), logical from=(${fromX/scale}, ${fromY/scale}), to=(${toX/scale}, ${toY/scale})")
 

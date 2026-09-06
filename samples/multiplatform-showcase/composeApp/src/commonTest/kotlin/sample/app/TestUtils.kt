@@ -12,10 +12,10 @@ import kotlinx.coroutines.delay
 @OptIn(InternalParikshanApi::class)
 suspend fun E2ETestScope.openAppNavigation() {
     executeParallel {
-        if (hasVisibleNode("nav_rail")) {
+        if (hasVisibleNode("navigation_drawer") && hasVisibleNode("nav_home_screen")) {
             return@executeParallel
         }
-        if (hasVisibleNode("navigation_drawer") && hasVisibleNode("nav_home_screen")) {
+        if (hasVisibleNode("nav_rail") && !hasVisibleNode("hamburger_button")) {
             return@executeParallel
         }
         if (hasVisibleNode("hamburger_button")) {
@@ -64,14 +64,18 @@ suspend fun E2ETestScope.navigateToSection(navTag: String) {
                 ScrollDirection.Down
             }
 
+            val scrollTargetContainer = if (hasVisibleNode("nav_rail")) "nav_rail" else navContainer
             scrollUntilVisible(
-                containerSelector = Selector.Tag(navContainer),
+                containerSelector = Selector.Tag(scrollTargetContainer),
                 targetSelector = Selector.Tag(navTag),
                 direction = scrollDirection
             )
         }
 
         click(navTag)
+        if (navContainer == "navigation_drawer") {
+            assertNotVisible("navigation_drawer")
+        }
     }
 }
 

@@ -89,19 +89,51 @@ private fun matchingTextNodes(raw: String, nodes: List<NodeSnapshot>, requireVis
     val iterator = deduplicated.iterator()
     while (iterator.hasNext()) {
       val existing = iterator.next()
-      if (node.text == existing.text) {
-        if (node.bounds.left <= existing.bounds.left + BOUNDS_OVERLAP_TOLERANCE_PX && node.bounds.top <= existing.bounds.top + BOUNDS_OVERLAP_TOLERANCE_PX &&
-            node.bounds.right >= existing.bounds.right - BOUNDS_OVERLAP_TOLERANCE_PX && node.bounds.bottom >= existing.bounds.bottom - BOUNDS_OVERLAP_TOLERANCE_PX) {
-          isDuplicate = true; break
-        } else if (existing.bounds.left <= node.bounds.left + BOUNDS_OVERLAP_TOLERANCE_PX && existing.bounds.top <= node.bounds.top + BOUNDS_OVERLAP_TOLERANCE_PX &&
-                   existing.bounds.right >= node.bounds.right - BOUNDS_OVERLAP_TOLERANCE_PX && existing.bounds.bottom >= node.bounds.bottom - BOUNDS_OVERLAP_TOLERANCE_PX) {
+      if (isSameSemanticControl(node, existing)) {
+        if (shouldReplaceExisting(newNode = node, existingNode = existing)) {
           iterator.remove()
+        } else {
+          isDuplicate = true
+          break
         }
       }
     }
     if (!isDuplicate) deduplicated.add(node)
   }
   return deduplicated.sortedWith(compareBy<NodeSnapshot>{ (it.bounds.top / SPATIAL_GRID_SNAP_PX).toInt() }.thenBy{ (it.bounds.left / SPATIAL_GRID_SNAP_PX).toInt() })
+}
+
+private fun isSameSemanticControl(a: NodeSnapshot, b: NodeSnapshot): Boolean {
+  val textA = a.normalizedText()
+  val textB = b.normalizedText()
+  val sameText = (textA == null && textB == null) ||
+      (textA != null && textB != null && textA.equals(textB, ignoreCase = true))
+  if (!sameText) return false
+
+  return a.bounds.containsWithTolerance(b.bounds, BOUNDS_OVERLAP_TOLERANCE_PX) ||
+         b.bounds.containsWithTolerance(a.bounds, BOUNDS_OVERLAP_TOLERANCE_PX) ||
+         a.bounds.overlapsSignificantlyWith(b.bounds)
+}
+
+private fun Bounds.containsWithTolerance(other: Bounds, tolerance: Double): Boolean =
+  left <= other.left + tolerance &&
+  top <= other.top + tolerance &&
+  right >= other.right - tolerance &&
+  bottom >= other.bottom - tolerance
+
+private fun Bounds.overlapsSignificantlyWith(other: Bounds): Boolean {
+  val overlapLeft = maxOf(left, other.left)
+  val overlapTop = maxOf(top, other.top)
+  val overlapRight = minOf(right, other.right)
+  val overlapBottom = minOf(bottom, other.bottom)
+  if (overlapRight <= overlapLeft || overlapBottom <= overlapTop) return false
+  val overlapArea = (overlapRight - overlapLeft) * (overlapBottom - overlapTop)
+  val smallerArea = minOf((right - left) * (bottom - top), (other.right - other.left) * (other.bottom - other.top))
+  return smallerArea > 0.0 && (overlapArea / smallerArea) > 0.5
+}
+
+private fun shouldReplaceExisting(newNode: NodeSnapshot, existingNode: NodeSnapshot): Boolean {
+  return newNode.tag.isNotEmpty() && existingNode.tag.isEmpty()
 }
 
 private fun resolveByText(selector: Selector, nodes: List<NodeSnapshot>, requireVisible: Boolean): ResolvedSelector {

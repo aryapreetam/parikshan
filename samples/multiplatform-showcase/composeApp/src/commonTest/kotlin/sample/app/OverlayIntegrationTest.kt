@@ -37,8 +37,11 @@ class OverlayIntegrationTest : E2ETestLifecycle {
       "bottom_sheet_content" to "sheet_action_a_button"
     )
     for ((dialogTag, dismissTag) in overlays) {
-      if (hasVisibleNode(dialogTag)) {
-        runCatching { click(dismissTag) }
+      if (hasVisibleNode(dialogTag) && hasVisibleNode(dismissTag)) {
+        runCatching {
+          click(dismissTag)
+          assertNotVisible(Selector.Auto(dialogTag), timeoutMs = 300L)
+        }
         break
       }
     }
@@ -129,10 +132,6 @@ class OverlayIntegrationTest : E2ETestLifecycle {
   fun testCalendarDateSelectionPastDate() = e2eTest {
     click("date_picker_trigger_button")
     assertVisible("date_picker_dialog")
-
-    println("DEBUG DESKTOP TREE START:")
-    getTree().forEach { println("NODE: tag='${it.tag}' text='${it.text}' visible=${it.visible} bounds=${it.bounds}") }
-    println("DEBUG DESKTOP TREE END")
 
     // Select December 25, 2025 (Past date)
     selectDateFromCalendar(day = 25, month = 12, year = 2025)

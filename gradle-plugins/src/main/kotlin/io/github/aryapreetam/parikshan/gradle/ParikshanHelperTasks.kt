@@ -345,11 +345,13 @@ abstract class ParikshanStartIosTask : DefaultTask() {
     logger.lifecycle("Parikshan iOS: Launching app on simulator $selectedUdid...")
     ProcessBuilder("xcrun", "simctl", "terminate", selectedUdid, bundleIdVal).start().waitFor()
 
-    val installResult = ProcessBuilder("xcrun", "simctl", "install", selectedUdid, appBundle.absolutePath)
+    val installProcess = ProcessBuilder("xcrun", "simctl", "install", selectedUdid, appBundle.absolutePath)
       .redirectErrorStream(true).start()
-    installResult.waitFor()
-    if (installResult.exitValue() != 0) {
-      throw GradleException("simctl install failed with exit code ${installResult.exitValue()}")
+    val installOutput = installProcess.inputStream.bufferedReader().readText()
+    installProcess.waitFor()
+    if (installProcess.exitValue() != 0) {
+      logger.error("Parikshan iOS: simctl install failed:\n$installOutput")
+      throw GradleException("simctl install failed with exit code ${installProcess.exitValue()}:\n$installOutput")
     }
 
     val launchProcess = ProcessBuilder("xcrun", "simctl", "launch", selectedUdid, bundleIdVal).apply {
@@ -359,9 +361,11 @@ abstract class ParikshanStartIosTask : DefaultTask() {
       environment()["PARIKSHAN_PORT"] = activePort.toString()
       redirectErrorStream(true)
     }.start()
+    val launchOutput = launchProcess.inputStream.bufferedReader().readText()
     launchProcess.waitFor()
     if (launchProcess.exitValue() != 0) {
-      throw GradleException("simctl launch failed with exit code ${launchProcess.exitValue()}")
+      logger.error("Parikshan iOS: simctl launch failed:\n$launchOutput")
+      throw GradleException("simctl launch failed with exit code ${launchProcess.exitValue()}:\n$launchOutput")
     }
 
     logger.lifecycle("Parikshan iOS: Waiting for server on port $activePort...")

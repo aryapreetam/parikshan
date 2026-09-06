@@ -13,7 +13,12 @@ if [ $# -eq 0 ]; then
     exit 1
 fi
 
-mkdir -p "$HOME/.gradle/wrapper" "$HOME/.gradle/caches/modules-2" "$HOME/.gradle/yarn" "$HOME/.gradle/nodejs" "$HOME/.cache/yarn" "$HOME/.cache/ms-playwright-linux"
+YARN_CACHE_DIR="$HOME/.cache/yarn"
+if [ -d "$HOME/Library/Caches/Yarn" ]; then
+    YARN_CACHE_DIR="$HOME/Library/Caches/Yarn"
+fi
+
+mkdir -p "$HOME/.gradle/wrapper" "$HOME/.gradle/caches/modules-2/files-2.1" "$HOME/.gradle/caches/modules-2/metadata-2.107" "$HOME/.gradle/caches/modules-2/resources-2.1" "$HOME/.gradle/yarn" "$HOME/.gradle/nodejs" "$YARN_CACHE_DIR" "$HOME/.cache/ms-playwright-linux"
 
 # Allocate pseudo-TTY only if stdin is a terminal
 INTERACTIVE=""
@@ -22,11 +27,15 @@ if [ -t 0 ]; then
 fi
 
 docker run --rm $INTERACTIVE \
+    -e YARN_CACHE_FOLDER=/usr/local/share/.cache/yarn \
     -v "$HOME/.gradle/wrapper":/root/.gradle/wrapper \
-    -v "$HOME/.gradle/caches/modules-2":/root/.gradle/caches/modules-2 \
+    -v "$HOME/.gradle/caches/modules-2/files-2.1":/root/.gradle/caches/modules-2/files-2.1 \
+    -v "$HOME/.gradle/caches/modules-2/metadata-2.107":/root/.gradle/caches/modules-2/metadata-2.107 \
+    -v "$HOME/.gradle/caches/modules-2/resources-2.1":/root/.gradle/caches/modules-2/resources-2.1 \
     -v "$HOME/.gradle/yarn":/root/.gradle/yarn \
     -v "$HOME/.gradle/nodejs":/root/.gradle/nodejs \
-    -v "$HOME/.cache/yarn":/root/.cache/yarn \
+    -v "$YARN_CACHE_DIR":/usr/local/share/.cache/yarn \
+    -v "$YARN_CACHE_DIR":/root/.cache/yarn \
     -v "$HOME/.cache/ms-playwright-linux":/root/.cache/ms-playwright \
     -v "$REPO_ROOT":/workspace \
     -w /workspace \

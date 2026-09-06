@@ -8,6 +8,7 @@ import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.protocol.auto
 import io.github.aryapreetam.parikshan.protocol.tag
 import io.github.aryapreetam.parikshan.protocol.text
+import io.github.aryapreetam.parikshan.protocol.atIndex
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
@@ -380,6 +381,38 @@ class E2ETestScope @InternalParikshanApi constructor(
     )
   }
 
+  suspend fun scrollUntilVisible(
+    containerTag: String,
+    targetSelector: Selector,
+    direction: ScrollDirection = ScrollDirection.Down,
+    maxScrolls: Int = 30,
+    stabilizationDelayMs: Long = 300
+  ) {
+    scrollUntilVisible(
+      containerSelector = containerTag.asAutoSelector(),
+      targetSelector = targetSelector,
+      direction = direction,
+      maxScrolls = maxScrolls,
+      stabilizationDelayMs = stabilizationDelayMs
+    )
+  }
+
+  suspend fun scrollUntilVisible(
+    containerSelector: Selector,
+    targetTag: String,
+    direction: ScrollDirection = ScrollDirection.Down,
+    maxScrolls: Int = 30,
+    stabilizationDelayMs: Long = 300
+  ) {
+    scrollUntilVisible(
+      containerSelector = containerSelector,
+      targetSelector = targetTag.asAutoSelector(),
+      direction = direction,
+      maxScrolls = maxScrolls,
+      stabilizationDelayMs = stabilizationDelayMs
+    )
+  }
+
   /**
    * Repeatedly scrolls the container matching [containerSelector] in [direction] until [targetSelector] becomes visible.
    *
@@ -408,13 +441,18 @@ class E2ETestScope @InternalParikshanApi constructor(
     maxScrolls: Int = 30,
     stabilizationDelayMs: Long = 300
   ) {
+    val effectiveContainer = if (containerSelector.index == null) {
+      containerSelector.atIndex(0)
+    } else {
+      containerSelector
+    }
     driver.executeParallel { targetDriver ->
       val localScope = E2ETestScope(driver = targetDriver, config = config)
       for (i in 0 until maxScrolls) {
         if (localScope.hasVisibleNode(targetSelector)) {
           return@executeParallel
         }
-        localScope.scroll(selector = containerSelector, direction = direction)
+        localScope.scroll(selector = effectiveContainer, direction = direction)
         delay(stabilizationDelayMs)
       }
       throw AssertionError(

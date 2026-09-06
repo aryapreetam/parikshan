@@ -337,15 +337,10 @@ jobs:
           ./gradlew :samples:multiplatform-showcase:composeApp:linkDebugFrameworkIosSimulatorArm64 -PcmpProfile=${{ matrix.profile }} -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
       - name: Run Showcase iOS E2E tests
         run: |
-          TEST_FILTER=""
-          if [ "${{ matrix.profile }}" = "1.10" ]; then
-            TEST_FILTER="--tests=sample.app.AccessibilityIntegrationTest.testSubtextMatching"
-          fi
           ./gradlew :samples:multiplatform-showcase:composeApp:e2eIosTest \
             -PcmpProfile=${{ matrix.profile }} \
             -Dparikshan.video.enabled=true \
             --no-configuration-cache \
-            $TEST_FILTER \
             -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" \
             -Dparikshan.xcodebuild.timeout=1800
       - name: Upload iOS E2E Results

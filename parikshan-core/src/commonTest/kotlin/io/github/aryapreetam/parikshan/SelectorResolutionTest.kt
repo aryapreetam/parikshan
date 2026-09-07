@@ -158,6 +158,24 @@ class SelectorResolutionTest {
     assertEquals(2, resolved.allMatches.size)
   }
 
+  @Test
+  fun untagged_container_preferred_over_untagged_leaf() {
+    // Simulates CMP 1.11+ DatePicker: outer IconButton (clickable) wraps inner Icon (decorative).
+    // Both share the same accessibility text and neither has a testTag.
+    val resolved =
+      Selector.Auto("previous month").resolveNode(
+        nodes =
+          listOf(
+            node(tag = "", text = "previous month", bounds = Bounds(819.0, 873.0, 963.0, 1017.0)),
+            node(tag = "", text = "previous month", bounds = Bounds(855.0, 909.0, 927.0, 981.0))
+          )
+      )
+
+    assertEquals(1, resolved.allMatches.size)
+    // The container (144x144) is kept, not the leaf (72x72)
+    assertEquals(144.0 * 144.0, resolved.node.area, 0.1)
+  }
+
   private fun node(
     tag: String,
     text: String?,

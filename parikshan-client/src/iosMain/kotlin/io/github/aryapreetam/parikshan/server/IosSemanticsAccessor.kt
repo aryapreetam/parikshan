@@ -789,18 +789,6 @@ internal object IosSemanticsAccessor {
     }
   }
 
-  private fun collectGestureRecognizers(view: UIView, list: MutableList<UIGestureRecognizer>) {
-    view.gestureRecognizers?.forEach { rec ->
-      if (rec is UIGestureRecognizer) {
-        list.add(rec)
-      }
-    }
-    view.subviews.forEach { subview ->
-      if (subview is UIView) {
-        collectGestureRecognizers(subview, list)
-      }
-    }
-  }
 
   private fun dispatchTouchToAll(touch: SimulatedTouch, phase: UITouchPhase, window: UIWindow, event: UIEvent) {
     val touchSet = NSSet.setWithObject(touch)
@@ -832,9 +820,19 @@ internal object IosSemanticsAccessor {
       }
     }
 
-    val recognizers = mutableListOf<UIGestureRecognizer>()
-    collectGestureRecognizers(window, recognizers)
-    for (rec in recognizers) {
+    val recognizersToNotify = mutableListOf<UIGestureRecognizer>()
+    targetView.gestureRecognizers?.forEach { rec ->
+      if (rec is UIGestureRecognizer && !recognizersToNotify.contains(rec)) {
+        recognizersToNotify.add(rec)
+      }
+    }
+    composeInputView?.gestureRecognizers?.forEach { rec ->
+      if (rec is UIGestureRecognizer && !recognizersToNotify.contains(rec)) {
+        recognizersToNotify.add(rec)
+      }
+    }
+
+    recognizersToNotify.forEach { rec ->
       try {
         when (phase) {
           UITouchPhase.UITouchPhaseBegan -> rec.touchesBegan(touchSet, withEvent = event)
@@ -843,7 +841,7 @@ internal object IosSemanticsAccessor {
           else -> {}
         }
       } catch (e: Throwable) {
-        // Ignore errors from individual gesture recognizers
+        logDebug("Error delivering touch to recognizer ${rec::class.simpleName}: ${e.message}")
       }
     }
   }

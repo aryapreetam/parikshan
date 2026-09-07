@@ -133,7 +133,13 @@ private fun Bounds.overlapsSignificantlyWith(other: Bounds): Boolean {
 }
 
 private fun shouldReplaceExisting(newNode: NodeSnapshot, existingNode: NodeSnapshot): Boolean {
-  return newNode.tag.isNotEmpty() && existingNode.tag.isEmpty()
+  // Tagged node always replaces untagged (more specific semantic identity)
+  if (newNode.tag.isNotEmpty() && existingNode.tag.isEmpty()) return true
+  // When both are untagged, prefer the container (larger area) over the leaf.
+  // In Compose, the outer interactive control (e.g. IconButton) holds the OnClick action,
+  // while the inner leaf (e.g. Icon) carries only the content description.
+  if (newNode.tag.isEmpty() && existingNode.tag.isEmpty() && newNode.area > existingNode.area) return true
+  return false
 }
 
 private fun resolveByText(selector: Selector, nodes: List<NodeSnapshot>, requireVisible: Boolean): ResolvedSelector {

@@ -62,10 +62,22 @@ fun E2ETestLifecycle.e2eTest(
 ) {
   io.github.aryapreetam.parikshan.e2eTest(config) {
     beforeEach()
+    var primaryError: Throwable? = null
     try {
       block()
+    } catch (t: Throwable) {
+      primaryError = t
+      throw t
     } finally {
-      afterEach()
+      try {
+        afterEach()
+      } catch (teardownError: Throwable) {
+        if (primaryError != null) {
+          primaryError.addSuppressed(teardownError)
+        } else {
+          throw teardownError
+        }
+      }
     }
   }
 }

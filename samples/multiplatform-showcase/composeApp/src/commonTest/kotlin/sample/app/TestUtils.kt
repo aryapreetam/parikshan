@@ -12,16 +12,18 @@ import kotlinx.coroutines.delay
 @OptIn(InternalParikshanApi::class)
 suspend fun E2ETestScope.openAppNavigation() {
     executeParallel {
-        if (hasVisibleNode("navigation_drawer") && hasVisibleNode("nav_home_screen")) {
+        if (hasVisibleNode("navigation_drawer")) {
             return@executeParallel
         }
         if (hasVisibleNode("nav_rail") && !hasVisibleNode("hamburger_button")) {
             return@executeParallel
         }
-        if (hasVisibleNode("hamburger_button")) {
-            click("hamburger_button")
-            waitFor("nav_home_screen")
+        hideKeyboard()
+        if (!hasVisibleNode("hamburger_button")) {
+            waitFor("hamburger_button")
         }
+        click("hamburger_button")
+        waitFor("navigation_drawer")
     }
 }
 

@@ -413,8 +413,8 @@ internal fun postPing(port: Int, token: String): Boolean {
     conn.requestMethod = "POST"
     conn.setRequestProperty("Content-Type", "application/json")
     conn.doOutput = true
-    conn.connectTimeout = 500
-    conn.readTimeout = 500
+    conn.connectTimeout = 5000
+    conn.readTimeout = 5000
     conn.outputStream.use { it.write(body.toByteArray()) }
     conn.responseCode == 200 && conn.inputStream.bufferedReader().readText().contains("ok")
   } catch (_: Exception) {

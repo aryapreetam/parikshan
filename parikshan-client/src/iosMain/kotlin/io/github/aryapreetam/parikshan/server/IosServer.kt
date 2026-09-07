@@ -42,6 +42,10 @@ import platform.posix.sockaddr_in
 import platform.posix.socket
 import platform.posix.write
 import platform.posix.getenv
+import platform.posix.signal
+import platform.posix.SIGPIPE
+import platform.posix.SIG_IGN
+import platform.posix.SO_NOSIGPIPE
 import kotlinx.cinterop.useContents
 import platform.Foundation.NSString
 import platform.Foundation.stringWithUTF8String
@@ -79,6 +83,9 @@ object IosServer {
   @OptIn(DelicateCoroutinesApi::class)
   fun startIfNeeded(port: Int = 9878) {
     if (!running.compareAndSet(0, 1)) return
+
+    // Prevent broken-pipe signals from killing the process when clients disconnect
+    signal(SIGPIPE, SIG_IGN)
 
     IosSemanticsAccessor.setup()
 
@@ -118,6 +125,10 @@ object IosServer {
         reuseVal.value = 1
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, reuseVal.ptr, sizeOf<platform.posix.int32_tVar>().convert())
 
+        val nosigpipeVal = alloc<platform.posix.int32_tVar>()
+        nosigpipeVal.value = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, nosigpipeVal.ptr, sizeOf<platform.posix.int32_tVar>().convert())
+
         val addr = alloc<sockaddr_in>()
         addr.sin_family = AF_INET.convert()
         val p = candidatePort.toUShort()
@@ -155,6 +166,9 @@ object IosServer {
           if (running.value == 0) break
           continue
         }
+        val nosigpipeClient = alloc<platform.posix.int32_tVar>()
+        nosigpipeClient.value = 1
+        setsockopt(clientFd, SOL_SOCKET, SO_NOSIGPIPE, nosigpipeClient.ptr, sizeOf<platform.posix.int32_tVar>().convert())
         handleConnection(clientFd)
       }
       close(activeFd)
@@ -212,6 +226,12 @@ object IosServer {
         if (sessionToken.isNotEmpty() && command.token != sessionToken) {
             logIosServer("[IosServer] ACCESS DENIED: Invalid token")
             sendHttpResponse(clientFd, 401, ProtocolJson.encodeResponse(Response.Error(command.id, "Unauthorized")))
+            break
+        }
+
+        // Fast path: Command.Ping can be answered immediately on worker thread
+        if (command is Command.Ping) {
+            sendHttpResponse(clientFd, 200, ProtocolJson.encodeResponse(Response.Ok(command.id)))
             break
         }
 
@@ -317,6 +337,11 @@ object IosServer {
         pumpRunLoop(iterations = 6, intervalSeconds = 0.05)
         Response.Ok(command.id)
       }
+      is Command.HideKeyboard -> {
+        IosSemanticsAccessor.resignCurrentFirstResponder()
+        pumpRunLoop(iterations = 6, intervalSeconds = 0.05)
+        Response.Ok(command.id)
+      }
       else -> Response.Ok(command.id)
     }
   }
@@ -326,8 +351,10 @@ object IosServer {
     val bodyBytes = body.encodeToByteArray()
     val head = "HTTP/1.1 $status $statusText\r\nContent-Type: application/json\r\nContent-Length: ${bodyBytes.size}\r\nConnection: close\r\n\r\n"
     val headBytes = head.encodeToByteArray()
-    write(fd, headBytes.usePinned { it.addressOf(0) }, headBytes.size.convert())
-    write(fd, bodyBytes.usePinned { it.addressOf(0) }, bodyBytes.size.convert())
+    val headWritten = headBytes.usePinned { write(fd, it.addressOf(0), headBytes.size.convert()) }
+    if (headWritten > 0) {
+      bodyBytes.usePinned { write(fd, it.addressOf(0), bodyBytes.size.convert()) }
+    }
   }
 }
 

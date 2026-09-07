@@ -36,6 +36,13 @@ interface TestDriver {
     send(Command.Reset(id = nextId()))
   }
 
+  suspend fun hideKeyboard() {
+    val response = send(Command.HideKeyboard(id = nextId()))
+    if (response is Response.Error) {
+      throw AssertionError("hideKeyboard() failed: ${response.message}")
+    }
+  }
+
   suspend fun close()
 
   fun updateVirtualCursor(x: Double, y: Double) {}
@@ -1179,6 +1186,15 @@ class E2ETestScope @InternalParikshanApi constructor(
    */
   suspend fun resetApp() {
     driver.reset()
+    settleAfterCommand()
+  }
+
+  /**
+   * Dismisses any active on-screen software keyboard (e.g. on iOS or Android)
+   * to restore viewport bounds and uncover elements displaced by the keyboard.
+   */
+  suspend fun hideKeyboard() {
+    driver.hideKeyboard()
     settleAfterCommand()
   }
 

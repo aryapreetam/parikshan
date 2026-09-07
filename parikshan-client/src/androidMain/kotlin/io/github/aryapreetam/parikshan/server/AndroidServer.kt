@@ -629,6 +629,16 @@ object AndroidServer {
         }
         Response.Ok(command.id)
       }
+      is Command.HideKeyboard -> {
+        try {
+          val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+          instrumentation.uiAutomation.executeShellCommand("input keyevent 111")
+          composeRule.waitForIdle()
+        } catch (_: Throwable) {
+          // Ignore
+        }
+        Response.Ok(command.id)
+      }
     }
   }
 

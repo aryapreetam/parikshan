@@ -338,6 +338,14 @@ internal class AndroidDriver private constructor(
       is Command.Shutdown -> Response.Ok(command.id)
       is Command.Ping -> Response.Ok(command.id)
       is Command.Reset -> Response.Ok(command.id)
+      is Command.HideKeyboard -> {
+        try {
+          val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+          device.pressBack()
+          composeUiTest.waitForIdle()
+        } catch (_: Throwable) {}
+        Response.Ok(command.id)
+      }
     }
   }
 

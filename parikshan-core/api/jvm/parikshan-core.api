@@ -87,6 +87,7 @@ public final class io/github/aryapreetam/parikshan/E2ETestScope {
 	public final fun getTree (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun hasVisibleNode (Lio/github/aryapreetam/parikshan/protocol/Selector;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun hasVisibleNode (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun hideKeyboard (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun input (Lio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun input (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun onTarget (Lio/github/aryapreetam/parikshan/Target;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -180,6 +181,7 @@ public abstract interface class io/github/aryapreetam/parikshan/TestDriver {
 	public abstract fun close (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun executeParallel (Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public abstract fun getTargetPlatform ()Ljava/lang/String;
+	public fun hideKeyboard (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun relaunchApp (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun reset (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun resolveArtifactPath (Ljava/lang/String;)Ljava/lang/String;
@@ -190,6 +192,7 @@ public abstract interface class io/github/aryapreetam/parikshan/TestDriver {
 
 public final class io/github/aryapreetam/parikshan/TestDriver$DefaultImpls {
 	public static fun executeParallel (Lio/github/aryapreetam/parikshan/TestDriver;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static fun hideKeyboard (Lio/github/aryapreetam/parikshan/TestDriver;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun relaunchApp (Lio/github/aryapreetam/parikshan/TestDriver;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun reset (Lio/github/aryapreetam/parikshan/TestDriver;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static fun resolveArtifactPath (Lio/github/aryapreetam/parikshan/TestDriver;Ljava/lang/String;)Ljava/lang/String;
@@ -443,6 +446,37 @@ public final class io/github/aryapreetam/parikshan/protocol/Command$GetTree$Comp
 public abstract interface class io/github/aryapreetam/parikshan/protocol/Command$HasSelector {
 	public abstract fun getSelector ()Lio/github/aryapreetam/parikshan/protocol/Selector;
 	public abstract fun getTag ()Ljava/lang/String;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$HideKeyboard : io/github/aryapreetam/parikshan/protocol/Command {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$HideKeyboard$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$HideKeyboard;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$HideKeyboard;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$HideKeyboard;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun getId ()Ljava/lang/String;
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$HideKeyboard$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$HideKeyboard$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$HideKeyboard;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$HideKeyboard;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$HideKeyboard$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
 public final class io/github/aryapreetam/parikshan/protocol/Command$Input : io/github/aryapreetam/parikshan/protocol/Command, io/github/aryapreetam/parikshan/protocol/Command$HasSelector {

@@ -51,13 +51,19 @@ private class SimulatedTouch(
     view: UIView? = null
 ) : UITouch() {
     private var _previousLocation: CValue<CGPoint> = _location
+    private var _phase: UITouchPhase = phase
+    private var _view: UIView? = view
+    private var _window: UIWindow? = view as? UIWindow ?: view?.window
 
     init {
-        setPhase(phase)
-        setView(view)
-        setWindow(view as? UIWindow ?: view?.window)
-        IosSemanticsAccessor.logDebug("SimulatedTouch init: phase=${this.phase.value}, view=${this.view}, window=${this.window}")
+        IosSemanticsAccessor.logDebug("SimulatedTouch init: phase=${_phase.value}, view=$_view, window=$_window")
     }
+
+    override fun phase(): UITouchPhase = _phase
+
+    override fun view(): UIView? = _view
+
+    override fun window(): UIWindow? = _window
 
     override fun timestamp(): platform.Foundation.NSTimeInterval {
         return platform.Foundation.NSProcessInfo.processInfo.systemUptime
@@ -97,41 +103,16 @@ private class SimulatedTouch(
     }
 
     fun setView(view: UIView?) {
-        try {
-            this.setValue(view, forKey = "view")
-        } catch (_: Throwable) {
-            try {
-                this.setValue(view, forKey = "_view")
-            } catch (_: Throwable) {}
-        }
+        _view = view
+        _window = view as? UIWindow ?: view?.window
     }
 
     fun setWindow(window: UIWindow?) {
-        try {
-            this.setValue(window, forKey = "window")
-        } catch (_: Throwable) {
-            try {
-                this.setValue(window, forKey = "_window")
-            } catch (_: Throwable) {}
-        }
+        _window = window
     }
 
     fun setPhase(p: UITouchPhase) {
-        var success = false
-        try {
-            this.setValue(p.value, forKey = "phase")
-            success = true
-        } catch (e: Throwable) {
-            try {
-                this.setValue(p.value, forKey = "_phase")
-                success = true
-            } catch (e2: Throwable) {
-                IosSemanticsAccessor.logDebug("setPhase failed to set ${p.value}: ${e.message} / ${e2.message}")
-            }
-        }
-        if (success) {
-            IosSemanticsAccessor.logDebug("setPhase succeeded, touch.phase is now: ${this.phase.value}")
-        }
+        _phase = p
     }
 }
 
@@ -748,7 +729,11 @@ internal object IosSemanticsAccessor {
   }
 
   private fun findInputView(view: UIView): UIView? {
-    // Prioritize OverlayInputView (actual key/gesture listener in Compose)
+    // Prioritize InteractionUIView (CMP 1.12+ touch input receiver)
+    val interactionInput = findInputViewWithClassName(view, "InteractionUIView")
+    if (interactionInput != null) return interactionInput
+
+    // Prioritize OverlayInputView (CMP 1.10 - 1.11 touch/key listener in Compose)
     val overlayInput = findInputViewWithClassName(view, "OverlayInputView")
     if (overlayInput != null) return overlayInput
 
@@ -792,7 +777,7 @@ internal object IosSemanticsAccessor {
 
   private fun collectInputViews(view: UIView, list: MutableList<UIView>) {
     val className = view::class.simpleName ?: ""
-    if (className.contains("InputView") || className.contains("ComposeView") || className.contains("MetalView")) {
+    if (className.contains("InteractionUIView") || className.contains("InputView") || className.contains("ComposeView") || className.contains("MetalView")) {
       list.add(view)
     }
     val subviews = view.subviews
@@ -823,7 +808,14 @@ internal object IosSemanticsAccessor {
 
     val viewsToNotify = mutableListOf<UIView>()
     viewsToNotify.add(targetView)
-    if (targetView != window && targetView.superview != null) {
+
+    // Ensure the active Compose input view (InteractionUIView or OverlayInputView) receives touches
+    val composeInputView = findInputView(window)
+    if (composeInputView != null && !viewsToNotify.contains(composeInputView)) {
+      viewsToNotify.add(composeInputView)
+    }
+
+    if (targetView != window && targetView.superview != null && !viewsToNotify.contains(window)) {
       viewsToNotify.add(window)
     }
 

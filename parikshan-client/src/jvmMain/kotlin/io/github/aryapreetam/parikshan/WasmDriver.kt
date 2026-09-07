@@ -231,6 +231,7 @@ internal class WasmDriver private constructor(
         Response.Ok(command.id)
       }
       is Command.Reset -> Response.Ok(command.id)
+      is Command.HideKeyboard -> Response.Ok(command.id)
       is Command.StartRecording -> {
         lastRequestedVideoPath = command.path
         Response.Ok(command.id)

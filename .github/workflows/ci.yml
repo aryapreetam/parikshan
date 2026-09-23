@@ -349,8 +349,11 @@ jobs:
         with:
           name: parikshan-ios-showcase-results-${{ matrix.profile }}
           path: |
-            samples/multiplatform-showcase/composeApp/build/parikshan/
-            samples/multiplatform-showcase/composeApp/build/reports/
+            samples/multiplatform-showcase/composeApp/build/parikshan/screenshots/
+            samples/multiplatform-showcase/composeApp/build/parikshan/videos/
+            samples/multiplatform-showcase/composeApp/build/parikshan/*.log
+            samples/multiplatform-showcase/composeApp/build/parikshan/logs/
+            samples/multiplatform-showcase/composeApp/build/reports/tests/
           if-no-files-found: ignore
 
   e2e-ios-cmp-latest:
@@ -391,9 +394,12 @@ jobs:
         with:
           name: parikshan-ios-cmp-latest-results
           path: |
-            samples/cmp-latest/app/shared/build/parikshan/
-            samples/cmp-latest/app/shared/build/reports/
-            if-no-files-found: ignore
+            samples/cmp-latest/app/shared/build/parikshan/screenshots/
+            samples/cmp-latest/app/shared/build/parikshan/videos/
+            samples/cmp-latest/app/shared/build/parikshan/*.log
+            samples/cmp-latest/app/shared/build/parikshan/logs/
+            samples/cmp-latest/app/shared/build/reports/tests/
+          if-no-files-found: ignore
 
   e2e-ios-issue-playground:
     name: E2E iOS issue-playground
@@ -433,9 +439,12 @@ jobs:
         with:
           name: parikshan-ios-issue-playground-results
           path: |
-            samples/issue-playground/shared/build/parikshan/
-            samples/issue-playground/shared/build/reports/
-            if-no-files-found: ignore
+            samples/issue-playground/shared/build/parikshan/screenshots/
+            samples/issue-playground/shared/build/parikshan/videos/
+            samples/issue-playground/shared/build/parikshan/*.log
+            samples/issue-playground/shared/build/parikshan/logs/
+            samples/issue-playground/shared/build/reports/tests/
+          if-no-files-found: ignore
 
   e2e-ios-composables:
     name: E2E iOS composables-sample
@@ -475,9 +484,12 @@ jobs:
         with:
           name: parikshan-ios-composables-results
           path: |
-            samples/composables-sample/shared/build/parikshan/
-            samples/composables-sample/shared/build/reports/
-            if-no-files-found: ignore
+            samples/composables-sample/shared/build/parikshan/screenshots/
+            samples/composables-sample/shared/build/parikshan/videos/
+            samples/composables-sample/shared/build/parikshan/*.log
+            samples/composables-sample/shared/build/parikshan/logs/
+            samples/composables-sample/shared/build/reports/tests/
+          if-no-files-found: ignore
 
   dex-pollution-audit:
     name: DEX Footprint Audit

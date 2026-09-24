@@ -81,7 +81,7 @@ Open `app/build.gradle.kts` and apply the Parikshan plugin inside `plugins { ...
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-    id("io.github.aryapreetam.parikshan") version "0.0.9" // (1)
+    id("io.github.aryapreetam.parikshan") version "0.0.10" // (1)
 }
 ```
 

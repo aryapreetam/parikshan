@@ -28,7 +28,7 @@ internal fun Test.configureE2eHostTestExecution(
       .orElse(project.providers.systemProperty("parikshan.video.granularity"))
       .orElse("class")
 
-  val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.9"
+  val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.10"
   val clientDep = project.rootProject.findProject(":parikshan-client")
     ?.let { project.dependencies.project(mapOf("path" to it.path)) }
     ?: "io.github.aryapreetam.parikshan:parikshan-client:$pluginVersion"
@@ -470,7 +470,7 @@ private fun String.maskKotlinCommentsAndLiterals(): String {
 
 internal fun Project.configureParikshanDependencies(isE2EActive: Boolean) {
   // Resolve version dynamically from loaded plugin class metadata.
-  val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.9"
+  val pluginVersion = ParikshanPlugin::class.java.`package`.implementationVersion ?: "0.0.10"
 
   val hasKmp = pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform")
   if (hasKmp) {

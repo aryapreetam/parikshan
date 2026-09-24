@@ -25,18 +25,28 @@ class OverlayIntegrationTest : E2ETestLifecycle {
   }
 
   override suspend fun E2ETestScope.afterEach() {
-    val tree = getTree()
-    if (tree.any { it.tag == "date_picker_dialog" && it.visible }) {
-      runCatching { click(Selector.Tag("date_picker_dismiss_button")) }
-    } else if (tree.any { it.tag == "time_picker_dialog" && it.visible }) {
-      runCatching { click(Selector.Tag("time_picker_dismiss_button")) }
-    } else if (tree.any { it.tag == "alert_dialog_popup" && it.visible }) {
-      runCatching { click(Selector.Tag("dialog_dismiss_button")) }
-    } else if (tree.any { it.tag == "bottom_sheet_content" && it.visible }) {
-      runCatching { click(Selector.Tag("sheet_action_a_button")) }
-    }
+    dismissOpenOverlays()
     navigateToSection("nav_home_screen")
   }
+
+  private suspend fun E2ETestScope.dismissOpenOverlays() {
+    val overlays = listOf(
+      "date_picker_dialog" to "date_picker_dismiss_button",
+      "time_picker_dialog" to "time_picker_dismiss_button",
+      "alert_dialog_popup" to "dialog_dismiss_button",
+      "bottom_sheet_content" to "sheet_action_a_button"
+    )
+    for ((dialogTag, dismissTag) in overlays) {
+      if (hasVisibleNode(dialogTag) && hasVisibleNode(dismissTag)) {
+        runCatching {
+          click(dismissTag)
+          assertNotVisible(Selector.Auto(dialogTag), timeoutMs = 300L)
+        }
+        break
+      }
+    }
+  }
+
 
   @Test
   fun testDropdownMenuSelection() = e2eTest {
@@ -65,9 +75,7 @@ class OverlayIntegrationTest : E2ETestLifecycle {
   @Test
   fun testAlertDialogConfirmation() = e2eTest {
     click("dialog_trigger_button")
-    
     click("dialog_confirm_button")
-    
     assertVisible("Dialog Confirmed")
   }
 
@@ -98,6 +106,7 @@ class OverlayIntegrationTest : E2ETestLifecycle {
     
     // Material 3 date picker input mode test. Platform routing handles waits internally.
     selectDateViaInput(day = 24, month = 12, year = 2026)
+
     
     // Verify it successfully dismissed and output updated
     assertContains("overlay_result_message", "Date Selected: 24/12/2026")
@@ -123,10 +132,6 @@ class OverlayIntegrationTest : E2ETestLifecycle {
   fun testCalendarDateSelectionPastDate() = e2eTest {
     click("date_picker_trigger_button")
     assertVisible("date_picker_dialog")
-
-    println("DEBUG DESKTOP TREE START:")
-    getTree().forEach { println("NODE: tag='${it.tag}' text='${it.text}' visible=${it.visible} bounds=${it.bounds}") }
-    println("DEBUG DESKTOP TREE END")
 
     // Select December 25, 2025 (Past date)
     selectDateFromCalendar(day = 25, month = 12, year = 2025)

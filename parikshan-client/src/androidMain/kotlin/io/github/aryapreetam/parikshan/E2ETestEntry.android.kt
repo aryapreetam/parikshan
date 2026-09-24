@@ -39,11 +39,14 @@ actual fun e2eTest(
         methodName = callerMethodName
       )
 
-      val effectiveConfig = if (videoConfig.enabled) {
-        config.copy(commandDelayMs = maxOf(config.commandDelayMs, videoConfig.stepDelayMs))
-      } else {
-        config
-      }
+      val userConfigStepDelay = if (config.stepDelayMs > 0L) config.stepDelayMs else null
+      val globalSystemStepDelay = System.getProperty("parikshan.stepDelayMs")?.toLongOrNull()
+
+      val effectiveStepDelay = userConfigStepDelay
+        ?: globalSystemStepDelay
+        ?: 0L
+
+      val effectiveConfig = config.copy(stepDelayMs = effectiveStepDelay)
 
       try {
         e2eTest(

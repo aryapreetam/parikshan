@@ -15,27 +15,16 @@ on:
   workflow_dispatch:
     inputs:
       target_job:
-        description: 'Specific CI job to run (all, ios-cmp-latest, ios-showcase, desktop, wasm, android)'
+        description: 'Target CI job(s) to run, comma-separated (e.g. desktop, wasm, windows, android, all)'
         required: true
         default: 'all'
-        type: choice
-        options:
-          - all
-          - ios-issue-playground
-          - ios-cmp-latest
-          - ios-showcase
-          - ios-composables
-          - desktop
-          - wasm
-          - android
-          - sync
-          - watch-script
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ inputs.target_job || 'all' }}
   cancel-in-progress: true
 
 jobs:

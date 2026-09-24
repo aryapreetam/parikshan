@@ -3,14 +3,22 @@ plugins {
   alias(libs.plugins.compose.compiler)
 }
 
+val cmpProfile = providers.gradleProperty("cmpProfile").orNull ?: "1.10"
+val androidCompileSdk = when (cmpProfile) {
+  "1.10" -> 35
+  "1.11" -> 36
+  "1.12" -> 37
+  else -> 35
+}
+
 android {
   namespace = "sample.app"
-  compileSdk = 35
+  compileSdk = androidCompileSdk
 
   defaultConfig {
     applicationId = "sample.app"
     minSdk = 26
-    targetSdk = 35
+    targetSdk = androidCompileSdk
     versionCode = 1
     versionName = "1.0.0"
   }

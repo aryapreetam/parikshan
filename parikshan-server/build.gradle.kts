@@ -32,6 +32,9 @@ mavenPublishing {
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
   compilerOptions {
-    freeCompilerArgs.add("-opt-in=io.github.aryapreetam.parikshan.InternalParikshanApi")
+    freeCompilerArgs.addAll(
+      "-opt-in=io.github.aryapreetam.parikshan.InternalParikshanApi",
+      "-opt-in=androidx.compose.runtime.tooling.ComposeToolingApi"
+    )
   }
 }

@@ -286,8 +286,7 @@ internal class DesktopSemanticsAccessor(
     }
 
     onEdt {
-      targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_RELEASED, System.currentTimeMillis(), InputEvent.BUTTON1_DOWN_MASK, endX, endY, toX.toInt(), toY.toInt(), 1, false, MouseEvent.BUTTON1))
-      targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_EXITED, System.currentTimeMillis(), 0, endX, endY, toX.toInt(), toY.toInt(), 0, false, MouseEvent.NOBUTTON))
+      targetComponent.dispatchEvent(MouseEvent(targetComponent, MouseEvent.MOUSE_RELEASED, System.currentTimeMillis(), 0, endX, endY, toX.toInt(), toY.toInt(), 1, false, MouseEvent.BUTTON1))
     }
     
     return true

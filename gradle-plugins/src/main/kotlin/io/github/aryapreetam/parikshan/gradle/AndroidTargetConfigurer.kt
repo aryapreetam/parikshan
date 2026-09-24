@@ -123,9 +123,9 @@ internal object AndroidTargetConfigurer {
       if (!fps.isNullOrBlank()) {
         systemProperty("parikshan.video.fps", fps)
       }
-      val stepDelay = project.findProperty("parikshan.video.stepDelayMs")?.toString()
+      val stepDelay = project.findProperty("parikshan.stepDelayMs")?.toString()
       if (!stepDelay.isNullOrBlank()) {
-        systemProperty("parikshan.video.stepDelayMs", stepDelay)
+        systemProperty("parikshan.stepDelayMs", stepDelay)
       }
       val postRoll = project.findProperty("parikshan.video.postRollMs")?.toString()
       if (!postRoll.isNullOrBlank()) {

@@ -50,9 +50,13 @@ kotlin {
   wasmJs {
     browser()
   }
-  iosX64()
-  iosArm64()
-  iosSimulatorArm64()
+  val cmpProfile = providers.gradleProperty("cmpProfile").orNull ?: "1.10"
+  listOf(
+    iosArm64(),
+    iosSimulatorArm64()
+  ).plus(
+    if (cmpProfile == "1.10") listOf(iosX64()) else emptyList()
+  )
 
   sourceSets {
     val jvmAndAndroidMain by creating {
@@ -64,7 +68,11 @@ kotlin {
     val iosMain by creating {
       dependsOn(commonMain.get())
     }
-    listOf(iosX64Main, iosArm64Main, iosSimulatorArm64Main).forEach {
+    listOfNotNull(
+      if (cmpProfile == "1.10") iosX64Main else null,
+      iosArm64Main,
+      iosSimulatorArm64Main
+    ).forEach {
       it.get().dependsOn(iosMain)
     }
 

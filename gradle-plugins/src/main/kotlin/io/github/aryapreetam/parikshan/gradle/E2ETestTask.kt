@@ -92,10 +92,10 @@ abstract class E2ETestTask : DefaultTask() {
 
   @get:Input
   @get:Optional
-  @set:Option(option = "step-delay-ms", description = "Delay in milliseconds inserted after each UI command during video recording.")
+  @set:Option(option = "step-delay-ms", description = "Delay in milliseconds inserted after each UI command during test execution.")
   var stepDelayMs: String? = null
 
-  @Option(option = "stepDelayMs", description = "Delay in milliseconds inserted after each UI command during video recording (alias).")
+  @Option(option = "stepDelayMs", description = "Delay in milliseconds inserted after each UI command during test execution (alias).")
   fun setStepDelayMsAlias(value: String) {
     this.stepDelayMs = value
   }
@@ -1321,7 +1321,7 @@ abstract class E2ETestTask : DefaultTask() {
       "parikshan.video.enabled",
       "parikshan.video.fps",
       "parikshan.video.showCursor",
-      "parikshan.video.stepDelayMs",
+      "parikshan.stepDelayMs",
       "parikshan.video.postRollMs",
       "parikshan.video.granularity",
       "parikshan.video.width",
@@ -1353,7 +1353,7 @@ abstract class E2ETestTask : DefaultTask() {
       pbArgs.add("-Dparikshan.video.postRollMs=$postRollMs")
     }
     if (!stepDelayMs.isNullOrEmpty()) {
-      pbArgs.add("-Dparikshan.video.stepDelayMs=$stepDelayMs")
+      pbArgs.add("-Dparikshan.stepDelayMs=$stepDelayMs")
     }
     if (!granularity.isNullOrEmpty()) {
       pbArgs.add("-Dparikshan.video.granularity=$granularity")
@@ -1383,6 +1383,9 @@ abstract class E2ETestTask : DefaultTask() {
     val pb = ProcessBuilder(pbArgs)
     cleanXcodeEnv(pb)
     pb.environment()["NSAppSleepDisabled"] = "YES"
+    if (target == "wasm") {
+      pb.environment()["PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD"] = "1"
+    }
     val process = pb
       .redirectOutput(ProcessBuilder.Redirect.to(logFile))
       .redirectError(ProcessBuilder.Redirect.to(logFile))
@@ -1431,7 +1434,7 @@ abstract class E2ETestTask : DefaultTask() {
       "parikshan.video.enabled",
       "parikshan.video.fps",
       "parikshan.video.showCursor",
-      "parikshan.video.stepDelayMs",
+      "parikshan.stepDelayMs",
       "parikshan.video.postRollMs",
       "parikshan.video.granularity",
       "parikshan.video.width",
@@ -1463,7 +1466,7 @@ abstract class E2ETestTask : DefaultTask() {
       pbArgs.add("-Dparikshan.video.postRollMs=$postRollMs")
     }
     if (!stepDelayMs.isNullOrEmpty()) {
-      pbArgs.add("-Dparikshan.video.stepDelayMs=$stepDelayMs")
+      pbArgs.add("-Dparikshan.stepDelayMs=$stepDelayMs")
     }
     if (!granularity.isNullOrEmpty()) {
       pbArgs.add("-Dparikshan.video.granularity=$granularity")
@@ -1475,6 +1478,7 @@ abstract class E2ETestTask : DefaultTask() {
     pbArgs.add("-Dparikshan.video.outputDir=" + File(buildDir.get().asFile, "parikshan/videos/$target").absolutePath)
     pbArgs.add("org.junit.platform.console.ConsoleLauncher")
     pbArgs.add("execute")
+    pbArgs.add("--disable-ansi-colors")
     pbArgs.add("--reports-dir")
     pbArgs.add(reportsDir)
 
@@ -1494,6 +1498,9 @@ abstract class E2ETestTask : DefaultTask() {
     val pb = ProcessBuilder(pbArgs)
     cleanXcodeEnv(pb)
     pb.environment()["NSAppSleepDisabled"] = "YES"
+    if (target == "wasm") {
+      pb.environment()["PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD"] = "1"
+    }
     pb.redirectErrorStream(true)
     val process = pb.start()
 
@@ -1503,15 +1510,17 @@ abstract class E2ETestTask : DefaultTask() {
 
     var currentClass: String? = testClasses.firstOrNull()
     val headerLines = mutableListOf<String>()
-    val summaryLines = mutableListOf<String>()
-    var inSummary = false
 
     try {
       process.inputStream.bufferedReader().forEachLine { line ->
+        val cleanLine = line.replace(Regex("\u001B\\[[;\\d]*[ -/]*[@-~]"), "").trimEnd()
         var matchedClass: String? = null
         for (clazz in testClasses) {
           val simple = clazz.substringAfterLast('.')
-          if (line.contains("└─  $simple") || line.contains("├─  $simple") || line.contains("Test Failures for $clazz") || line.contains("Test Failures for $simple")) {
+          if (cleanLine.contains("└─  $simple") || cleanLine.contains("├─  $simple") ||
+              cleanLine.contains("└─ $simple") || cleanLine.contains("├─ $simple") ||
+              cleanLine.contains("Test Failures for $clazz") || cleanLine.contains("Test Failures for $simple") ||
+              cleanLine.contains("JUnit Jupiter:$simple:") || cleanLine.contains("className = '$clazz'") || cleanLine.contains("className = '$simple'")) {
             matchedClass = clazz
             break
           }
@@ -1545,6 +1554,10 @@ abstract class E2ETestTask : DefaultTask() {
   }
 
   private fun printTestFailures(target: String, testClass: String) {
+    val metrics = parseTestMetrics(target, testClass)
+    if (metrics != null && metrics.failed == 0) {
+      return
+    }
     val logFile = File(buildDir.get().asFile, "parikshan/logs/${target}-${testClass}.log")
     val logger = logger
     if (logFile.exists()) {
@@ -1614,12 +1627,13 @@ abstract class E2ETestTask : DefaultTask() {
 
   private fun parseFailedTestNames(target: String, classes: List<String>): List<String> {
     val logsDir = File(buildDir.get().asFile, "parikshan/logs")
-    return WatchModeUtils.parseFailedTestNames(logsDir, target, classes)
+    return TestReportingUtils.parseFailedTestNames(logsDir, target, classes)
   }
 
   private fun formatFailedNamesPatternA(names: List<String>, totalFailed: Int): String {
-    return WatchModeUtils.formatFailedNamesPatternA(names, totalFailed)
+    return TestReportingUtils.formatFailedNamesPatternA(names, totalFailed)
   }
+
 
   private fun createTargetResult(target: String, success: Boolean, classes: List<String>, failureMessage: String? = null): TargetResult {
     var totalFound = 0

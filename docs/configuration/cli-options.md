@@ -28,7 +28,7 @@ Parikshan supports execution configuration through Gradle command-line flags on 
 | `--video` | Flag | `false` | Enables MP4 video recording per test execution (not supported with `--sync` or `--watch`) | `--video` | `-Dparikshan.video.enabled=true` |
 | `--granularity` | String | `class` | Video recording granularity (`session`, `run`, `class`, `test`) | `--granularity=session` | `-Dparikshan.video.granularity=...` |
 | `--post-roll-ms` | String | `1000` | Post-roll pause duration in milliseconds before stopping recording | `--post-roll-ms=2000` | `-Dparikshan.video.postRollMs=...` |
-| `--step-delay-ms` | String | `0` | Delay in milliseconds inserted after each UI command during video recording | `--step-delay-ms=250` | `-Dparikshan.video.stepDelayMs=...` |
+| `--step-delay-ms` | String | `0` | Delay in milliseconds inserted after each UI command during test execution | `--step-delay-ms=250` | `-Dparikshan.stepDelayMs=...` |
 | `--background` | Flag | `false` | Runs tests in headless / background mode | `--background` | `-Dparikshan.background=true` |
 | `--layout` | String | `default` | Layout presentation mode: `default` or `side-by-side` | `--layout=side-by-side` | N/A |
 | `--window-size` | String | Target default | Global window geometry applied uniformly to Desktop and Wasm | `--window-size=360x720` | `-Dparikshan.desktop.width=...` |
@@ -179,6 +179,12 @@ Parikshan manages device connections and simulator lifecycles automatically:
 
 System properties configure low-level runtime behavior and video recording parameters across all tasks:
 
+### Execution & Timing Options
+
+| System Property | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `parikshan.stepDelayMs` | Long | `0` | Delay in milliseconds inserted after each UI command across all targets (`0..5000` ms) |
+
 ### Video Recording Options
 
 | System Property | Type | Default | Description |
@@ -188,7 +194,6 @@ System properties configure low-level runtime behavior and video recording param
 | `parikshan.video.fps` | Int | `10` | Frame rate for encoded video capture (`1..30`) |
 | `parikshan.video.showCursor` | Boolean | `true` | Renders a virtual cursor overlay in recorded videos |
 | `parikshan.video.granularity` | String | `class` | Recording lifecycle scope: `session`/`run` (one video for entire run), `class` (one per test class), or `test` (one per method) |
-| `parikshan.video.stepDelayMs` | Long | `0` | Artificial delay inserted between test actions for video pacing (`0..5000` ms) |
 | `parikshan.video.postRollMs` | Long | `1000` | Post-roll pause duration before closing video capture (`0..10000` ms) |
 | `parikshan.video.width` | Int | Auto | Target video frame width in pixels (`100..3840`) |
 | `parikshan.video.height` | Int | Auto | Target video frame height in pixels (`100..2160`) |

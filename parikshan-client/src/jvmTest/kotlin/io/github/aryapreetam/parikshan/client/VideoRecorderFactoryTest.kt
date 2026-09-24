@@ -21,7 +21,6 @@ class VideoRecorderFactoryTest {
     outputDir = "build/parikshan/videos",
     fps = 10,
     showCursor = true,
-    stepDelayMs = 0L,
     postRollMs = 1000L
   )
 

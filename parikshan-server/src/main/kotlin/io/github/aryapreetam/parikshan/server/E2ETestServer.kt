@@ -403,6 +403,7 @@ private class RunningE2ETestServer(
         }
         Response.Ok(command.id)
       }
+      is Command.HideKeyboard -> Response.Ok(command.id)
     }
   }
 

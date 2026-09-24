@@ -12,15 +12,21 @@ import kotlinx.coroutines.delay
 @OptIn(InternalParikshanApi::class)
 suspend fun E2ETestScope.openAppNavigation() {
     executeParallel {
-        if (hasVisibleNode("navigation_drawer") || hasVisibleNode("nav_rail")) {
+        if (hasVisibleNode("navigation_drawer")) {
             return@executeParallel
         }
-        if (hasVisibleNode("hamburger_button")) {
-            click("hamburger_button")
-            waitFor("navigation_drawer")
+        if (hasVisibleNode("nav_rail") && !hasVisibleNode("hamburger_button")) {
+            return@executeParallel
         }
+        hideKeyboard()
+        if (!hasVisibleNode("hamburger_button")) {
+            waitFor("hamburger_button")
+        }
+        click("hamburger_button")
+        waitFor("navigation_drawer")
     }
 }
+
 
 /**
  * Navigates to a specific section by clicking its navigation item,
@@ -60,28 +66,19 @@ suspend fun E2ETestScope.navigateToSection(navTag: String) {
                 ScrollDirection.Down
             }
 
+            val scrollTargetContainer = if (hasVisibleNode("nav_rail")) "nav_rail" else navContainer
             scrollUntilVisible(
-                containerSelector = Selector.Tag(navContainer),
+                containerSelector = Selector.Tag(scrollTargetContainer),
                 targetSelector = Selector.Tag(navTag),
                 direction = scrollDirection
             )
         }
 
         click(navTag)
+        if (navContainer == "navigation_drawer") {
+            assertNotVisible("navigation_drawer")
+        }
     }
 }
 
-/**
- * Retries a block until it returns true or max attempts reached.
- */
-suspend fun retry(
-    maxAttempts: Int = 3,
-    delayMs: Long = 500,
-    block: suspend () -> Boolean
-): Boolean {
-    repeat(maxAttempts) {
-        if (block()) return true
-        delay(delayMs)
-    }
-    return false
-}
+

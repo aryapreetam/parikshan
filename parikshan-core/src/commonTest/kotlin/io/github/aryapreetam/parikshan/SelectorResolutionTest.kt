@@ -115,6 +115,67 @@ class SelectorResolutionTest {
     assertEquals("child_text", resolved.tag)
   }
 
+  @Test
+  fun nested_icon_button_and_icon_collapse_into_single_match() {
+    val resolved =
+      Selector.Auto("Switch to text input mode").resolveNode(
+        nodes =
+          listOf(
+            node(tag = "", text = "Switch to text input mode", bounds = Bounds(0.0, 0.0, 48.0, 48.0)),
+            node(tag = "", text = "Switch to text input mode", bounds = Bounds(12.0, 12.0, 36.0, 36.0))
+          )
+      )
+
+    assertEquals(1, resolved.allMatches.size)
+  }
+
+  @Test
+  fun nested_tagged_container_and_untagged_child_prefers_tagged_container() {
+    val resolved =
+      Selector.Auto("Next month").resolveNode(
+        nodes =
+          listOf(
+            node(tag = "next_month_button", text = "Next month", bounds = Bounds(0.0, 0.0, 48.0, 48.0)),
+            node(tag = "", text = "Next month", bounds = Bounds(12.0, 12.0, 36.0, 36.0))
+          )
+      )
+
+    assertEquals("next_month_button", resolved.tag)
+    assertEquals(1, resolved.allMatches.size)
+  }
+
+  @Test
+  fun distinct_sibling_nodes_with_same_text_remain_ambiguous() {
+    val resolved =
+      Selector.Auto("Delete").resolveNode(
+        nodes =
+          listOf(
+            node(tag = "delete_item_1", text = "Delete", bounds = Bounds(0.0, 0.0, 100.0, 40.0)),
+            node(tag = "delete_item_2", text = "Delete", bounds = Bounds(0.0, 100.0, 100.0, 140.0))
+          )
+      )
+
+    assertEquals(2, resolved.allMatches.size)
+  }
+
+  @Test
+  fun untagged_container_preferred_over_untagged_leaf() {
+    // Simulates CMP 1.11+ DatePicker: outer IconButton (clickable) wraps inner Icon (decorative).
+    // Both share the same accessibility text and neither has a testTag.
+    val resolved =
+      Selector.Auto("previous month").resolveNode(
+        nodes =
+          listOf(
+            node(tag = "", text = "previous month", bounds = Bounds(819.0, 873.0, 963.0, 1017.0)),
+            node(tag = "", text = "previous month", bounds = Bounds(855.0, 909.0, 927.0, 981.0))
+          )
+      )
+
+    assertEquals(1, resolved.allMatches.size)
+    // The container (144x144) is kept, not the leaf (72x72)
+    assertEquals(144.0 * 144.0, resolved.node.area, 0.1)
+  }
+
   private fun node(
     tag: String,
     text: String?,

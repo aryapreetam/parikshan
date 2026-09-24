@@ -8,6 +8,7 @@ import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.protocol.auto
 import io.github.aryapreetam.parikshan.protocol.tag
 import io.github.aryapreetam.parikshan.protocol.text
+import io.github.aryapreetam.parikshan.protocol.atIndex
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
@@ -33,6 +34,13 @@ interface TestDriver {
 
   suspend fun reset() {
     send(Command.Reset(id = nextId()))
+  }
+
+  suspend fun hideKeyboard() {
+    val response = send(Command.HideKeyboard(id = nextId()))
+    if (response is Response.Error) {
+      throw AssertionError("hideKeyboard() failed: ${response.message}")
+    }
   }
 
   suspend fun close()
@@ -66,17 +74,42 @@ interface TestDriver {
  * ```
  *
  * @param defaultWaitTimeoutMs Default timeout in milliseconds for element resolution and assertion polling (default 10,000ms).
- * @param commandDelayMs Optional stabilization delay in milliseconds applied after each UI command (default 0ms).
+ * @param stepDelayMs Optional stabilization delay in milliseconds applied after each UI command (default 0ms).
  * @param failureScreenshotPath File path where failure screenshots will be saved if [captureScreenshotOnFailure] is true.
  * @param captureScreenshotOnFailure Automatically captures a screenshot of the app if a test block throws an error (default true).
  * @see E2ETestScope
  */
 data class E2ETestConfig(
   val defaultWaitTimeoutMs: Long = 10_000L,
-  val commandDelayMs: Long = 0L,
+  val stepDelayMs: Long = 0L,
   val failureScreenshotPath: String = "build/parikshan/failures/failure-${Random.nextLong().toString(16)}.png",
   val captureScreenshotOnFailure: Boolean = true
 )
+
+/**
+ * Mutable builder for [E2ETestConfig].
+ */
+class E2ETestConfigBuilder internal constructor(base: E2ETestConfig = E2ETestConfig()) {
+  var defaultWaitTimeoutMs: Long = base.defaultWaitTimeoutMs
+  var stepDelayMs: Long = base.stepDelayMs
+  var failureScreenshotPath: String = base.failureScreenshotPath
+  var captureScreenshotOnFailure: Boolean = base.captureScreenshotOnFailure
+
+  fun build(): E2ETestConfig = E2ETestConfig(
+    defaultWaitTimeoutMs = defaultWaitTimeoutMs,
+    stepDelayMs = stepDelayMs,
+    failureScreenshotPath = failureScreenshotPath,
+    captureScreenshotOnFailure = captureScreenshotOnFailure
+  )
+}
+
+/**
+ * Creates an [E2ETestConfig] using a type-safe builder DSL.
+ */
+fun e2eConfig(
+  base: E2ETestConfig = E2ETestConfig(),
+  block: E2ETestConfigBuilder.() -> Unit
+): E2ETestConfig = E2ETestConfigBuilder(base).apply(block).build()
 
 /**
  * Primary execution scope for a Parikshan end-to-end test scenario.
@@ -95,6 +128,9 @@ class E2ETestScope @InternalParikshanApi constructor(
 ) {
   /** The target execution platform string (e.g. "android", "ios", "desktop", "wasm"). */
   val targetPlatform: String get() = driver.targetPlatform
+
+  /** The configured delay in milliseconds applied after each UI command. */
+  val stepDelayMs: Long get() = config.stepDelayMs
 
   /**
    * Executes the provided test [block] concurrently across each active target driver in parallel.
@@ -352,6 +388,38 @@ class E2ETestScope @InternalParikshanApi constructor(
     )
   }
 
+  suspend fun scrollUntilVisible(
+    containerTag: String,
+    targetSelector: Selector,
+    direction: ScrollDirection = ScrollDirection.Down,
+    maxScrolls: Int = 30,
+    stabilizationDelayMs: Long = 300
+  ) {
+    scrollUntilVisible(
+      containerSelector = containerTag.asAutoSelector(),
+      targetSelector = targetSelector,
+      direction = direction,
+      maxScrolls = maxScrolls,
+      stabilizationDelayMs = stabilizationDelayMs
+    )
+  }
+
+  suspend fun scrollUntilVisible(
+    containerSelector: Selector,
+    targetTag: String,
+    direction: ScrollDirection = ScrollDirection.Down,
+    maxScrolls: Int = 30,
+    stabilizationDelayMs: Long = 300
+  ) {
+    scrollUntilVisible(
+      containerSelector = containerSelector,
+      targetSelector = targetTag.asAutoSelector(),
+      direction = direction,
+      maxScrolls = maxScrolls,
+      stabilizationDelayMs = stabilizationDelayMs
+    )
+  }
+
   /**
    * Repeatedly scrolls the container matching [containerSelector] in [direction] until [targetSelector] becomes visible.
    *
@@ -380,13 +448,18 @@ class E2ETestScope @InternalParikshanApi constructor(
     maxScrolls: Int = 30,
     stabilizationDelayMs: Long = 300
   ) {
+    val effectiveContainer = if (containerSelector.index == null) {
+      containerSelector.atIndex(0)
+    } else {
+      containerSelector
+    }
     driver.executeParallel { targetDriver ->
       val localScope = E2ETestScope(driver = targetDriver, config = config)
       for (i in 0 until maxScrolls) {
         if (localScope.hasVisibleNode(targetSelector)) {
           return@executeParallel
         }
-        localScope.scroll(selector = containerSelector, direction = direction)
+        localScope.scroll(selector = effectiveContainer, direction = direction)
         delay(stabilizationDelayMs)
       }
       throw AssertionError(
@@ -1116,8 +1189,17 @@ class E2ETestScope @InternalParikshanApi constructor(
     settleAfterCommand()
   }
 
+  /**
+   * Dismisses any active on-screen software keyboard (e.g. on iOS or Android)
+   * to restore viewport bounds and uncover elements displaced by the keyboard.
+   */
+  suspend fun hideKeyboard() {
+    driver.hideKeyboard()
+    settleAfterCommand()
+  }
+
   private suspend fun settleAfterCommand() {
-    val delayMs = config.commandDelayMs
+    val delayMs = config.stepDelayMs
     if (delayMs > 0L) {
       delay(delayMs)
     }

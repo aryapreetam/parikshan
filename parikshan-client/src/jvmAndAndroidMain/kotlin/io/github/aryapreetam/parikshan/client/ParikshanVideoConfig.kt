@@ -5,7 +5,6 @@ data class ParikshanVideoConfig(
   val outputDir: String,
   val fps: Int,
   val showCursor: Boolean,
-  val stepDelayMs: Long,
   val postRollMs: Long,
   val granularity: VideoGranularity = VideoGranularity.CLASS,
   /** Explicit video width override. When null, Playwright infers from the viewport size. */
@@ -18,7 +17,6 @@ data class ParikshanVideoConfig(
   companion object {
     private const val DEFAULT_OUTPUT_DIR = "build/parikshan/videos"
     private const val DEFAULT_FPS = 10
-    private const val DEFAULT_STEP_DELAY_MS = 0L
     private const val DEFAULT_POST_ROLL_MS = 1000L
     private const val DEFAULT_GRANULARITY = "class"
 
@@ -34,9 +32,6 @@ data class ParikshanVideoConfig(
         "test" -> VideoGranularity.TEST
         else -> VideoGranularity.CLASS
       }
-      val stepDelayMs =
-        System.getProperty("parikshan.video.stepDelayMs")?.toLongOrNull()?.coerceIn(0L, 5_000L)
-          ?: DEFAULT_STEP_DELAY_MS
       val postRollMs =
         System.getProperty("parikshan.video.postRollMs")?.toLongOrNull()?.coerceIn(0L, 10_000L)
           ?: DEFAULT_POST_ROLL_MS
@@ -49,7 +44,6 @@ data class ParikshanVideoConfig(
         outputDir = outputDir,
         fps = fps,
         showCursor = showCursor,
-        stepDelayMs = stepDelayMs,
         postRollMs = postRollMs,
         granularity = granularity,
         videoWidth = videoWidth,

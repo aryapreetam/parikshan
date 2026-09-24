@@ -14,11 +14,17 @@ format_duration() {
 # Parse optional flags
 PUBLISH_MAVEN=false
 ENABLE_VIDEO=false
+RUN_MATRIX=false
+RUN_LINUX=false
 for arg in "$@"; do
   if [ "${arg}" == "--publish" ]; then
     PUBLISH_MAVEN=true
   elif [ "${arg}" == "--video" ] || [ "${arg}" == "video" ]; then
     ENABLE_VIDEO=true
+  elif [ "${arg}" == "--matrix" ]; then
+    RUN_MATRIX=true
+  elif [ "${arg}" == "--linux" ]; then
+    RUN_LINUX=true
   fi
 done
 
@@ -76,6 +82,32 @@ if [ "${ENABLE_VIDEO}" = true ]; then
 fi
 echo "============================================================="
 
+if [ "${RUN_LINUX}" = true ]; then
+  echo " Mode: Ubuntu Linux Container Execution (via scripts/docker/run.sh)"
+  echo "============================================================="
+  DOCKER_RUN="${PARIKSHAN_ROOT}/scripts/docker/run.sh"
+  if [ ! -x "${DOCKER_RUN}" ]; then
+    chmod +x "${DOCKER_RUN}"
+  fi
+
+  echo "==> [Linux] Running multiplatform-showcase E2E Tests (targets=jvm,wasm on Profile 1.10)..."
+  "${DOCKER_RUN}" ./gradlew :samples:multiplatform-showcase:composeApp:e2eTest --targets=jvm,wasm -PcmpProfile=1.10
+
+  if [ "${RUN_MATRIX}" = true ]; then
+    echo "==> [Linux Matrix] Running multiplatform-showcase E2E Tests on Profile 1.11..."
+    "${DOCKER_RUN}" ./gradlew :samples:multiplatform-showcase:composeApp:e2eTest --targets=jvm,wasm -PcmpProfile=1.11
+
+    echo "==> [Linux Matrix] Running multiplatform-showcase E2E Tests on Profile 1.12..."
+    "${DOCKER_RUN}" ./gradlew :samples:multiplatform-showcase:composeApp:e2eTest --targets=jvm,wasm -PcmpProfile=1.12
+  fi
+
+  echo "============================================================="
+  echo " SUCCESS: All Linux container tests PASSED!"
+  echo " Total Execution Time: $(format_duration)"
+  echo "============================================================="
+  exit 0
+fi
+
 # -------------------------------------------------------------
 # 1. Framework Library Unit Tests
 # -------------------------------------------------------------
@@ -126,6 +158,27 @@ echo "==> Verifying watch mode..."
 "${PARIKSHAN_ROOT}/scripts/verify-watch-mode.sh"
 echo "==> Verifying watch mode with sync enabled..."
 "${PARIKSHAN_ROOT}/scripts/verify-watch-mode.sh" --sync
+
+if [ "${RUN_MATRIX}" = true ]; then
+  ARCH=$(uname -m)
+  echo "==> Running Showcase Multiplatform Matrix (CMP 1.11, 1.12)..."
+  for profile in "1.11" "1.12"; do
+    echo "==> [Matrix CMP ${profile}] Testing target-specific tasks on Profile ${profile}..."
+    run_gradle :samples:multiplatform-showcase:composeApp:e2eJvmTest -PcmpProfile=${profile} --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching" "${video_jvm_opt[@]}"
+    run_gradle :samples:multiplatform-showcase:composeApp:e2eWasmTest -PcmpProfile=${profile} --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching" "${video_jvm_opt[@]}"
+    run_gradle :samples:multiplatform-showcase:composeApp:e2eAndroidTest -PcmpProfile=${profile} --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching" "${video_jvm_opt[@]}"
+
+    if [ "${ARCH}" != "x86_64" ]; then
+      echo "==> [Matrix CMP ${profile}] Testing iOS on Profile ${profile}..."
+      run_gradle :samples:multiplatform-showcase:composeApp:e2eIosTest -PcmpProfile=${profile} --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching" "${video_jvm_opt[@]}"
+    else
+      echo "==> [Matrix CMP ${profile}] Skipping iOS for Profile ${profile} on ${ARCH} (requires Apple Silicon / arm64)."
+    fi
+
+    echo "==> [Matrix CMP ${profile}] Running all tests for all targets (verify e2eTest)..."
+    run_gradle :samples:multiplatform-showcase:composeApp:e2eTest -PcmpProfile=${profile}
+  done
+fi
 
 run_gradle --stop
 

@@ -70,6 +70,7 @@ internal object WasmTargetConfigurer {
       )
       systemProperty("parikshan.target", "wasm")
       systemProperty("parikshan.token", tokenVal)
+      environment("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1")
       doFirst {
         val portFile = wasmPortFileVal
         val port = if (portFile.exists()) portFile.readText().trim() else wasmServerPortVal.toString()
@@ -104,9 +105,9 @@ internal object WasmTargetConfigurer {
       if (!fps.isNullOrBlank()) {
         systemProperty("parikshan.video.fps", fps)
       }
-      val stepDelay = project.findProperty("parikshan.video.stepDelayMs")?.toString()
+      val stepDelay = project.findProperty("parikshan.stepDelayMs")?.toString()
       if (!stepDelay.isNullOrBlank()) {
-        systemProperty("parikshan.video.stepDelayMs", stepDelay)
+        systemProperty("parikshan.stepDelayMs", stepDelay)
       }
       val postRoll = project.findProperty("parikshan.video.postRollMs")?.toString()
       if (!postRoll.isNullOrBlank()) {

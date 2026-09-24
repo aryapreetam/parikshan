@@ -184,6 +184,13 @@ sealed class Command {
   ) : Command()
 
   @Serializable
+  @SerialName("hidekeyboard")
+  data class HideKeyboard(
+    override val id: String,
+    override var token: String = ""
+  ) : Command()
+
+  @Serializable
   @SerialName("drag")
   data class Drag(
     override val id: String,

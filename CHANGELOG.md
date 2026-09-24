@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.0.10] - 2026-09-24
+
+### Added
+- **Compose Multiplatform Matrix**: Added support and CI verification for Compose Multiplatform `1.10`, `1.11`, and `1.12`.
+- **iOS Keyboard Control**: Added `hideKeyboard()` command to `E2ETestScope` for programmatic software keyboard dismissal on iOS.
+- **Android 17 Compatibility**: Upgraded `androidx.test.espresso` to `3.7.0` for compatibility with Android 17 / SDK 36.
+
+### Fixed & Resolved Issues
+- **Selector Resolution Priority**: Prioritized container nodes over leaf text nodes during ambiguous selector resolution to resolve outer interactive components reliably.
+- **iOS Runloop Latency & Teardown**: Extracted semantics lookup out of EDT dispatch loops to reduce runloop latency and prevented host process exit on socket disconnects.
+- **Wasm Browser Download Redundancy**: Prevented Playwright from re-downloading browser binaries when already installed in the local cache.
+- **Leaf Semantics Isolation**: Scoped text extraction in Wasm to interactive nodes to avoid leaking irrelevant container texts.
+
+### CI & Tooling
+- **Windows CI Verification**: Added CI test pipelines on Windows runners for Desktop (JVM) and Web (WasmJs) targets.
+- Upgraded Gradle wrapper to `9.3.1` across the repository and samples for Android Gradle Plugin (AGP) `9.1.0` compatibility.
 ## [0.0.9] - 2026-08-28
 
 ### Added

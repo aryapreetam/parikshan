@@ -105,7 +105,7 @@ plugins {
   alias(libs.plugins.kotlinMultiplatform)
   alias(libs.plugins.composeMultiplatform)
   alias(libs.plugins.composeCompiler)
-  id("io.github.aryapreetam.parikshan") version "0.0.9" // (1)
+  id("io.github.aryapreetam.parikshan") version "0.0.10" // (1)
 }
 ```
 

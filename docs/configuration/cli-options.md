@@ -55,16 +55,67 @@ Parikshan allows configuring window geometry and desktop placements for Desktop 
 ### Side-by-Side Layout
 `--layout=side-by-side` positions Desktop and Wasm windows adjacent to each other on your screen:
 
-```bash
-./gradlew e2eTest --targets=desktop,wasm --layout=side-by-side
-```
+=== "Side-by-Side with Sync"
+    ```bash
+    ./gradlew :samples:multiplatform-showcase:composeApp:e2eTest \
+      --targets=jvm,wasm \
+      --tests="sample.app.FormIntegrationTest.testStatefulFormValidationAndSubmission" \
+      --layout=side-by-side \
+      --sync
+    ```
+
+    ![Side-by-side layout with sync](../assets/side-by-side-with-sync.gif)
+
+=== "Side-by-Side without Sync"
+    ```bash
+    ./gradlew :samples:multiplatform-showcase:composeApp:e2eTest \
+      --targets=jvm,wasm \
+      --tests="sample.app.FormIntegrationTest.testStatefulFormValidationAndSubmission" \
+      --layout=side-by-side
+    ```
+
+    ![Side-by-side layout without sync](../assets/side-by-side-without-sync.gif)
+
+=== "Default Placement (Without Side-by-Side)"
+    ```bash
+    ./gradlew :samples:multiplatform-showcase:composeApp:e2eTest \
+      --targets=jvm,wasm \
+      --tests="sample.app.FormIntegrationTest.testStatefulFormValidationAndSubmission"
+    ```
+
+    ![Default placement without side-by-side](../assets/without-side-by-side.gif)
 
 ### Standalone Window Mode for Web (`--app-mode`)
-By default, Web (Wasm) launches inside a standard browser window with navigation bars. To launch Wasm in a clean standalone window without browser toolbars, pass `--app-mode`:
+By default, Web (Wasm) launches inside a standard browser window with navigation bars. Adding `--app-mode` launches Chromium as a standalone application, stripping the URL address bar, tabs, and navigation chrome for a clean application viewport:
 
 ```bash
-./gradlew e2eTest --targets=wasm --app-mode
+# Standard browser window (default)
+./gradlew :samples:multiplatform-showcase:composeApp:e2eTest --targets=wasm --tests="sample.app.HomeScreenTest"
+
+# Standalone app window (removes address bar and tabs)
+./gradlew :samples:multiplatform-showcase:composeApp:e2eTest --targets=wasm --tests="sample.app.HomeScreenTest" --app-mode
 ```
+
+<table class="demo-table">
+  <thead>
+    <tr>
+      <th width="50%">Standard Browser Window (Default)</th>
+      <th width="50%">Standalone App Window (<code>--app-mode</code>)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>
+        <img src="../../assets/wasm-window-normal.webp" alt="Wasm standard browser window" />
+        <p style="font-size: 0.85em; margin-top: 0.5rem; opacity: 0.85;">Standard Chromium window with URL address bar, tab strip, and navigation controls.</p>
+      </td>
+      <td>
+        <img src="../../assets/wasm-window-app-mode.webp" alt="Wasm standalone app mode" />
+        <p style="font-size: 0.85em; margin-top: 0.5rem; opacity: 0.85;">Adding <code>--app-mode</code> removes the address bar and tabs, launching the application in a clean, focused window.</p>
+      </td>
+    </tr>
+  </tbody>
+</table>
 
 ### Window Dimensions & Positioning
 * `--window-size=<width>x<height>` sets dimensions applied uniformly to both Desktop and Wasm targets.
@@ -74,15 +125,18 @@ By default, Web (Wasm) launches inside a standard browser window with navigation
 # Uniform dimension across Desktop and Wasm
 ./gradlew e2eTest --targets=desktop,wasm --window-size=360x720
 
-# Target-specific dimensions and screen placements with standalone Wasm window
-./gradlew e2eTest \
-  --targets=desktop,wasm \
-  --desktop-window-size=400x800 \
-  --desktop-window-position=50,100 \
-  --wasm-window-size=400x800 \
-  --wasm-window-position=470,100 \
-  --app-mode
+# Target-specific dimensions, explicit screen coordinates, and standalone app mode with sync
+./gradlew :samples:multiplatform-showcase:composeApp:e2eTest \
+  --tests="sample.app.FormIntegrationTest.testSliderDrag" \
+  --targets=jvm,wasm \
+  --window-size=800x545 \
+  --desktop-window-position=1000x0 \
+  --wasm-window-position=1000x600 \
+  --app-mode \
+  --sync
 ```
+
+![Custom window geometry and coordinates](../assets/sync-mode.gif)
 
 ---
 
@@ -90,11 +144,32 @@ By default, Web (Wasm) launches inside a standard browser window with navigation
 
 In synchronized mode, Parikshan drives all specified targets concurrently using a step-barrier model. Every command is dispatched to all target drivers in parallel, and the test runner waits for all targets to finish before advancing to the next step.
 
+=== "Synchronized Lockstep (`--sync`)"
+    ```bash
+    ./gradlew :samples:multiplatform-showcase:composeApp:e2eTest \
+      --targets=jvm,wasm \
+      --tests="sample.app.FormIntegrationTest.testStatefulFormValidationAndSubmission" \
+      --layout=side-by-side \
+      --sync
+    ```
+
+    ![Synchronized multi-target execution](../assets/side-by-side-with-sync.gif)
+
+=== "Asynchronous Execution (Default)"
+    ```bash
+    ./gradlew :samples:multiplatform-showcase:composeApp:e2eTest \
+      --targets=jvm,wasm \
+      --tests="sample.app.FormIntegrationTest.testStatefulFormValidationAndSubmission" \
+      --layout=side-by-side
+    ```
+
+    ![Asynchronous multi-target execution](../assets/side-by-side-without-sync.gif)
+
 !!! note
     Video recording is currently not supported during synchronized multi-target (`--sync`) execution. Video recording remains fully supported for standard multi-target runs (`e2eTest --targets=desktop,wasm`) and individual target tasks.
 
-!!! tip "Recommended Workflow"
-    Synchronized mode is designed for focused cross-platform verification during development. We recommend running `--sync` against a single test scenario:
+!!! tip "Target Scoping"
+    Synchronized mode is designed for focused cross-platform verification during development. Run `--sync` against a single test scenario:
 
     ```bash
     ./gradlew e2eTest --targets=desktop,wasm,android,ios --sync --tests="sample.app.LoginTest"
@@ -104,12 +179,38 @@ In synchronized mode, Parikshan drives all specified targets concurrently using 
 
 ## Continuous Watch Mode (`--watch`)
 
-Watch mode monitors project source files and re-executes tests automatically when changes are saved.
+Watch mode monitors project source files and re-executes tests automatically when changes are saved, keeping application instances alive across runs.
+
+```bash
+./gradlew :samples:multiplatform-showcase:composeApp:e2eTest \
+  --targets=jvm,wasm \
+  --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching" \
+  --desktop-window-position=1070x0 \
+  --app-mode \
+  --layout=side-by-side \
+  --window-size=360x720 \
+  --watch
+```
+
+<video controls autoplay loop muted playsinline onloadedmetadata="this.playbackRate = 2.0;" style="width: 100%; border-radius: 6px; margin: 1rem 0;">
+  <source src="../../assets/watch-mode.mp4" type="video/mp4" />
+</video>
+
+### How Watch Mode Works (TDD Cycle)
+The video demonstrates the continuous feedback loop:
+
+1. **Initial Run (Pass):** Parikshan boots the target applications, docks them according to layout flags (e.g. side-by-side in `--app-mode`), and executes the baseline test pass. Application windows remain active.
+2. **Code Edit (Fail):** Changing source or test code (e.g. updating an assertion or UI component) triggers an automatic background compile upon saving. Tests re-execute immediately without relaunching applications, showing failure feedback in the terminal.
+3. **Correction (Pass):** Restoring or fixing the code and saving triggers an instant re-run (~1–2 seconds), turning the suite green.
+
+### Termination & Multi-Target Sync
+* **Exiting Watch Mode:** Terminate watch mode at any time using `Ctrl + C` in your terminal, or by manually closing any running application window (Desktop or browser window). Parikshan detects window closure and terminates the daemon cleanly.
+* **Synchronized Watch (`--sync --watch`):** When `--sync` is combined with `--watch`, all targets run in step-barrier lockstep on every re-trigger, waiting for each command to complete across all platforms before advancing.
 
 !!! note
     Video recording is not supported in continuous watch mode (`--watch`).
 
-!!! tip "Recommended Workflow"
+!!! tip "Target Scoping"
     Use watch mode for rapid TDD iterations targeting a single test scenario:
 
     ```bash
@@ -120,7 +221,14 @@ Watch mode monitors project source files and re-executes tests automatically whe
 * **Automatic Session Preservation:** `--watch` automatically enables `--keep-alive` internally so application instances remain open across test runs.
 * **Debounced Monitoring:** Prevents multiple test executions on rapid file saves.
 * **Compiler Error Resilience:** If a code change causes compilation errors, watch mode displays the compiler output and waits for the next edit without terminating.
-* **Clean Termination:** Closing the application window exits watch mode cleanly.
+* **Clean Termination:** Closing any application window exits watch mode cleanly.
+
+### Automated Verification Script
+To verify or automate continuous watch runs in a local shell or CI sandbox, run [`scripts/verify-watch-mode.sh`](https://github.com/aryapreetam/parikshan/blob/main/scripts/verify-watch-mode.sh):
+
+```bash
+./scripts/verify-watch-mode.sh
+```
 
 ---
 
@@ -136,6 +244,12 @@ Combine `--sync`, `--watch`, and layout options for live, multi-platform feedbac
   --layout=side-by-side \
   --app-mode \
   --tests="sample.app.LoginTest"
+```
+
+To run automated verification for synchronized watch mode:
+
+```bash
+./scripts/verify-watch-mode.sh --sync
 ```
 
 ---

@@ -1,6 +1,9 @@
 # Installation
 
-To install Parikshan, apply the Gradle plugin to your Compose Multiplatform project.
+To install Parikshan, apply the Gradle plugin to your Compose Multiplatform or standalone Android project.
+
+> **Prefer a step-by-step tutorial from scratch?**
+> Follow [Your First Test (Compose Multiplatform)](../guides/your-first-test.md) or [Your First Test (Standalone Android)](../guides/first-test-android.md).
 
 ## 1. Apply the Plugin
 
@@ -123,8 +126,8 @@ The plugin automatically configures your Kotlin Multiplatform project:
     - `jvm("desktop")` ->  `e2eDesktopTest` OR `e2eTest --targets=desktop`
     - `jvm("custom")` -> `e2eCustomTest` OR `e2eTest --targets=custom`
     - `jvm()` ->  `e2eJvmTest` OR `e2eTest --targets=jvm`
-4. You can use it as `./gradlew e2eTest --targets=jvm,android,ios,wasm`
-5. If you are running tests for standalone Android project(without KMP/CMP), you can use `e2eAndroidTest` directly OR `e2eTest` without `--targets` property(target is inferred).
+4. You can execute across multiple targets using `./gradlew e2eTest --targets=desktop,wasm,android,ios` (or with target aliases like `jvm`).
+5. If you are running tests for a standalone Android project (without KMP/CMP), you can use `e2eAndroidTest` directly or `e2eTest` without the `--targets` property (the Android target is inferred automatically).
 
 You write your test classes in `commonTest`, and they run across any/all selected target platform.
 

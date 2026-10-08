@@ -9,9 +9,6 @@ on:
       - '!debug/**'
     tags-ignore:
       - 'v*'
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
   workflow_dispatch:
     inputs:
       target_job:
@@ -33,9 +30,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       is_configured: ${{ steps.check.outputs.is_configured }}
+      target_job: ${{ steps.check-changes.outputs.target_job }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Check if template has been configured
         id: check
@@ -64,13 +64,40 @@ jobs:
             echo "✅ Template is configured, proceeding with CI"
           fi
 
+      - name: Detect code changes
+        id: check-changes
+        run: |
+          # If target_job was explicitly provided via workflow_dispatch, honor it
+          if [ -n "${{ inputs.target_job }}" ]; then
+            echo "target_job=${{ inputs.target_job }}" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Compare against main branch to detect non-doc file changes
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            BASE_REF="HEAD~1"
+          else
+            git fetch origin main --depth=1 || true
+            BASE_REF="origin/main"
+          fi
+
+          CHANGED_CODE=$(git diff --name-only "$BASE_REF"...HEAD 2>/dev/null | grep -v -E '^docs/|README\.md$|\.md$|^\.github/workflows/deploy-docs\.yml$|^\.github/workflows/push-ci\.yml$' || true)
+
+          if [ -z "$CHANGED_CODE" ]; then
+            echo "ℹ️ Only documentation and markdown files changed. Skipping heavy test matrix."
+            echo "target_job=none" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Code changes detected: proceeding with full test suite."
+            echo "target_job=all" >> $GITHUB_OUTPUT
+          fi
+
   ci:
     name: Reuse CI (lint, build+tests, multiplatform e2e)
     needs: check-template-setup
     if: needs.check-template-setup.outputs.is_configured == 'true'
     uses: ./.github/workflows/ci.yml
     with:
-      target_job: ${{ inputs.target_job || 'all' }}
+      target_job: ${{ needs.check-template-setup.outputs.target_job }}
 
   skip-ci:
     name: Template not configured - CI skipped

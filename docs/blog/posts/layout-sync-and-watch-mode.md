@@ -29,13 +29,18 @@ Parikshan 0.0.8 introduces direct CLI options to control window geometry and scr
 * **Side-by-Side Mode:** `--layout=side-by-side` automatically tiles Desktop and Web windows neatly next to each other and enables standalone app mode (hiding browser navigation bars for Wasm).
 
 ```bash
-# Dock Desktop and Wasm side-by-side in mobile dimensions
-./gradlew e2eTest \
-  --targets=desktop,wasm \
-  --window-size=360x720 \
-  --layout=side-by-side \
-  --tests="sample.app.LoginTest"
+# Custom dimensions, explicit screen coordinates, and standalone app mode
+./gradlew :samples:multiplatform-showcase:composeApp:e2eTest \
+  --tests="sample.app.FormIntegrationTest.testSliderDrag" \
+  --targets=jvm,wasm \
+  --window-size=800x545 \
+  --desktop-window-position=1000x0 \
+  --wasm-window-position=1000x600 \
+  --app-mode \
+  --sync
 ```
+
+![Custom window geometry and coordinates](../../assets/sync-mode.gif)
 
 *(Note: Window sizing and screen positioning options apply to Desktop JVM and Web WasmJs targets).*
 
@@ -50,11 +55,14 @@ When testing across Android, iOS, Desktop, and Wasm concurrently, targets execut
 Passing `--sync` enables a step-barrier lockstep engine. Every test command (`click`, `input`, `drag`) is dispatched to all active targets in parallel, and the test runner waits for all target instances to complete the current step before advancing to the next:
 
 ```bash
-./gradlew e2eTest \
-  --targets=desktop,wasm,android,ios \
-  --sync \
-  --tests="sample.app.FormIntegrationTest"
+./gradlew :samples:multiplatform-showcase:composeApp:e2eTest \
+  --targets=jvm,wasm \
+  --tests="sample.app.FormIntegrationTest.testStatefulFormValidationAndSubmission" \
+  --layout=side-by-side \
+  --sync
 ```
+
+![Synchronized multi-target execution](../../assets/side-by-side-with-sync.gif)
 
 This guarantees visual parity during development and makes cross-platform UI differences immediately obvious.
 
@@ -70,9 +78,32 @@ Re-running Gradle test tasks manually after every 1-line UI tweak or assertion e
 * **Keep-Alive Engine (`--keep-alive`):** Preserves active application instances and server connections across test runs. On subsequent runs, Parikshan reuses the running app instance, dropping re-run execution time to ~1–2 seconds.
 
 ```bash
-# Continuous TDD on Desktop with instant re-runs
-./gradlew e2eTest --targets=desktop --watch --tests="sample.app.LoginTest"
+./gradlew :samples:multiplatform-showcase:composeApp:e2eTest \
+  --targets=jvm,wasm \
+  --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching" \
+  --desktop-window-position=1070x0 \
+  --app-mode \
+  --layout=side-by-side \
+  --window-size=360x720 \
+  --watch
 ```
+
+<video controls autoplay loop muted playsinline onloadedmetadata="this.playbackRate = 2.0;" style="width: 100%; border-radius: 6px; margin: 1rem 0;">
+  <source src="../../../../../assets/watch-mode.mp4" type="video/mp4" />
+</video>
+
+### How Watch Mode Works
+The video demonstrates the continuous feedback loop in action:
+
+1. **Initial Run (Pass):** Applications boot side-by-side in `--app-mode`, and the baseline test passes. Application windows remain active.
+2. **Code Edit (Fail):** Changing code (e.g. altering an expected subtext string or assertion) triggers an automatic background recompilation upon saving. Tests re-execute immediately without relaunching the apps, displaying failure feedback in the terminal.
+3. **Correction (Pass):** Fixing the code and saving triggers an instant re-run in ~1–2 seconds, turning the test suite green.
+
+### Termination & Synchronized Watch
+* **Exiting Watch Mode:** Terminate watch mode at any time using `Ctrl + C` in your terminal, or by manually closing any active application window (Desktop or browser window) — Parikshan detects window closure and terminates cleanly.
+* **Synchronized Watch (`--sync --watch`):** When combined with `--sync`, all targets execute each UI command in lockstep on every file save, waiting for each step to finish across all targets before advancing.
+
+To automate or verify watch mode executions in headless or CI environments, refer to the [scripts/verify-watch-mode.sh](https://github.com/aryapreetam/parikshan/blob/main/scripts/verify-watch-mode.sh) script.
 
 ---
 

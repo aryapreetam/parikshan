@@ -21,7 +21,9 @@
 </p>
 
 <p align="center">
-  <img src="assets/demo_short.gif" width="100%" alt="Parikshan E2E Execution Demo"/>
+  <img src="assets/demo_short.gif" width="100%" alt="Parikshan Synchronized Multi-Target Execution Demo"/>
+  <br/>
+  <span style="font-size: 0.78em; opacity: 0.85;"><em>Synchronized multi-target execution (<code>--sync</code>) driving Desktop, Web (<code>--app-mode</code>), Android, and iOS in lockstep from a single test.</em></span>
 </p>
 
 ### Features
@@ -73,12 +75,14 @@ class SimpleGreetTest {
 ```bash
 ./gradlew e2eAndroidTest
 ./gradlew e2eIosTest
-./gradlew e2eDesktopTest
+./gradlew e2eDesktopTest # or ./gradlew e2eJvmTest
 ./gradlew e2eWasmTest
 
 # Run across multiple targets simultaneously
 ./gradlew e2eTest --targets=desktop,wasm,android,ios
 ```
+
+> **Note:** The standalone desktop test task name depends on your target configuration in `build.gradle.kts` (`jvm("desktop")` registers `e2eDesktopTest`; `jvm()` registers `e2eJvmTest`). The unified `e2eTest` task accepts both `--targets=desktop` and `--targets=jvm`.
 
 ---
 

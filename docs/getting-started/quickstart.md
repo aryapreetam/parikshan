@@ -2,6 +2,9 @@
 
 This guide shows how to write and run your first end-to-end test using Parikshan.
 
+> **Prefer a step-by-step tutorial from scratch?**
+> Follow [Your First Test (Compose Multiplatform)](../guides/your-first-test.md) or [Your First Test (Standalone Android)](../guides/first-test-android.md).
+
 ## 1. Create an E2E Test
 
 Create a test class inside your shared library's `commonTest` directory (e.g., `composeApp/src/commonTest/kotlin/sample/app/LoginTest.kt`).

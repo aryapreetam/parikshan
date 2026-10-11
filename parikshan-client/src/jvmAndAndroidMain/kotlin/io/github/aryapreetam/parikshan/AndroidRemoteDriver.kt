@@ -13,10 +13,18 @@ import java.net.URI
  * running inside the real Android app on the emulator/device.
  * Uses HTTP POST over an adb forwarded port (e.g. 9879).
  */
-internal class AndroidRemoteDriver private constructor(
+internal class AndroidRemoteDriver internal constructor(
   private val baseUrl: String,
-  private val sessionToken: String = System.getProperty("parikshan.token") ?: ""
+  private val sessionToken: String = System.getProperty("parikshan.token") ?: "",
+  val context: ParikshanTestContext? = null
 ) : TestDriver {
+
+  constructor(context: ParikshanTestContext) : this(
+    baseUrl = "http://${context.host}:${context.port}/",
+    sessionToken = context.sessionToken,
+    context = context
+  )
+
   override val targetPlatform: String = "android"
 
   override fun validateAndNormalizePickerPaths(paths: List<String>): List<String> =
@@ -222,10 +230,15 @@ internal class AndroidRemoteDriver private constructor(
     }
 
     suspend fun connect(
-      config: ParikshanClientConfig = configFromSystemProperties()
+      config: ParikshanClientConfig = configFromSystemProperties(),
+      sessionToken: String = System.getProperty("parikshan.token") ?: "",
+      context: ParikshanTestContext? = null
     ): AndroidRemoteDriver {
-      val baseUrl = "http://${config.host}:${config.port}/"
-      val driver = AndroidRemoteDriver(baseUrl)
+      val effectiveHost = context?.host ?: config.host
+      val effectivePort = context?.port ?: config.port
+      val effectiveToken = context?.sessionToken ?: sessionToken
+      val baseUrl = "http://$effectiveHost:$effectivePort/"
+      val driver = AndroidRemoteDriver(baseUrl, effectiveToken, context)
 
       val retries = 300
 
@@ -248,5 +261,13 @@ internal class AndroidRemoteDriver private constructor(
 
       error("Could not connect to Parikshan Android server at $baseUrl after $retries attempts")
     }
+
+    suspend fun connect(
+      context: ParikshanTestContext
+    ): AndroidRemoteDriver = connect(
+      config = ParikshanClientConfig(host = context.host, port = context.port),
+      sessionToken = context.sessionToken,
+      context = context
+    )
   }
 }

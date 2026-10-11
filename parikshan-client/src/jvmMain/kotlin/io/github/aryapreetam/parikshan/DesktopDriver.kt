@@ -15,23 +15,34 @@ import java.util.concurrent.TimeUnit
 internal class DesktopDriver(
   private val host: String = "127.0.0.1",
   @Volatile private var port: Int = 9877,
-  private val sessionToken: String = System.getProperty("parikshan.token") ?: ""
+  private val sessionToken: String = System.getProperty("parikshan.token") ?: "",
+  val context: ParikshanTestContext? = null
 ) : TestDriver {
+
+  constructor(context: ParikshanTestContext) : this(
+    host = context.host,
+    port = context.port,
+    sessionToken = context.sessionToken,
+    context = context
+  )
+
   override val targetPlatform: String = "desktop"
   val activePort: Int get() = port
 
   init {
-    runCatching {
-      val manifestPath = System.getProperty(DESKTOP_LAUNCH_MANIFEST_PROPERTY)
-      if (!manifestPath.isNullOrBlank()) {
-        val file = File(manifestPath)
-        if (file.exists()) {
-          val props = Properties().apply {
-            file.inputStream().use(::load)
-          }
-          val activePort = props.getProperty("port")?.toIntOrNull()
-          if (activePort != null) {
-            port = activePort
+    if (context == null) {
+      runCatching {
+        val manifestPath = System.getProperty(DESKTOP_LAUNCH_MANIFEST_PROPERTY)
+        if (!manifestPath.isNullOrBlank()) {
+          val file = File(manifestPath)
+          if (file.exists()) {
+            val props = Properties().apply {
+              file.inputStream().use(::load)
+            }
+            val activePort = props.getProperty("port")?.toIntOrNull()
+            if (activePort != null) {
+              port = activePort
+            }
           }
         }
       }
@@ -87,7 +98,7 @@ internal class DesktopDriver(
       val oldPid = properties.getProperty("pid")?.toLongOrNull()
 
       // 2. Resolve a dynamic available port for the new server
-      val newPort = findAvailablePort()
+      val newPort = PortAllocator.allocate()
 
       // 3. Kill the old process first to ensure only one window is visible at a time.
       //    Dynamic port allocation prevents port collisions regardless of kill order.
@@ -134,7 +145,7 @@ internal class DesktopDriver(
   }
 
   private fun findAvailablePort(): Int {
-    return java.net.ServerSocket(0).use { it.localPort }
+    return PortAllocator.allocate()
   }
 
   private fun pingServer(host: String, port: Int): Boolean {
@@ -275,8 +286,12 @@ internal class DesktopDriver(
         if (background == "true") {
             add("-Dparikshan.background=true")
         }
-        val wX = System.getProperty("parikshan.desktop.windowX")
-        val wY = System.getProperty("parikshan.desktop.windowY")
+        val dataDir = context?.dataDir ?: System.getProperty("parikshan.data.dir")
+        if (!dataDir.isNullOrBlank()) {
+          add("-Dparikshan.data.dir=$dataDir")
+        }
+        val wX = context?.windowPosition?.first?.toString() ?: System.getProperty("parikshan.desktop.windowX")
+        val wY = context?.windowPosition?.second?.toString() ?: System.getProperty("parikshan.desktop.windowY")
         val wW = System.getProperty("parikshan.desktop.windowWidth")
         val wH = System.getProperty("parikshan.desktop.windowHeight")
         if (!wX.isNullOrEmpty()) add("-Dparikshan.desktop.windowX=$wX")

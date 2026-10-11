@@ -30,9 +30,16 @@ import kotlinx.serialization.builtins.ListSerializer
  * JVM-side driver for Compose/Wasm. It opens the app in Playwright and invokes the
  * in-browser Parikshan bridge installed by Modifier.testTag instrumentation.
  */
-internal class WasmDriver private constructor(
-  private val sessionToken: String = System.getProperty("parikshan.token") ?: ""
+internal class WasmDriver internal constructor(
+  private val sessionToken: String = System.getProperty("parikshan.token") ?: "",
+  val context: ParikshanTestContext? = null
 ) : TestDriver {
+
+  constructor(context: ParikshanTestContext) : this(
+    sessionToken = context.sessionToken,
+    context = context
+  )
+
   override val targetPlatform: String = "wasm"
 
   private val page: Page
@@ -623,6 +630,8 @@ internal class WasmDriver private constructor(
     @Volatile
     private var lastRequestedVideoPath: String? = null
     private var playwrightTempDir: Path? = null
+    @Volatile
+    private var activeContext: ParikshanTestContext? = null
 
     private fun isKeepAliveEnabled(): Boolean =
       System.getProperty("parikshan.keepAlive") == "true" || System.getenv("PARIKSHAN_KEEP_ALIVE") == "true"
@@ -992,10 +1001,26 @@ internal class WasmDriver private constructor(
       }
     }
 
-    suspend fun connect(config: ParikshanWasmConfig = ParikshanWasmConfig.fromSystemProperties()): WasmDriver = connectMutex.withLock {
-      ensureActivePageInternal(config)
-      return WasmDriver()
+    suspend fun connect(
+      config: ParikshanWasmConfig = ParikshanWasmConfig.fromSystemProperties(),
+      context: ParikshanTestContext? = null
+    ): WasmDriver = connectMutex.withLock {
+      activeContext = context
+      val windowPos = context?.windowPosition
+      val effectiveConfig = if (windowPos != null) {
+        config.copy(windowX = windowPos.first, windowY = windowPos.second)
+      } else {
+        config
+      }
+      ensureActivePageInternal(effectiveConfig)
+      return WasmDriver(
+        sessionToken = context?.sessionToken ?: (System.getProperty("parikshan.token") ?: ""),
+        context = context
+      )
     }
+
+    suspend fun connect(context: ParikshanTestContext): WasmDriver =
+      connect(config = ParikshanWasmConfig.fromSystemProperties(), context = context)
 
     private fun relaunchSharedPage(config: ParikshanWasmConfig) {
       val page = sharedPage ?: error("WasmDriver shared page is not initialized")
@@ -1028,35 +1053,51 @@ internal class WasmDriver private constructor(
 
     /**
      * Writes session state properties to `build/parikshan/wasm-session.properties`
-     * indicating that the WASM driver session is active.
+     * and actor-keyed descriptor in `build/parikshan/sessions/{instanceId}.json`.
      */
     private fun markWasmSessionActive() {
       runCatching {
         val projectRootDirProp = System.getProperty("parikshan.projectRootDir")
-        val dir = if (!projectRootDirProp.isNullOrBlank()) {
+        val baseDir = if (!projectRootDirProp.isNullOrBlank()) {
           File(projectRootDirProp, "build/parikshan")
         } else {
           File(System.getProperty("user.dir"), "build/parikshan")
         }
-        dir.mkdirs()
-        File(dir, "wasm-session.properties").writeText("status=active\ntimestamp=${System.currentTimeMillis()}\n")
+        baseDir.mkdirs()
+        File(baseDir, "wasm-session.properties").writeText("status=active\ntimestamp=${System.currentTimeMillis()}\n")
+
+        val ctx = activeContext
+        val instanceId = ctx?.instanceId ?: "wasm"
+        val port = ctx?.port ?: 9876
+        val token = ctx?.sessionToken ?: (System.getProperty("parikshan.token") ?: "")
+        val sessionsDir = File(baseDir, "sessions")
+        sessionsDir.mkdirs()
+        val sessionJson = """{"instanceId":"$instanceId","target":"wasm","port":$port,"sessionToken":"$token","timestamp":${System.currentTimeMillis()}}"""
+        File(sessionsDir, "$instanceId.json").writeText(sessionJson)
       }
     }
 
     /**
      * Writes session state properties to `build/parikshan/wasm-session.properties`
-     * indicating that the WASM browser window or tab was closed.
+     * and clears actor-keyed descriptor in `build/parikshan/sessions/{instanceId}.json`.
      */
     private fun markWasmSessionClosed() {
       runCatching {
         val projectRootDirProp = System.getProperty("parikshan.projectRootDir")
-        val dir = if (!projectRootDirProp.isNullOrBlank()) {
+        val baseDir = if (!projectRootDirProp.isNullOrBlank()) {
           File(projectRootDirProp, "build/parikshan")
         } else {
           File(System.getProperty("user.dir"), "build/parikshan")
         }
-        dir.mkdirs()
-        File(dir, "wasm-session.properties").writeText("status=closed\ntimestamp=${System.currentTimeMillis()}\n")
+        baseDir.mkdirs()
+        File(baseDir, "wasm-session.properties").writeText("status=closed\ntimestamp=${System.currentTimeMillis()}\n")
+
+        val ctx = activeContext
+        val instanceId = ctx?.instanceId ?: "wasm"
+        val sessionFile = File(baseDir, "sessions/$instanceId.json")
+        if (sessionFile.exists()) {
+          sessionFile.delete()
+        }
       }
     }
   }

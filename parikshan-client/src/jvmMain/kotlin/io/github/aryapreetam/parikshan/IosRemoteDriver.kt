@@ -12,10 +12,18 @@ import java.net.URI
 /**
  * JVM/Android-side driver that talks to the Parikshan server running inside the iOS app.
  */
-internal class IosRemoteDriver private constructor(
+internal class IosRemoteDriver internal constructor(
   private val baseUrl: String,
-  private val sessionToken: String = System.getProperty("parikshan.token") ?: ""
+  private val sessionToken: String = System.getProperty("parikshan.token") ?: "",
+  val context: ParikshanTestContext? = null
 ) : TestDriver {
+
+  constructor(context: ParikshanTestContext) : this(
+    baseUrl = "http://${context.host}:${context.port}/",
+    sessionToken = context.sessionToken,
+    context = context
+  )
+
   override val targetPlatform: String = "ios"
 
   override fun validateAndNormalizePickerPaths(paths: List<String>): List<String> =
@@ -262,10 +270,15 @@ internal class IosRemoteDriver private constructor(
     private val activeVideoPaths = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     suspend fun connect(
-      config: IosDriverConfig = IosDriverConfig()
+      config: IosDriverConfig = IosDriverConfig(),
+      sessionToken: String = System.getProperty("parikshan.token") ?: "",
+      context: ParikshanTestContext? = null
     ): IosRemoteDriver {
-      val baseUrl = "http://${config.host}:${config.port}/"
-      val driver = IosRemoteDriver(baseUrl)
+      val effectiveHost = context?.host ?: config.host
+      val effectivePort = context?.port ?: config.port
+      val effectiveToken = context?.sessionToken ?: sessionToken
+      val baseUrl = "http://$effectiveHost:$effectivePort/"
+      val driver = IosRemoteDriver(baseUrl, effectiveToken, context)
 
       val retries = 300
       repeat(retries) { attempt ->
@@ -287,6 +300,14 @@ internal class IosRemoteDriver private constructor(
 
       error("Could not connect to Parikshan iOS server at $baseUrl after $retries attempts")
     }
+
+    suspend fun connect(
+      context: ParikshanTestContext
+    ): IosRemoteDriver = connect(
+      config = IosDriverConfig(host = context.host, port = context.port),
+      sessionToken = context.sessionToken,
+      context = context
+    )
   }
 }
 

@@ -4,6 +4,16 @@ public abstract interface annotation class io/github/aryapreetam/parikshan/After
 public abstract interface annotation class io/github/aryapreetam/parikshan/BeforeAll : java/lang/annotation/Annotation {
 }
 
+public final class io/github/aryapreetam/parikshan/E2EMultiInstanceScope {
+	public fun <init> (Ljava/util/Map;)V
+	public final fun get (Ljava/lang/String;)Lio/github/aryapreetam/parikshan/E2ETestScope;
+	public final fun getInstanceNames ()Ljava/util/Set;
+	public final fun getSize ()I
+	public final fun inParallel (Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun inParallel ([Lkotlin/Pair;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun instance (Ljava/lang/String;)Lio/github/aryapreetam/parikshan/E2ETestScope;
+}
+
 public final class io/github/aryapreetam/parikshan/E2ETestConfig {
 	public fun <init> ()V
 	public fun <init> (JJLjava/lang/String;Z)V
@@ -40,7 +50,9 @@ public final class io/github/aryapreetam/parikshan/E2ETestDslKt {
 	public static final fun e2eConfig (Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function1;)Lio/github/aryapreetam/parikshan/E2ETestConfig;
 	public static synthetic fun e2eConfig$default (Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/E2ETestConfig;
 	public static final fun e2eTest (Lio/github/aryapreetam/parikshan/TestDriver;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static final fun e2eTest (Ljava/util/Map;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun e2eTest$default (Lio/github/aryapreetam/parikshan/TestDriver;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun e2eTest$default (Ljava/util/Map;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static final fun isAndroid (Lio/github/aryapreetam/parikshan/E2ETestScope;)Z
 	public static final fun isDesktop (Lio/github/aryapreetam/parikshan/E2ETestScope;)Z
 	public static final fun isIos (Lio/github/aryapreetam/parikshan/E2ETestScope;)Z

@@ -10,3 +10,11 @@ actual fun e2eTest(
 ) {
   error("Parikshan E2E tests run via the JVM test runner. Web testing is supported exclusively on Wasm (wasmJs). Use ./gradlew e2eTest")
 }
+
+actual fun e2eTest(
+  instances: List<String>,
+  config: E2ETestConfig,
+  block: suspend E2EMultiInstanceScope.() -> Unit
+) {
+  error("Parikshan multi-instance E2E tests run via the JVM test runner. Web testing is supported exclusively on Wasm (wasmJs). Use ./gradlew e2eTest")
+}

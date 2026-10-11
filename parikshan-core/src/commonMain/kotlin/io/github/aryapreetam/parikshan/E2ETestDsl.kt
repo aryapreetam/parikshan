@@ -1504,6 +1504,55 @@ suspend fun e2eTest(
   }
 }
 
+/**
+ * Executes a multi-instance end-to-end test across named target drivers.
+ *
+ * @param drivers Map of instance identifiers to active [TestDriver] instances.
+ * @param config Optional test configuration applied to each instance scope.
+ * @param block Suspending test execution block with [E2EMultiInstanceScope] receiver.
+ */
+@InternalParikshanApi
+suspend fun e2eTest(
+  drivers: Map<String, TestDriver>,
+  config: E2ETestConfig = E2ETestConfig(),
+  block: suspend E2EMultiInstanceScope.() -> Unit
+) {
+  require(drivers.isNotEmpty()) { "Multi-instance test requires at least one driver" }
+  val scopes = drivers.mapValues { (_, driver) ->
+    E2ETestScope(driver = driver, config = config)
+  }
+  val multiScope = E2EMultiInstanceScope(scopes)
+  try {
+    drivers.forEach { (name, driver) ->
+      val pingResponse = driver.send(Command.Ping(id = nextId()))
+      if (pingResponse is Response.Error) {
+        throw IllegalStateException("Failed to connect to Parikshan server for instance '$name': ${pingResponse.message}")
+      }
+      runCatching { driver.reset() }
+    }
+    multiScope.block()
+  } catch (throwable: Throwable) {
+    if (config.captureScreenshotOnFailure) {
+      scopes.forEach { (name, scope) ->
+        val path = config.failureScreenshotPath.let { basePath ->
+          if (basePath.endsWith(".png")) {
+            basePath.removeSuffix(".png") + "-$name.png"
+          } else {
+            "$basePath-$name"
+          }
+        }
+        runCatching { scope.screenshot(path) }
+      }
+    }
+    throw throwable
+  } finally {
+    drivers.values.forEach { driver ->
+      runCatching { driver.reset() }
+      runCatching { driver.close() }
+    }
+  }
+}
+
 private fun nextId(): String {
   val high = Random.nextLong().toString(16)
   val low = Random.nextLong().toString(16)

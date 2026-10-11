@@ -31,6 +31,52 @@ expect fun e2eTest(
 )
 
 /**
+ * Executes a multi-instance end-to-end test across named application actors.
+ *
+ * Each instance corresponds to an isolated application process, browser context,
+ * or device session, identified by a unique name (such as `"alice"` or `"bob"`).
+ *
+ * ### Example Usage
+ * ```kotlin
+ * @Test
+ * fun testCollaboration() = e2eTest(instances = listOf("alice", "bob")) {
+ *   val alice = instance("alice")
+ *   val bob = instance("bob")
+ *
+ *   alice.click("create_document")
+ *   bob.click("join_document")
+ * }
+ * ```
+ *
+ * @param instances List of unique instance identifiers.
+ * @param config Optional [E2ETestConfig] to customize timeouts, screenshot behavior, and step delays.
+ * @param block Suspending test execution block with multi-instance handle access.
+ * @see E2EMultiInstanceScope
+ * @see E2ETestConfig
+ */
+expect fun e2eTest(
+  instances: List<String>,
+  config: E2ETestConfig = E2ETestConfig(),
+  block: suspend E2EMultiInstanceScope.() -> Unit
+)
+
+/**
+ * Executes a multi-instance end-to-end test across named application actors (vararg overload).
+ *
+ * @param instances Variable number of unique instance identifiers (e.g. `"alice"`, `"bob"`).
+ * @param config Optional [E2ETestConfig] to customize timeouts, screenshot behavior, and step delays.
+ * @param block Suspending test execution block with multi-instance handle access.
+ */
+fun e2eTest(
+  vararg instances: String,
+  config: E2ETestConfig = E2ETestConfig(),
+  block: suspend E2EMultiInstanceScope.() -> Unit
+) {
+  e2eTest(instances = instances.toList(), config = config, block = block)
+}
+
+
+/**
  * Extension entrypoint for test classes implementing [E2ETestLifecycle].
  *
  * Automatically invokes [E2ETestLifecycle.beforeEach] before executing the test scenario block,
@@ -81,3 +127,20 @@ fun E2ETestLifecycle.e2eTest(
     }
   }
 }
+
+fun E2ETestLifecycle.e2eTest(
+  instances: List<String>,
+  config: E2ETestConfig = E2ETestConfig(),
+  block: suspend E2EMultiInstanceScope.() -> Unit
+) {
+  io.github.aryapreetam.parikshan.e2eTest(instances = instances, config = config, block = block)
+}
+
+fun E2ETestLifecycle.e2eTest(
+  vararg instances: String,
+  config: E2ETestConfig = E2ETestConfig(),
+  block: suspend E2EMultiInstanceScope.() -> Unit
+) {
+  e2eTest(instances = instances.toList(), config = config, block = block)
+}
+

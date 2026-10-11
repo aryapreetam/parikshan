@@ -130,3 +130,147 @@ actual fun e2eTest(
     }
   }
 }
+
+actual fun e2eTest(
+  instances: List<String>,
+  config: E2ETestConfig,
+  block: suspend E2EMultiInstanceScope.() -> Unit
+) {
+  require(instances.isNotEmpty()) { "Multi-instance E2E test requires at least one instance identifier" }
+  require(instances.distinct().size == instances.size) {
+    "Duplicate instance identifier detected in test declaration: $instances"
+  }
+
+  runBlocking {
+    val callerClassName = inferCallerClassName()
+    val callerMethodName = inferCallerMethodName()
+    val videoConfig = ParikshanVideoConfig.fromSystemProperties()
+
+    val drivers = withContext(Dispatchers.IO) {
+      instances.associateWith { name ->
+        val (target, context) = resolveInstanceContext(name)
+        createDriverForInstance(target, context)
+      }
+    }
+
+    drivers.forEach { (name, driver) ->
+      val port = (driver as? DesktopDriver)?.activePort
+        ?: (driver as? IosRemoteDriver)?.context?.port
+        ?: (driver as? AndroidRemoteDriver)?.context?.port
+        ?: (driver as? WasmDriver)?.context?.port
+        ?: 9877
+      val clientConfig = io.github.aryapreetam.parikshan.client.ParikshanClientConfig(
+        host = "127.0.0.1",
+        port = port
+      )
+      ParikshanVideoSessionManager.beforeScenario(
+        driver = driver,
+        clientConfig = clientConfig,
+        config = videoConfig,
+        className = callerClassName,
+        methodName = "${callerMethodName}_$name"
+      )
+    }
+
+    val userConfigStepDelay = if (config.stepDelayMs > 0L) config.stepDelayMs else null
+    val globalSystemStepDelay = System.getProperty("parikshan.stepDelayMs")?.toLongOrNull()
+    val effectiveStepDelay = userConfigStepDelay ?: globalSystemStepDelay ?: 0L
+    val effectiveConfig = config.copy(stepDelayMs = effectiveStepDelay)
+
+    try {
+      e2eTest(
+        drivers = drivers,
+        config = effectiveConfig,
+        block = block
+      )
+    } finally {
+      drivers.forEach { (name, driver) ->
+        ParikshanVideoSessionManager.afterScenario(
+          driver = driver,
+          config = videoConfig,
+          className = callerClassName,
+          methodName = "${callerMethodName}_$name"
+        )
+      }
+    }
+  }
+}
+
+private val sessionJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+@kotlinx.serialization.Serializable
+private data class InstanceSessionDescriptor(
+  val instanceId: String = "",
+  val target: String = "desktop",
+  val port: Int = 9877,
+  val host: String = "127.0.0.1",
+  val sessionToken: String = "",
+  val dataDir: String? = null,
+  val pid: Long? = null,
+  val timestamp: Long = 0L
+)
+
+private fun resolveSessionDirectory(): java.io.File {
+  val projectRootDirProp = System.getProperty("parikshan.projectRootDir")
+  val baseDir = if (!projectRootDirProp.isNullOrBlank()) {
+    java.io.File(projectRootDirProp, "build/parikshan")
+  } else {
+    java.io.File(System.getProperty("user.dir"), "build/parikshan")
+  }
+  return java.io.File(baseDir, "sessions")
+}
+
+private fun resolveInstanceContext(name: String): Pair<String, ParikshanTestContext> {
+  val sessionsDir = resolveSessionDirectory()
+  val instanceFile = java.io.File(sessionsDir, "$name.json")
+  if (instanceFile.exists()) {
+    val text = runCatching { instanceFile.readText() }.getOrNull().orEmpty()
+    val parsed = runCatching { sessionJson.decodeFromString<InstanceSessionDescriptor>(text) }.getOrNull()
+    if (parsed != null) {
+      val target = parsed.target.ifBlank { "desktop" }
+      val ctx = ParikshanTestContext(
+        instanceId = parsed.instanceId.ifBlank { name },
+        host = parsed.host.ifBlank { "127.0.0.1" },
+        port = parsed.port,
+        sessionToken = parsed.sessionToken,
+        dataDir = parsed.dataDir
+      )
+      return target to ctx
+    }
+  }
+
+  val target = System.getProperty("parikshan.instance.$name.target")
+    ?: System.getProperty("parikshan.target")
+    ?: "desktop"
+  val host = System.getProperty("parikshan.instance.$name.host")
+    ?: System.getProperty("parikshan.host")
+    ?: "127.0.0.1"
+  val port = System.getProperty("parikshan.instance.$name.port")?.toIntOrNull()
+    ?: System.getProperty("parikshan.port")?.toIntOrNull()
+    ?: if (target.lowercase() == "desktop") PortAllocator.allocate() else 9877
+  val token = System.getProperty("parikshan.instance.$name.token")
+    ?: System.getProperty("parikshan.token")
+    ?: ""
+  val dataDir = System.getProperty("parikshan.instance.$name.dataDir")
+    ?: System.getProperty("parikshan.data.dir")
+
+  val ctx = ParikshanTestContext(
+    instanceId = name,
+    host = host,
+    port = port,
+    sessionToken = token,
+    dataDir = dataDir
+  )
+  return target to ctx
+}
+
+private suspend fun createDriverForInstance(target: String, context: ParikshanTestContext): TestDriver {
+  return when (target.lowercase()) {
+    "desktop", "jvm" -> DesktopDriver(context)
+    "wasm", "web" -> WasmDriver.connect(context)
+    "android" -> AndroidRemoteDriver.connect(context)
+    "ios" -> IosRemoteDriver.connect(context)
+    else -> error("Unsupported target '$target' for instance '${context.instanceId}'")
+  }
+}
+

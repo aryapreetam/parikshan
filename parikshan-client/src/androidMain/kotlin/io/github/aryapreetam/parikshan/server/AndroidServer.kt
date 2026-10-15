@@ -368,11 +368,6 @@ object AndroidServer {
     directTextOf(node) ?: descendantTextsOf(node).takeIf { it.isNotEmpty() }?.joinToString("")
 
   private fun directTextOf(node: SemanticsNode): String? {
-    val contentDescription = node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty()
-    if (contentDescription.isNotEmpty()) {
-      contentDescription.joinToString("").takeIf { it.isNotBlank() }?.let { return it }
-    }
-
     node.config.getOrNull(SemanticsProperties.EditableText)?.text
       ?.takeIf { it.isNotBlank() }
       ?.let { return it }
@@ -380,6 +375,11 @@ object AndroidServer {
     val values = node.config.getOrNull(SemanticsProperties.Text).orEmpty()
     if (values.isNotEmpty()) {
       values.joinToString("") { it.text }.takeIf { it.isNotBlank() }?.let { return it }
+    }
+
+    val contentDescription = node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty()
+    if (contentDescription.isNotEmpty()) {
+      contentDescription.joinToString("").takeIf { it.isNotBlank() }?.let { return it }
     }
 
     return null

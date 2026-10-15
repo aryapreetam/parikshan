@@ -21,6 +21,11 @@ val issueList = listOf(
         id = "10",
         title = "Issue #10",
         description = "iOS input() crash with NSUnknownKeyException when targeting text fields by label"
+    ),
+    IssueItem(
+        id = "24",
+        title = "Issue #24",
+        description = "Android input cannot reselect filled fields due to inconsistent text precedence"
     )
 )
 
@@ -35,18 +40,32 @@ fun App() {
                 .statusBarsPadding()
                 .safeDrawingPadding()
         ) {
-            if (selectedIssueId == "10") {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    TextButton(
-                        onClick = { selectedIssueId = null },
-                        modifier = Modifier.padding(8.dp)
-                    ) {
-                        Text("← Back to Issue Index")
+            when (selectedIssueId) {
+                "10" -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        TextButton(
+                            onClick = { selectedIssueId = null },
+                            modifier = Modifier.padding(8.dp)
+                        ) {
+                            Text("← Back to Issue Index")
+                        }
+                        Issue10Screen()
                     }
-                    Issue10Screen()
                 }
-            } else {
-                IssueIndexLauncher(onSelectIssue = { selectedIssueId = it })
+                "24" -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        TextButton(
+                            onClick = { selectedIssueId = null },
+                            modifier = Modifier.padding(8.dp)
+                        ) {
+                            Text("← Back to Issue Index")
+                        }
+                        org.parikshan.issueplayground.issue24.Issue24Screen()
+                    }
+                }
+                else -> {
+                    IssueIndexLauncher(onSelectIssue = { selectedIssueId = it })
+                }
             }
         }
     }

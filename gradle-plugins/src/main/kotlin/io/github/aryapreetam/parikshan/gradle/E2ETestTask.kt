@@ -2134,11 +2134,16 @@ abstract class E2ETestTask : DefaultTask() {
                 logger.lifecycle("Parikshan [android]: Device detected. Starting E2E execution on port $activePort...")
                 // 1. Start App
                 val startArgs = mutableListOf(
-                  gradlew, "$projectPathPrefix:startParikshanAndroidApp",
+                  gradlew,
+                  "-p", projectRootDir.get(),
+                  "$projectPathPrefix:startParikshanAndroidApp",
                   "-Pparikshan.token=${token.get()}",
                   "-Pparikshan.port=$activePort",
                   "-Pparikshan.e2e.active=true"
                 )
+                if (!configurationCacheEnabled.get()) {
+                  startArgs.add("--no-configuration-cache")
+                }
                 if (!serial.isNullOrBlank()) {
                   startArgs.add("-Pparikshan.android.serial=$serial")
                 }
@@ -2232,12 +2237,17 @@ abstract class E2ETestTask : DefaultTask() {
 
                 if (session != null) {
                   logger.lifecycle("Parikshan [ios]: Active instance is stale or unhealthy. Relaunching...")
-                  val stopProcess = ProcessBuilder(
+                  val stopArgs = mutableListOf(
                     gradlew, 
+                    "-p", projectRootDir.get(),
                     "$projectPathPrefix:stopIosApp",
                     "-Pparikshan.ios.device=$finalIosDevice",
                     "-Pparikshan.ios.port=${session.port}"
-                  ).apply {
+                  )
+                  if (!configurationCacheEnabled.get()) {
+                    stopArgs.add("--no-configuration-cache")
+                  }
+                  val stopProcess = ProcessBuilder(stopArgs).apply {
                     cleanXcodeEnv(this)
                   }.start()
                   bootProcesses.add(stopProcess)
@@ -2245,14 +2255,19 @@ abstract class E2ETestTask : DefaultTask() {
                 }
                 logger.lifecycle("Parikshan [ios]: Simulator target: '$finalIosDevice' ($udid). Starting E2E execution on port $activePort...")
                 // 1. Start App
-                val startProcess = ProcessBuilder(
+                val startArgs = mutableListOf(
                   gradlew, 
+                  "-p", projectRootDir.get(),
                   "$projectPathPrefix:startIosApp", 
                   "-Pparikshan.token=${token.get()}", 
                   "-Pparikshan.ios.port=$activePort",
                   "-Pparikshan.e2e.active=true",
                   "-Pparikshan.ios.device=$finalIosDevice"
-                ).apply {
+                )
+                if (!configurationCacheEnabled.get()) {
+                  startArgs.add("--no-configuration-cache")
+                }
+                val startProcess = ProcessBuilder(startArgs).apply {
                   cleanXcodeEnv(this)
                   redirectErrorStream(true)
                   val logF = File(buildDir.get().asFile, "parikshan/logs/ios-start.log")
@@ -2451,7 +2466,14 @@ abstract class E2ETestTask : DefaultTask() {
     if (activeTargets.contains("android")) {
       if (!keepAlive) {
         val gradlew = getGradlewExecutable(File(projectRootDir.get()))
-        val stopArgs = mutableListOf(gradlew, "$projectPathPrefix:stopParikshanAndroidApp")
+        val stopArgs = mutableListOf(
+          gradlew,
+          "-p", projectRootDir.get(),
+          "$projectPathPrefix:stopParikshanAndroidApp"
+        )
+        if (!configurationCacheEnabled.get()) {
+          stopArgs.add("--no-configuration-cache")
+        }
         if (!androidSerial.isNullOrBlank()) {
           stopArgs.add("-Pparikshan.android.serial=$androidSerial")
         }
@@ -2462,12 +2484,17 @@ abstract class E2ETestTask : DefaultTask() {
     if (activeTargets.contains("ios")) {
       if (!keepAlive) {
         val gradlew = getGradlewExecutable(File(projectRootDir.get()))
-        ProcessBuilder(
+        val stopArgs = mutableListOf(
           gradlew, 
+          "-p", projectRootDir.get(),
           "$projectPathPrefix:stopIosApp",
           "-Pparikshan.ios.device=$finalIosDevice",
           "-Pparikshan.ios.port=$iosPortVal"
-        ).apply { cleanXcodeEnv(this) }.start().waitFor()
+        )
+        if (!configurationCacheEnabled.get()) {
+          stopArgs.add("--no-configuration-cache")
+        }
+        ProcessBuilder(stopArgs).apply { cleanXcodeEnv(this) }.start().waitFor()
         clearSession("ios")
       }
     }

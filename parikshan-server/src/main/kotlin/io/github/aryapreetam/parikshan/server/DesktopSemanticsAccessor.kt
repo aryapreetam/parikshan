@@ -33,6 +33,12 @@ internal data class WindowedNode(
   val node: SemanticsNode
 )
 
+internal sealed interface ClickResult {
+  object Success : ClickResult
+  data class Disabled(val message: String = "Control is disabled") : ClickResult
+  data class Failed(val message: String) : ClickResult
+}
+
 internal class DesktopSemanticsAccessor(
   private val primaryWindow: ComposeWindow
 ) {
@@ -65,17 +71,41 @@ internal class DesktopSemanticsAccessor(
     return all.getOrNull(originalIndex)
   }
 
-  fun performClick(selector: Selector): Boolean {
-    val desktopNode = findBySelector(selector) ?: return false
+  private fun isNodeDisabled(node: SemanticsNode): Boolean {
+    var current: SemanticsNode? = node
+    while (current != null) {
+      if (current.config.contains(SemanticsProperties.Disabled)) {
+        return true
+      }
+      current = current.parent
+    }
+    return false
+  }
+
+  fun performClick(selector: Selector): ClickResult {
+    val desktopNode = findBySelector(selector)
+      ?: return ClickResult.Failed("No node found for selector '${selector.raw}'")
 
     // Primary: Semantic OnClick walk.
-    val semanticSuccess = onEdt {
+    val (semanticOutcome, shouldFallbackToRobot) = onEdt {
       val windowedNode = findResolvedWindowedNode(selector)
-      var currentNode: SemanticsNode? = windowedNode?.node ?: return@onEdt false
+        ?: return@onEdt Pair(ClickResult.Failed("No node found for selector '${selector.raw}'"), false)
+      val targetNode = windowedNode.node
+
+      if (isNodeDisabled(targetNode)) {
+        System.err.println("Parikshan: performClick - Target node '${selector.raw}' is disabled. Rejecting interaction.")
+        return@onEdt Pair(ClickResult.Disabled("Node '${selector.raw}' is disabled"), false)
+      }
+
+      var currentNode: SemanticsNode? = targetNode
       var textFieldAction: (() -> Boolean)? = null
       var bestAction: (() -> Boolean)? = null
 
       while (currentNode != null) {
+        if (currentNode.config.contains(SemanticsProperties.Disabled)) {
+          System.err.println("Parikshan: performClick - Ancestor node for '${selector.raw}' is disabled. Rejecting interaction.")
+          return@onEdt Pair(ClickResult.Disabled("Node '${selector.raw}' is disabled"), false)
+        }
         val action = currentNode.config.getOrNull(SemanticsActions.OnClick)?.action
         if (action != null) {
           val isEditable =
@@ -93,24 +123,30 @@ internal class DesktopSemanticsAccessor(
 
       val actionToInvoke = bestAction ?: textFieldAction
       if (actionToInvoke != null) {
-          System.err.println("Parikshan: performClick - Found semantic OnClick for '${selector.raw}'. Invoking...")
-          try {
-            val result = actionToInvoke.invoke()
-            System.err.println("Parikshan: performClick - Semantic invocation result: $result")
-            result
-          } catch (e: Exception) {
-            System.err.println("Parikshan: performClick - Semantic OnClick FAILED: ${e.message}")
-            false
+        System.err.println("Parikshan: performClick - Found semantic OnClick for '${selector.raw}'. Invoking...")
+        try {
+          val result = actionToInvoke.invoke()
+          System.err.println("Parikshan: performClick - Semantic invocation result: $result")
+          if (result) {
+            Pair(ClickResult.Success, false)
+          } else {
+            Pair(ClickResult.Failed("Semantic click callback returned false"), false)
           }
+        } catch (e: Exception) {
+          System.err.println("Parikshan: performClick - Semantic OnClick FAILED: ${e.message}")
+          // Explicit callback error: do NOT fall back to Robot click
+          Pair(ClickResult.Failed("Semantic click failed with exception: ${e.message}"), false)
+        }
       } else {
-          System.err.println("Parikshan: performClick - No semantic OnClick found for '${selector.raw}'. Falling back to Robot.")
-          false
+        System.err.println("Parikshan: performClick - No semantic OnClick found for '${selector.raw}'. Falling back to Robot.")
+        Pair(ClickResult.Failed("No semantic OnClick found"), true)
       }
     }
 
-    if (semanticSuccess) return true
+    if (semanticOutcome is ClickResult.Success) return ClickResult.Success
+    if (!shouldFallbackToRobot) return semanticOutcome
 
-    // Fallback: Native AWT Robot click
+    // Fallback: Native AWT Robot click (only when no semantic action was registered and control is not disabled)
     return try {
       val robot = java.awt.Robot()
       val x = desktopNode.bounds.centerX.toInt()
@@ -120,9 +156,9 @@ internal class DesktopSemanticsAccessor(
       robot.mousePress(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)
       Thread.sleep(50)
       robot.mouseRelease(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)
-      true
+      ClickResult.Success
     } catch (e: Exception) {
-      false
+      ClickResult.Failed("Robot click dispatch failed: ${e.message}")
     }
   }
 

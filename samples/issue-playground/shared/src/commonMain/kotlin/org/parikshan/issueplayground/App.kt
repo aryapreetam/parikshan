@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import org.parikshan.issueplayground.issue10.Issue10Screen
 
@@ -26,6 +27,11 @@ val issueList = listOf(
         id = "24",
         title = "Issue #24",
         description = "Android input cannot reselect filled fields due to inconsistent text precedence"
+    ),
+    IssueItem(
+        id = "25",
+        title = "Issue #25",
+        description = "Desktop semantic click attempts to invoke disabled controls and hides callback errors"
     )
 )
 
@@ -45,7 +51,7 @@ fun App() {
                     Column(modifier = Modifier.fillMaxSize()) {
                         TextButton(
                             onClick = { selectedIssueId = null },
-                            modifier = Modifier.padding(8.dp)
+                            modifier = Modifier.testTag("back_to_issue_index").padding(8.dp)
                         ) {
                             Text("← Back to Issue Index")
                         }
@@ -56,11 +62,22 @@ fun App() {
                     Column(modifier = Modifier.fillMaxSize()) {
                         TextButton(
                             onClick = { selectedIssueId = null },
-                            modifier = Modifier.padding(8.dp)
+                            modifier = Modifier.testTag("back_to_issue_index").padding(8.dp)
                         ) {
                             Text("← Back to Issue Index")
                         }
                         org.parikshan.issueplayground.issue24.Issue24Screen()
+                    }
+                }
+                "25" -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        TextButton(
+                            onClick = { selectedIssueId = null },
+                            modifier = Modifier.testTag("back_to_issue_index").padding(8.dp)
+                        ) {
+                            Text("← Back to Issue Index")
+                        }
+                        org.parikshan.issueplayground.issue25.Issue25Screen()
                     }
                 }
                 else -> {

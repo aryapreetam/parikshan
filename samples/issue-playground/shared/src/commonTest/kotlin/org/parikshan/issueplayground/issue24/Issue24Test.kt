@@ -1,12 +1,20 @@
 package org.parikshan.issueplayground.issue24
 
 import io.github.aryapreetam.parikshan.E2ETestLifecycle
+import io.github.aryapreetam.parikshan.E2ETestScope
 import io.github.aryapreetam.parikshan.e2eTest
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.protocol.first
+import io.github.aryapreetam.parikshan.protocol.tag
 import kotlin.test.Test
 
 class Issue24Test : E2ETestLifecycle {
+
+  override suspend fun E2ETestScope.afterEach() {
+    runCatching {
+      click(tag("back_to_issue_index"))
+    }
+  }
 
   @Test
   fun testReselectFilledFieldByText() = e2eTest {

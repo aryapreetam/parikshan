@@ -27,6 +27,9 @@ internal object ParikshanTagBridgeHooks {
     GlobalThis.performClick = { tag ->
       io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performClick(io.github.aryapreetam.parikshan.protocol.Selector.Auto(tag))
     }
+    GlobalThis.performClickResult = { tag ->
+      io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performClickResult(io.github.aryapreetam.parikshan.protocol.Selector.Auto(tag))
+    }
     GlobalThis.performInput = { tag, text ->
       io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performInput(io.github.aryapreetam.parikshan.protocol.Selector.Auto(tag), text)
     }
@@ -39,6 +42,10 @@ internal object ParikshanTagBridgeHooks {
     GlobalThis.performClickIndexed = { tag, index ->
       val selector = io.github.aryapreetam.parikshan.protocol.Selector.Auto(tag, index = index)
       io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performClick(selector)
+    }
+    GlobalThis.performClickIndexedResult = { tag, index ->
+      val selector = io.github.aryapreetam.parikshan.protocol.Selector.Auto(tag, index = index)
+      io.github.aryapreetam.parikshan.server.WasmSemanticsAccessor.performClickResult(selector)
     }
     GlobalThis.performInputIndexed = { tag, text, index ->
       val selector = io.github.aryapreetam.parikshan.protocol.Selector.Auto(tag, index = index)
@@ -65,6 +72,9 @@ private external object GlobalThis {
   @JsName("__parikshan_click")
   var performClick: (String) -> Boolean
 
+  @JsName("__parikshan_click_result")
+  var performClickResult: (String) -> String
+
   @JsName("__parikshan_input")
   var performInput: (String, String) -> Boolean
 
@@ -73,6 +83,9 @@ private external object GlobalThis {
 
   @JsName("__parikshan_click_indexed")
   var performClickIndexed: (String, Int) -> Boolean
+
+  @JsName("__parikshan_click_indexed_result")
+  var performClickIndexedResult: (String, Int) -> String
 
   @JsName("__parikshan_input_indexed")
   var performInputIndexed: (String, String, Int) -> Boolean

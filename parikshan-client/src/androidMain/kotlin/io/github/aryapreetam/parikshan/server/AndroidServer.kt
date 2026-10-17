@@ -322,6 +322,17 @@ object AndroidServer {
     return null
   }
 
+  private fun isNodeDisabled(node: SemanticsNode): Boolean {
+    var current: SemanticsNode? = node
+    while (current != null) {
+      if (current.config.contains(SemanticsProperties.Disabled)) {
+        return true
+      }
+      current = current.parent
+    }
+    return false
+  }
+
   private fun inputTargetFor(node: SemanticsNode): SemanticsNode? {
     var current: SemanticsNode? = node
     while (current != null) {
@@ -409,6 +420,9 @@ object AndroidServer {
         val matched = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${selectorLabel(command)}'")
         val target = clickTargetFor(matched) ?: matched
+        if (isNodeDisabled(matched) || isNodeDisabled(target)) {
+          return Response.Error(command.id, "Node '${selectorLabel(command)}' is disabled")
+        }
         val interaction = interactionFor(target)
         try { interaction.performScrollTo() } catch (e: Throwable) { /* Ignore */ }
         try {

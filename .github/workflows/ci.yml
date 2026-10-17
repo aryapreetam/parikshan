@@ -428,11 +428,11 @@ jobs:
       - name: Pre-compile Kotlin Native Framework
         working-directory: samples/issue-playground
         run: |
-          ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
+          ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 -PcmpProfile=1.12 -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
       - name: Run issue-playground iOS E2E tests
         working-directory: samples/issue-playground
         run: |
-          ./gradlew :shared:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Dparikshan.xcodebuild.timeout=1800
+          ./gradlew :shared:e2eIosTest -PcmpProfile=1.12 -Dparikshan.video.enabled=true --no-configuration-cache -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Dparikshan.xcodebuild.timeout=1800
       - name: Upload iOS E2E Results
         if: always()
         uses: actions/upload-artifact@v4

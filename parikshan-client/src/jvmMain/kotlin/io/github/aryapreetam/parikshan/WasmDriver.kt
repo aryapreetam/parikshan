@@ -126,12 +126,27 @@ internal class WasmDriver private constructor(
       is Command.Click -> {
         val node = readNodeBySelector(selector)
           ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
-        val bridgeClicked = invokeBridgeClick(selector)
-        if (!bridgeClicked) {
-          performPhysicalClick(node.bounds.centerX, node.bounds.centerY)
+        val result = invokeBridgeClickResult(selector)
+        when {
+          result == "OK" -> {
+            delay(10)
+            Response.Ok(command.id)
+          }
+          result.startsWith("DISABLED:") -> {
+            Response.Error(command.id, result.removePrefix("DISABLED:").trim())
+          }
+          result.startsWith("FAILED:") -> {
+            Response.Error(command.id, result.removePrefix("FAILED:").trim())
+          }
+          else -> {
+            val bridgeClicked = invokeBridgeClick(selector)
+            if (!bridgeClicked) {
+              performPhysicalClick(node.bounds.centerX, node.bounds.centerY)
+            }
+            delay(10)
+            Response.Ok(command.id)
+          }
         }
-        delay(10)
-        Response.Ok(command.id)
       }
 
       is Command.Input -> {
@@ -364,6 +379,24 @@ internal class WasmDriver private constructor(
         )
       }
     }
+  }
+
+  private fun invokeBridgeClickResult(selector: io.github.aryapreetam.parikshan.protocol.Selector): String {
+    val tag = selector.raw
+    val index = selector.index
+    return runCatching {
+      if (index != null) {
+        page.evaluate(
+          "([tag, index]) => (window.__parikshan_click_indexed_result ? window.__parikshan_click_indexed_result(tag, index) : null)",
+          listOf<Any>(tag, index)
+        ) as? String
+      } else {
+        page.evaluate(
+          "tag => (window.__parikshan_click_result ? window.__parikshan_click_result(tag) : null)",
+          tag
+        ) as? String
+      }
+    }.getOrNull() ?: "NO_BRIDGE"
   }
 
   private fun invokeBridgeClick(selector: io.github.aryapreetam.parikshan.protocol.Selector): Boolean {

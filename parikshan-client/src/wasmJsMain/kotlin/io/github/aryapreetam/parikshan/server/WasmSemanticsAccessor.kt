@@ -333,35 +333,61 @@ internal object WasmSemanticsAccessor {
     return null
   }
 
-  fun performClick(selector: io.github.aryapreetam.parikshan.protocol.Selector): Boolean {
-    val node = findBySelector(selector)
-    if (node != null) {
-      var current: SemanticsNode? = node
-      var textFieldAction: (() -> Boolean)? = null
-      var bestAction: (() -> Boolean)? = null
-
-      while (current != null) {
-        val action = current.config.getOrNull(SemanticsActions.OnClick)?.action
-        if (action != null) {
-          val isEditable = current.config.getOrNull(SemanticsProperties.EditableText) != null
-          if (!isEditable) {
-            bestAction = action
-            break
-          }
-          if (textFieldAction == null) {
-            textFieldAction = action
-          }
-        }
-        current = current.parent
-      }
-
-      val actionToInvoke = bestAction ?: textFieldAction
-      if (actionToInvoke != null && actionToInvoke.invoke()) {
+  private fun isNodeDisabled(node: SemanticsNode): Boolean {
+    var current: SemanticsNode? = node
+    while (current != null) {
+      if (current.config.contains(SemanticsProperties.Disabled)) {
         return true
       }
-      if (performPhysicalClick(node)) return true
+      current = current.parent
+    }
+    return false
+  }
+
+  fun performClickResult(selector: io.github.aryapreetam.parikshan.protocol.Selector): String {
+    val node = findBySelector(selector) ?: return "NOT_FOUND"
+    if (isNodeDisabled(node)) {
+      return "DISABLED: Node '${selector.raw}' is disabled"
+    }
+    var current: SemanticsNode? = node
+    var textFieldAction: (() -> Boolean)? = null
+    var bestAction: (() -> Boolean)? = null
+
+    while (current != null) {
+      if (current.config.contains(SemanticsProperties.Disabled)) {
+        return "DISABLED: Node '${selector.raw}' is disabled"
+      }
+      val action = current.config.getOrNull(SemanticsActions.OnClick)?.action
+      if (action != null) {
+        val isEditable = current.config.getOrNull(SemanticsProperties.EditableText) != null
+        if (!isEditable) {
+          bestAction = action
+          break
+        }
+        if (textFieldAction == null) {
+          textFieldAction = action
+        }
+      }
+      current = current.parent
     }
 
+    val actionToInvoke = bestAction ?: textFieldAction
+    if (actionToInvoke != null) {
+      return try {
+        if (actionToInvoke.invoke()) "OK" else "FAILED: Semantic click returned false"
+      } catch (e: Throwable) {
+        "FAILED: Semantic click failed with exception: ${e.message}"
+      }
+    }
+    return "NO_ACTION"
+  }
+
+  fun performClick(selector: io.github.aryapreetam.parikshan.protocol.Selector): Boolean {
+    val res = performClickResult(selector)
+    if (res == "OK") return true
+    if (res.startsWith("DISABLED") || res.startsWith("FAILED")) return false
+    val node = findBySelector(selector) ?: return false
+    if (performPhysicalClick(node)) return true
     return clickA11yNode(selector.raw, selector.index ?: 0)
   }
 

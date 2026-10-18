@@ -345,49 +345,55 @@ internal object WasmSemanticsAccessor {
   }
 
   fun performClickResult(selector: io.github.aryapreetam.parikshan.protocol.Selector): String {
-    val node = findBySelector(selector) ?: return "NOT_FOUND"
-    if (isNodeDisabled(node)) {
-      return "DISABLED: Node '${selector.raw}' is disabled"
-    }
-    var current: SemanticsNode? = node
-    var textFieldAction: (() -> Boolean)? = null
-    var bestAction: (() -> Boolean)? = null
-
-    while (current != null) {
-      if (current.config.contains(SemanticsProperties.Disabled)) {
+    val node = findBySelector(selector)
+    if (node != null) {
+      if (isNodeDisabled(node)) {
         return "DISABLED: Node '${selector.raw}' is disabled"
       }
-      val action = current.config.getOrNull(SemanticsActions.OnClick)?.action
-      if (action != null) {
-        val isEditable = current.config.getOrNull(SemanticsProperties.EditableText) != null
-        if (!isEditable) {
-          bestAction = action
-          break
-        }
-        if (textFieldAction == null) {
-          textFieldAction = action
-        }
-      }
-      current = current.parent
+      return "OK"
     }
-
-    val actionToInvoke = bestAction ?: textFieldAction
-    if (actionToInvoke != null) {
-      return try {
-        if (actionToInvoke.invoke()) "OK" else "FAILED: Semantic click returned false"
-      } catch (e: Throwable) {
-        "FAILED: Semantic click failed with exception: ${e.message}"
-      }
+    if (isA11yNodeDisabled(selector.raw, selector.index ?: 0)) {
+      return "DISABLED: Node '${selector.raw}' is disabled"
     }
-    return "NO_ACTION"
+    return "OK"
   }
 
   fun performClick(selector: io.github.aryapreetam.parikshan.protocol.Selector): Boolean {
-    val res = performClickResult(selector)
-    if (res == "OK") return true
-    if (res.startsWith("DISABLED") || res.startsWith("FAILED")) return false
-    val node = findBySelector(selector) ?: return false
-    if (performPhysicalClick(node)) return true
+    val node = findBySelector(selector)
+    if (node != null) {
+      if (isNodeDisabled(node)) return false
+      var current: SemanticsNode? = node
+      var textFieldAction: (() -> Boolean)? = null
+      var bestAction: (() -> Boolean)? = null
+
+      while (current != null) {
+        if (current.config.contains(SemanticsProperties.Disabled)) return false
+        val action = current.config.getOrNull(SemanticsActions.OnClick)?.action
+        if (action != null) {
+          val isEditable = current.config.getOrNull(SemanticsProperties.EditableText) != null
+          if (!isEditable) {
+            bestAction = action
+            break
+          }
+          if (textFieldAction == null) {
+            textFieldAction = action
+          }
+        }
+        current = current.parent
+      }
+
+      val actionToInvoke = bestAction ?: textFieldAction
+      if (actionToInvoke != null) {
+        val success = try {
+          actionToInvoke.invoke()
+        } catch (_: Throwable) {
+          false
+        }
+        if (success) return true
+      }
+      if (performPhysicalClick(node)) return true
+    }
+
     return clickA11yNode(selector.raw, selector.index ?: 0)
   }
 
@@ -602,6 +608,15 @@ private fun clickPendingA11yNodeJs(): Boolean = js(
         return -1;
       }
 
+      function isElDisabled(el) {
+        let p = el;
+        while (p && p !== document.body) {
+          if (p.getAttribute('aria-disabled') === 'true' || p.disabled) return true;
+          p = p.parentElement;
+        }
+        return false;
+      }
+
       function collectMatches(el, out) {
         if (!el) return;
         if (el.id !== 'cmp_a11y_root') {
@@ -616,6 +631,7 @@ private fun clickPendingA11yNodeJs(): Boolean = js(
       if (!root) return false;
       const byId = root.querySelector('#' + query.replace(/[^a-zA-Z0-9_-]/g, ''));
       if (byId && byId.id === query) {
+        if (isElDisabled(byId)) return false;
         if (byId.click) { byId.click(); return true; }
       }
       const matched = [];
@@ -626,6 +642,7 @@ private fun clickPendingA11yNodeJs(): Boolean = js(
       });
       const target = (matched[index] || matched[0] || {}).el;
       if (!target) return false;
+      if (isElDisabled(target)) return false;
       const rect = target.getBoundingClientRect();
       const x = rect.left + rect.width / 2;
       const y = rect.top + rect.height / 2;
@@ -654,6 +671,101 @@ private fun clickPendingA11yNodeJs(): Boolean = js(
       };
       target.dispatchEvent(new MouseEvent('click', base));
       return true;
+    } catch (e) {
+      return false;
+    }
+  })()
+  """
+)
+
+internal fun isA11yNodeDisabled(query: String, index: Int): Boolean {
+  ParikshanA11yGlobals.query = query
+  ParikshanA11yGlobals.index = index
+  return isPendingA11yNodeDisabledJs()
+}
+
+private fun isPendingA11yNodeDisabledJs(): Boolean = js(
+  """
+  (function() {
+    try {
+      var query = globalThis.__parikshan_a11y_query;
+      var index = globalThis.__parikshan_a11y_index || 0;
+      function findA11yRoot() {
+        function findInTree(node) {
+          if (!node) return null;
+          if (node.id === 'cmp_a11y_root') return node;
+          if (node.querySelector) {
+            const direct = node.querySelector('#cmp_a11y_root');
+            if (direct) return direct;
+          }
+          if (node.shadowRoot) {
+            const inShadow = findInTree(node.shadowRoot);
+            if (inShadow) return inShadow;
+          }
+          const children = node.children || [];
+          for (let i = 0; i < children.length; i++) {
+            const f = findInTree(children[i]);
+            if (f) return f;
+          }
+          return null;
+        }
+        return findInTree(document.body);
+      }
+      function isElDisabled(el) {
+        let p = el;
+        while (p && p !== document.body) {
+          if (p.getAttribute('aria-disabled') === 'true' || p.disabled) return true;
+          p = p.parentElement;
+        }
+        return false;
+      }
+      const root = findA11yRoot();
+      if (!root) return false;
+      const byId = root.querySelector('#' + query.replace(/[^a-zA-Z0-9_-]/g, ''));
+      if (byId && byId.id === query) {
+        return isElDisabled(byId);
+      }
+      function extractText(el) {
+        let hasElementChildren = false;
+        const ch = el.children || [];
+        for (let i = 0; i < ch.length; i++) {
+          if (ch[i].nodeType === 1) { hasElementChildren = true; break; }
+        }
+        if (!hasElementChildren) {
+          const text = el.innerText || el.textContent;
+          if (text && text.trim()) return text.trim();
+        }
+        return null;
+      }
+      function matchScore(el) {
+        const text = extractText(el);
+        if (!text) return -1;
+        const exact = text.trim() === query.trim();
+        const icExact = text.trim().toLowerCase() === query.trim().toLowerCase();
+        const contains = text.toLowerCase().includes(query.toLowerCase());
+        if (exact) return 0;
+        if (icExact) return 1;
+        if (contains) return 2;
+        return -1;
+      }
+      function collectMatches(el, out) {
+        if (!el) return;
+        if (el.id !== 'cmp_a11y_root') {
+          const score = matchScore(el);
+          if (score >= 0) out.push({ el: el, score: score, len: (extractText(el) || '').length });
+        }
+        const children = el.children || [];
+        for (let i = 0; i < children.length; i++) collectMatches(children[i], out);
+      }
+      const matched = [];
+      collectMatches(root, matched);
+      matched.sort(function(a, b) {
+        if (a.score !== b.score) return a.score - b.score;
+        return a.len - b.len;
+      });
+      const target = (matched[index] || matched[0] || {}).el;
+      if (!target) return false;
+      return isElDisabled(target);
     } catch (e) {
       return false;
     }

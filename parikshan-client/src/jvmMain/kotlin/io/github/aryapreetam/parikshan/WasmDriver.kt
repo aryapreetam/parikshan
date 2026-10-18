@@ -127,26 +127,15 @@ internal class WasmDriver private constructor(
         val node = readNodeBySelector(selector)
           ?: return Response.Error(command.id, "No node found for selector '${selector.raw}'")
         val result = invokeBridgeClickResult(selector)
-        when {
-          result == "OK" -> {
-            delay(10)
-            Response.Ok(command.id)
-          }
-          result.startsWith("DISABLED:") -> {
-            Response.Error(command.id, result.removePrefix("DISABLED:").trim())
-          }
-          result.startsWith("FAILED:") -> {
-            Response.Error(command.id, result.removePrefix("FAILED:").trim())
-          }
-          else -> {
-            val bridgeClicked = invokeBridgeClick(selector)
-            if (!bridgeClicked) {
-              performPhysicalClick(node.bounds.centerX, node.bounds.centerY)
-            }
-            delay(10)
-            Response.Ok(command.id)
-          }
+        if (result.startsWith("DISABLED:")) {
+          return Response.Error(command.id, result.removePrefix("DISABLED:").trim())
         }
+        val bridgeClicked = invokeBridgeClick(selector)
+        if (!bridgeClicked) {
+          performPhysicalClick(node.bounds.centerX, node.bounds.centerY)
+        }
+        delay(10)
+        Response.Ok(command.id)
       }
 
       is Command.Input -> {

@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import org.parikshan.issueplayground.issue10.Issue10Screen
 
@@ -21,6 +22,16 @@ val issueList = listOf(
         id = "10",
         title = "Issue #10",
         description = "iOS input() crash with NSUnknownKeyException when targeting text fields by label"
+    ),
+    IssueItem(
+        id = "24",
+        title = "Issue #24",
+        description = "Android input cannot reselect filled fields due to inconsistent text precedence"
+    ),
+    IssueItem(
+        id = "25",
+        title = "Issue #25",
+        description = "Desktop semantic click attempts to invoke disabled controls and hides callback errors"
     )
 )
 
@@ -35,18 +46,43 @@ fun App() {
                 .statusBarsPadding()
                 .safeDrawingPadding()
         ) {
-            if (selectedIssueId == "10") {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    TextButton(
-                        onClick = { selectedIssueId = null },
-                        modifier = Modifier.padding(8.dp)
-                    ) {
-                        Text("← Back to Issue Index")
+            when (selectedIssueId) {
+                "10" -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        TextButton(
+                            onClick = { selectedIssueId = null },
+                            modifier = Modifier.testTag("back_to_issue_index").padding(8.dp)
+                        ) {
+                            Text("← Back to Issue Index")
+                        }
+                        Issue10Screen()
                     }
-                    Issue10Screen()
                 }
-            } else {
-                IssueIndexLauncher(onSelectIssue = { selectedIssueId = it })
+                "24" -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        TextButton(
+                            onClick = { selectedIssueId = null },
+                            modifier = Modifier.testTag("back_to_issue_index").padding(8.dp)
+                        ) {
+                            Text("← Back to Issue Index")
+                        }
+                        org.parikshan.issueplayground.issue24.Issue24Screen()
+                    }
+                }
+                "25" -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        TextButton(
+                            onClick = { selectedIssueId = null },
+                            modifier = Modifier.testTag("back_to_issue_index").padding(8.dp)
+                        ) {
+                            Text("← Back to Issue Index")
+                        }
+                        org.parikshan.issueplayground.issue25.Issue25Screen()
+                    }
+                }
+                else -> {
+                    IssueIndexLauncher(onSelectIssue = { selectedIssueId = it })
+                }
             }
         }
     }

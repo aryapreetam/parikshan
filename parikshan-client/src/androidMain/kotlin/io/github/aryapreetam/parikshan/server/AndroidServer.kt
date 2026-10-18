@@ -322,6 +322,17 @@ object AndroidServer {
     return null
   }
 
+  private fun isNodeDisabled(node: SemanticsNode): Boolean {
+    var current: SemanticsNode? = node
+    while (current != null) {
+      if (current.config.contains(SemanticsProperties.Disabled)) {
+        return true
+      }
+      current = current.parent
+    }
+    return false
+  }
+
   private fun inputTargetFor(node: SemanticsNode): SemanticsNode? {
     var current: SemanticsNode? = node
     while (current != null) {
@@ -368,11 +379,6 @@ object AndroidServer {
     directTextOf(node) ?: descendantTextsOf(node).takeIf { it.isNotEmpty() }?.joinToString("")
 
   private fun directTextOf(node: SemanticsNode): String? {
-    val contentDescription = node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty()
-    if (contentDescription.isNotEmpty()) {
-      contentDescription.joinToString("").takeIf { it.isNotBlank() }?.let { return it }
-    }
-
     node.config.getOrNull(SemanticsProperties.EditableText)?.text
       ?.takeIf { it.isNotBlank() }
       ?.let { return it }
@@ -380,6 +386,11 @@ object AndroidServer {
     val values = node.config.getOrNull(SemanticsProperties.Text).orEmpty()
     if (values.isNotEmpty()) {
       values.joinToString("") { it.text }.takeIf { it.isNotBlank() }?.let { return it }
+    }
+
+    val contentDescription = node.config.getOrNull(SemanticsProperties.ContentDescription).orEmpty()
+    if (contentDescription.isNotEmpty()) {
+      contentDescription.joinToString("").takeIf { it.isNotBlank() }?.let { return it }
     }
 
     return null
@@ -409,6 +420,9 @@ object AndroidServer {
         val matched = resolveTargetNode(command)
           ?: return Response.Error(command.id, "No node found for selector '${selectorLabel(command)}'")
         val target = clickTargetFor(matched) ?: matched
+        if (isNodeDisabled(matched) || isNodeDisabled(target)) {
+          return Response.Error(command.id, "Node '${selectorLabel(command)}' is disabled")
+        }
         val interaction = interactionFor(target)
         try { interaction.performScrollTo() } catch (e: Throwable) { /* Ignore */ }
         try {

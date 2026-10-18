@@ -9,10 +9,14 @@ plugins {
     id("io.github.aryapreetam.parikshan") version "0.0.10"
 }
 
+val profile = providers.gradleProperty("cmpProfile").orNull ?: "1.11"
+
 kotlin {
     listOf(
         iosArm64(),
         iosSimulatorArm64()
+    ).plus(
+        if (profile == "1.10") listOf(iosX64()) else emptyList()
     ).forEach { iosTarget ->
         iosTarget.binaries.framework {
             baseName = "Shared"
@@ -60,7 +64,7 @@ kotlin {
         commonMain.dependencies {
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
-            implementation(libs.compose.material3)
+            implementation(compose.material3)
             implementation(libs.compose.ui)
             implementation(libs.compose.components.resources)
             implementation(libs.compose.uiToolingPreview)

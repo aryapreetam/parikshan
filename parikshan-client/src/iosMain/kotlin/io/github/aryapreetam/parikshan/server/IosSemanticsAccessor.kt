@@ -654,9 +654,45 @@ internal object IosSemanticsAccessor {
     return "OK"
   }
 
+  private fun isSemanticsNodeDisabled(node: SemanticsNode): Boolean {
+    var current: SemanticsNode? = node
+    while (current != null) {
+      if (current.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled)) {
+        return true
+      }
+      current = current.parent
+    }
+    return false
+  }
+
+  private fun isElementDisabled(node: Any, tag: String, text: String?): Boolean {
+    try {
+      val traits = (node as? NSObject)?.accessibilityTraits ?: 0uL
+      if ((traits and UIAccessibilityTraitNotEnabled) != 0uL) {
+        return true
+      }
+    } catch (_: Throwable) {}
+
+    try {
+      val semanticsNode = findSemanticsNode(tag, text)
+      if (semanticsNode != null && isSemanticsNodeDisabled(semanticsNode)) {
+        return true
+      }
+    } catch (_: Throwable) {}
+
+    return false
+  }
+
   fun performClickResult(tag: String, selector: Selector?): String {
     val activeSelector = selector ?: tag.takeIf { it.isNotBlank() }?.let { Selector.Auto(it) } ?: Selector.Auto("")
     val node = findNode(tag, selector) ?: return "Node not found for selector: $activeSelector"
+    val snapshot = snapshotNode(node)
+
+    val effectiveTag = tag.ifBlank { snapshot.tag }
+    if (isElementDisabled(node, effectiveTag, snapshot.text)) {
+      logDebug("Node '$activeSelector' is disabled. Rejecting click.")
+      return "Node '$activeSelector' is disabled"
+    }
 
     if (node is NSObject) {
       logDebug("Found NSObject node for selector: $activeSelector. Attempting accessibilityActivate...")
@@ -672,7 +708,6 @@ internal object IosSemanticsAccessor {
       }
     }
 
-    val snapshot = snapshotNode(node)
     return performClickAtCoordinates(snapshot.bounds.centerX, snapshot.bounds.centerY)
   }
 

@@ -220,22 +220,19 @@ private class RunningE2ETestServer(
         videoRecorder.captureNow()
         delay(120)
         
-        // Primary: Semantic Click
-        if (!semantics.performClick(sel)) {
-            // Fallback: AWT Robot (only if semantic click fails/is not supported)
-            try {
-              val robot = java.awt.Robot()
-              robot.mouseMove(node.bounds.centerX.roundToInt(), node.bounds.centerY.roundToInt())
-              robot.mousePress(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)
-              delay(50)
-              robot.mouseRelease(java.awt.event.InputEvent.BUTTON1_DOWN_MASK)
-            } catch (e: Exception) {
-              return Response.Error(command.id, "Node '${sel.raw}' is not clickable and Robot failed: ${e.message}")
-            }
+        when (val result = semantics.performClick(sel)) {
+          is ClickResult.Success -> {
+            delay(120)
+            videoRecorder.captureNow()
+            Response.Ok(command.id)
+          }
+          is ClickResult.Disabled -> {
+            Response.Error(command.id, result.message)
+          }
+          is ClickResult.Failed -> {
+            Response.Error(command.id, result.message)
+          }
         }
-        
-        videoRecorder.captureNow()
-        Response.Ok(command.id)
       }
 
       is Command.Input -> {

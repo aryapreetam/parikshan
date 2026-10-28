@@ -29,6 +29,16 @@ fun main() {
 }
 
 fun Application.module() {
+  intercept(ApplicationCallPipeline.Plugins) {
+    call.response.headers.append("Access-Control-Allow-Origin", "*")
+    call.response.headers.append("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+    call.response.headers.append("Access-Control-Allow-Headers", "*")
+    if (call.request.httpMethod == io.ktor.http.HttpMethod.Options) {
+      call.respond(HttpStatusCode.OK)
+      finish()
+    }
+  }
+
   routing {
     get("/") {
       call.respondText("Parikshan Storefront Ktor Backend Server Running", ContentType.Text.Plain)

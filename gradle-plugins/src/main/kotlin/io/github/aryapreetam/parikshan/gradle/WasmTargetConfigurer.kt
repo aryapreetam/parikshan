@@ -26,6 +26,12 @@ internal object WasmTargetConfigurer {
     val wasmOutputDirVal = wasmOutputDir
     val wasmPortFileVal = wasmPortFile
     val tokenVal = sessionToken
+    val autoDiscoveredInstances = project.discoverE2eTestInstances()
+    val autoInstStr = if (autoDiscoveredInstances.size > 1) autoDiscoveredInstances.joinToString(",") else ""
+    val optInstances = project.providers.gradleProperty("parikshan.instances")
+      .orElse(project.providers.systemProperty("parikshan.instances"))
+      .orElse(autoInstStr)
+    val rootDirVal = project.rootDir.absolutePath
 
     val startWasmTask = project.tasks.register("startParikshanWasmApp") {
       group = "verification"
@@ -39,6 +45,30 @@ internal object WasmTargetConfigurer {
         val boundPort = WasmServer.start(resolvedPort, wasmOutputDirVal)
         wasmPortFileVal.parentFile.mkdirs()
         wasmPortFileVal.writeText(boundPort.toString())
+
+        val rawInstances = optInstances.orNull
+        val instancesList = if (!rawInstances.isNullOrBlank()) {
+          rawInstances.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        } else {
+          emptyList()
+        }
+        if (instancesList.isNotEmpty()) {
+          val baseDir = wasmOutputDirVal.parentFile
+          val sessionsDir = File(baseDir, "sessions").apply { mkdirs() }
+          instancesList.forEach { instanceId ->
+            val dataDir = File(baseDir, "data/$instanceId").apply { mkdirs() }
+            val targetSession = TargetSession(
+              token = tokenVal,
+              port = boundPort,
+              timestamp = System.currentTimeMillis(),
+              instanceId = instanceId,
+              target = "wasm",
+              pid = null,
+              dataDir = dataDir.absolutePath
+            )
+            SessionStore.writeInstanceSession(sessionsDir, targetSession)
+          }
+        }
       }
     }
 
@@ -46,6 +76,18 @@ internal object WasmTargetConfigurer {
       group = "verification"
       doLast {
         WasmServer.stop()
+        val rawInstances = optInstances.orNull
+        val instancesList = if (!rawInstances.isNullOrBlank()) {
+          rawInstances.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        } else {
+          emptyList()
+        }
+        if (instancesList.isNotEmpty()) {
+          val sessionsDir = File(wasmOutputDirVal.parentFile, "sessions")
+          instancesList.forEach { instanceId ->
+            SessionStore.clearInstanceSession(sessionsDir, instanceId)
+          }
+        }
       }
     }
 
@@ -70,6 +112,12 @@ internal object WasmTargetConfigurer {
       )
       systemProperty("parikshan.target", "wasm")
       systemProperty("parikshan.token", tokenVal)
+      systemProperty("parikshan.projectRootDir", rootDirVal)
+      val instStr = optInstances.orNull
+      if (!instStr.isNullOrBlank()) {
+        systemProperty("parikshan.instances", instStr)
+        systemProperty("parikshan.sessionsDir", File(wasmOutputDirVal.parentFile, "sessions").absolutePath)
+      }
       environment("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1")
       doFirst {
         val portFile = wasmPortFileVal
@@ -147,6 +195,44 @@ internal object WasmServer {
         ex.responseHeaders.add("Content-Type", "application/json")
         ex.sendResponseHeaders(200, bytes.size.toLong())
         ex.responseBody.write(bytes)
+        ex.close()
+        return@createContext
+      }
+      if (ex.requestURI.path == "/parikshan-chat") {
+        val chatMessagesFile = File(System.getProperty("java.io.tmpdir"), "parikshan_chat/shared_chat_messages.txt")
+        ex.responseHeaders.add("Access-Control-Allow-Origin", "*")
+        ex.responseHeaders.add("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        ex.responseHeaders.add("Access-Control-Allow-Headers", "*")
+        when (ex.requestMethod.uppercase()) {
+          "OPTIONS" -> {
+            ex.sendResponseHeaders(204, -1)
+          }
+          "GET" -> {
+            val bytes = if (chatMessagesFile.exists()) chatMessagesFile.readBytes() else ByteArray(0)
+            ex.responseHeaders.add("Content-Type", "text/plain; charset=utf-8")
+            ex.sendResponseHeaders(200, bytes.size.toLong())
+            ex.responseBody.write(bytes)
+          }
+          "POST" -> {
+            val body = ex.requestBody.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            chatMessagesFile.parentFile?.mkdirs()
+            synchronized(WasmServer) {
+              chatMessagesFile.appendText(body)
+            }
+            ex.sendResponseHeaders(200, 0)
+          }
+          "DELETE" -> {
+            synchronized(WasmServer) {
+              if (chatMessagesFile.exists()) {
+                chatMessagesFile.delete()
+              }
+            }
+            ex.sendResponseHeaders(200, 0)
+          }
+          else -> {
+            ex.sendResponseHeaders(405, 0)
+          }
+        }
         ex.close()
         return@createContext
       }

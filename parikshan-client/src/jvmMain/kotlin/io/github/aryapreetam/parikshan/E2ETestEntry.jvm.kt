@@ -253,6 +253,10 @@ private fun resolveInstanceContext(name: String): Pair<String, ParikshanTestCont
   val port = explicitPort
     ?: if (name == "desktop") {
       System.getProperty("parikshan.port")?.toIntOrNull() ?: 9877
+    } else if (target == "wasm" || target == "web") {
+      System.getProperty("parikshan.wasm.port")?.toIntOrNull()
+        ?: System.getProperty("parikshan.port")?.toIntOrNull()
+        ?: 8080
     } else {
       error(
         "No session descriptor or port configuration found for actor '$name'. " +

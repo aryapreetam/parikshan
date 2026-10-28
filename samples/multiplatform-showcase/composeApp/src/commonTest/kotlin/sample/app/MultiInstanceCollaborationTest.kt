@@ -22,8 +22,8 @@ class MultiInstanceCollaborationTest {
   @Test
   fun testTwoPartyChatCollaboration() = e2eTest(listOf("alice", "bob")) { (alice, bob) ->
     // 1. Both instances navigate to the Chat Playground
-    alice.click("nav_chat_playground")
-    bob.click("nav_chat_playground")
+    alice.navigateToSection("nav_chat_playground")
+    bob.navigateToSection("nav_chat_playground")
 
     alice.assertVisible("Collaboration Chat")
     bob.assertVisible("Collaboration Chat")

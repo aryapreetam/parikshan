@@ -32,18 +32,22 @@ import kotlinx.serialization.builtins.ListSerializer
  */
 internal class WasmDriver internal constructor(
   private val sessionToken: String = System.getProperty("parikshan.token") ?: "",
-  val context: ParikshanTestContext? = null
+  val context: ParikshanTestContext? = null,
+  private val instancePage: Page? = null,
+  private val instanceContext: BrowserContext? = null
 ) : TestDriver {
 
   constructor(context: ParikshanTestContext) : this(
     sessionToken = context.sessionToken,
-    context = context
+    context = context,
+    instancePage = null,
+    instanceContext = null
   )
 
   override val targetPlatform: String = "wasm"
 
   private val page: Page
-    get() = checkNotNull(sharedPage) { "WasmDriver shared page is not initialized" }
+    get() = instancePage ?: checkNotNull(sharedPage) { "WasmDriver shared page is not initialized" }
 
   private val pickerArmed = java.util.concurrent.atomic.AtomicBoolean(false)
   private val pickerHandled = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -73,7 +77,9 @@ internal class WasmDriver internal constructor(
     command.token = sessionToken
     return runCatching {
       withContext(Dispatchers.IO) {
-        ensureActivePage(ParikshanWasmConfig.fromSystemProperties())
+        if (instancePage == null) {
+          ensureActivePage(ParikshanWasmConfig.fromSystemProperties())
+        }
         handleCommand(command)
       }
     }.getOrElse { throwable ->
@@ -82,12 +88,35 @@ internal class WasmDriver internal constructor(
   }
 
   override suspend fun close() {
-    // Shared browser across tests. JVM shutdown hook will close it.
+    if (instanceContext != null) {
+      withContext(Dispatchers.IO) {
+        runCatching { instancePage?.close() }
+        runCatching { instanceContext.close() }
+        markWasmSessionClosed(context?.instanceId)
+      }
+    }
   }
 
   override suspend fun relaunchApp() {
     withContext(Dispatchers.IO) {
       val config = ParikshanWasmConfig.fromSystemProperties()
+      if (instancePage != null) {
+        if (instancePage.isClosed) return@withContext
+        runCatching {
+          instancePage.evaluate("() => { sessionStorage.clear(); localStorage.clear(); }")
+          val baseUrl = config.appUrl.trimEnd('/')
+          val separator = if (baseUrl.contains("?")) "&" else "?"
+          val token = sessionToken.ifBlank { System.getProperty("parikshan.token") ?: "" }
+          val instId = context?.instanceId ?: "wasm"
+          instancePage.navigate("$baseUrl${separator}parikshan_instance=$instId&parikshan_token=$token")
+          instancePage.waitForFunction(
+            "() => typeof window.__parikshan_getTreeJson === 'function'",
+            null,
+            Page.WaitForFunctionOptions().setTimeout(config.bridgeReadyTimeoutMs.toDouble())
+          )
+        }
+        return@withContext
+      }
       connectMutex.withLock {
         val p = sharedPage ?: return@withLock
         if (p.isClosed) return@withLock
@@ -281,8 +310,8 @@ internal class WasmDriver internal constructor(
                 delay(videoConfig.postRollMs)
               }
 
-              val videoObj = runCatching { sharedPage?.video() }.getOrNull()
-              runCatching { sharedPage?.close() }
+              val videoObj = runCatching { page.video() }.getOrNull()
+              runCatching { page.close() }
 
               // Poll for the file to exist and have size > 0
               var rawVideoPath: Path? = null
@@ -627,11 +656,17 @@ internal class WasmDriver internal constructor(
     private var sharedBrowser: Browser? = null
     private var sharedContext: BrowserContext? = null
     private var sharedPage: Page? = null
+    private val multiInstanceContexts = java.util.concurrent.ConcurrentHashMap<String, BrowserContext>()
+    private val instanceIndices = java.util.concurrent.ConcurrentHashMap<String, Int>()
     @Volatile
     private var lastRequestedVideoPath: String? = null
     private var playwrightTempDir: Path? = null
     @Volatile
     private var activeContext: ParikshanTestContext? = null
+
+    private fun getOrCreateInstanceIndex(instanceId: String): Int {
+      return instanceIndices.computeIfAbsent(instanceId) { instanceIndices.size }
+    }
 
     private fun isKeepAliveEnabled(): Boolean =
       System.getProperty("parikshan.keepAlive") == "true" || System.getenv("PARIKSHAN_KEEP_ALIVE") == "true"
@@ -662,10 +697,16 @@ internal class WasmDriver internal constructor(
           System.err.println("WasmVideo: Could not get Video object from Page.")
         }
 
+        multiInstanceContexts.values.forEach { runCatching { it.close() } }
+        multiInstanceContexts.clear()
+        instanceIndices.clear()
+
         // Close in order to finalize video
         if (!isKeepAliveEnabled()) {
           runCatching { sharedPage?.close() }
           runCatching { sharedContext?.close() }
+          runCatching { sharedBrowser?.close() }
+          runCatching { sharedPlaywright?.close() }
         }
         
         val rawVideoPath = runCatching { videoObj?.path() }.getOrNull()
@@ -1001,21 +1042,141 @@ internal class WasmDriver internal constructor(
       }
     }
 
+    private fun ensureBrowserRunning(config: ParikshanWasmConfig) {
+      if (sharedBrowser?.isConnected == true && sharedPlaywright != null) return
+      val playwright = sharedPlaywright ?: Playwright.create().also { sharedPlaywright = it }
+      val chromiumArgs = getChromiumArgs(config).filterNot { it.startsWith("--app=") }
+      val launchOptions = BrowserType.LaunchOptions()
+        .setHeadless(config.headless)
+        .setArgs(chromiumArgs)
+      sharedBrowser = playwright.chromium().launch(launchOptions)
+    }
+
     suspend fun connect(
       config: ParikshanWasmConfig = ParikshanWasmConfig.fromSystemProperties(),
       context: ParikshanTestContext? = null
     ): WasmDriver = connectMutex.withLock {
-      activeContext = context
-      val windowPos = context?.windowPosition
-      val effectiveConfig = if (windowPos != null) {
-        config.copy(windowX = windowPos.first, windowY = windowPos.second)
-      } else {
-        config
+      val isMultiInstance = context != null && context.instanceId.isNotBlank() && context.instanceId != "wasm"
+      if (!isMultiInstance) {
+        activeContext = context
+        val windowPos = context?.windowPosition
+        val effectiveConfig = if (windowPos != null) {
+          config.copy(windowX = windowPos.first, windowY = windowPos.second)
+        } else {
+          config
+        }
+        ensureActivePageInternal(effectiveConfig)
+        return WasmDriver(
+          sessionToken = context?.sessionToken ?: (System.getProperty("parikshan.token") ?: ""),
+          context = context
+        )
       }
-      ensureActivePageInternal(effectiveConfig)
+
+      // Multi-instance actor isolated context
+      ensureBrowserRunning(config)
+      val browser = checkNotNull(sharedBrowser) { "Shared browser must be initialized for multi-instance Wasm" }
+
+      val videoConfig = ParikshanVideoConfig.fromSystemProperties()
+      val contextOptions = Browser.NewContextOptions()
+      if (config.appMode) {
+        contextOptions.setViewportSize(config.viewportWidth, config.viewportHeight - 28)
+      } else {
+        contextOptions.setViewportSize(config.viewportWidth, config.viewportHeight)
+      }
+
+      if (videoConfig.enabled) {
+        val tempDir = playwrightTempDir ?: Files.createTempDirectory("parikshan-wasm-video").also { playwrightTempDir = it }
+        contextOptions.setRecordVideoDir(tempDir)
+        if (videoConfig.videoWidth != null && videoConfig.videoHeight != null) {
+          contextOptions.setRecordVideoSize(videoConfig.videoWidth, videoConfig.videoHeight)
+        } else {
+          contextOptions.setRecordVideoSize(config.viewportWidth, config.viewportHeight)
+        }
+        videoConfig.deviceScaleFactor?.let { contextOptions.setDeviceScaleFactor(it) }
+      }
+
+      val actorContext = browser.newContext(contextOptions)
+      actorContext.addInitScript(PARIKSHAN_UTILS_INIT_SCRIPT)
+      multiInstanceContexts[context.instanceId] = actorContext
+
+      val actorPage = actorContext.newPage()
+      actorPage.onConsoleMessage { msg ->
+        val target = if (msg.type() == "error") System.err else System.out
+        target.println("Wasm Console [${context.instanceId}] [${msg.type()}]: ${msg.text()} at ${msg.location()}")
+      }
+      actorPage.onClose { markWasmSessionClosed(context.instanceId) }
+
+      val instanceIndex = getOrCreateInstanceIndex(context.instanceId)
+      val windowX = (config.windowX ?: 10) + (instanceIndex * (config.viewportWidth + 20))
+      val windowY = config.windowY ?: 50
+
+      fun applyActorViewport() {
+        runCatching {
+          if (config.appMode) {
+            actorPage.setViewportSize(config.viewportWidth, config.viewportHeight - 28)
+            actorPage.evaluate("() => { window.resizeTo(${config.viewportWidth}, ${config.viewportHeight}); }")
+          } else if (!config.headless) {
+            val cdp = actorContext.newCDPSession(actorPage)
+            try {
+              val windowInfo = cdp.send("Browser.getWindowForTarget")
+              val windowId = windowInfo?.get("windowId")?.asInt
+              if (windowId != null) {
+                val bounds = JsonObject().apply {
+                  addProperty("left", windowX)
+                  addProperty("top", windowY)
+                  addProperty("width", config.viewportWidth)
+                  addProperty("height", config.viewportHeight)
+                  addProperty("windowState", "normal")
+                }
+                val params = JsonObject().apply {
+                  addProperty("windowId", windowId)
+                  add("bounds", bounds)
+                }
+                cdp.send("Browser.setWindowBounds", params)
+              }
+            } finally {
+              cdp.detach()
+            }
+          }
+        }
+      }
+
+      applyActorViewport()
+
+      val baseUrl = config.appUrl.trimEnd('/')
+      val separator = if (baseUrl.contains("?")) "&" else "?"
+      val token = context.sessionToken.ifBlank { System.getProperty("parikshan.token") ?: "" }
+      val targetUrl = "$baseUrl${separator}parikshan_instance=${context.instanceId}&parikshan_token=$token"
+
+      var navSuccess = false
+      for (attempt in 1..5) {
+        val res = runCatching { actorPage.navigate(targetUrl) }
+        if (res.isSuccess) {
+          navSuccess = true
+          break
+        }
+        Thread.sleep(300)
+      }
+      if (!navSuccess) {
+        actorPage.navigate(targetUrl)
+      }
+
+      applyActorViewport()
+      runCatching { actorPage.bringToFront() }
+
+      actorPage.waitForFunction(
+        "() => typeof window.__parikshan_getTreeJson === 'function'",
+        null,
+        Page.WaitForFunctionOptions().setTimeout(config.bridgeReadyTimeoutMs.toDouble())
+      )
+
+      markWasmSessionActive(context.instanceId, context.port, token)
+
       return WasmDriver(
-        sessionToken = context?.sessionToken ?: (System.getProperty("parikshan.token") ?: ""),
-        context = context
+        sessionToken = token,
+        context = context,
+        instancePage = actorPage,
+        instanceContext = actorContext
       )
     }
 
@@ -1055,7 +1216,11 @@ internal class WasmDriver internal constructor(
      * Writes session state properties to `build/parikshan/wasm-session.properties`
      * and actor-keyed descriptor in `build/parikshan/sessions/{instanceId}.json`.
      */
-    private fun markWasmSessionActive() {
+    private fun markWasmSessionActive(
+      instanceId: String = activeContext?.instanceId ?: "wasm",
+      explicitPort: Int? = null,
+      explicitToken: String? = null
+    ) {
       runCatching {
         val projectRootDirProp = System.getProperty("parikshan.projectRootDir")
         val baseDir = if (!projectRootDirProp.isNullOrBlank()) {
@@ -1067,9 +1232,8 @@ internal class WasmDriver internal constructor(
         File(baseDir, "wasm-session.properties").writeText("status=active\ntimestamp=${System.currentTimeMillis()}\n")
 
         val ctx = activeContext
-        val instanceId = ctx?.instanceId ?: "wasm"
-        val port = ctx?.port ?: 9876
-        val token = ctx?.sessionToken ?: (System.getProperty("parikshan.token") ?: "")
+        val port = explicitPort ?: ctx?.port ?: 9876
+        val token = explicitToken ?: ctx?.sessionToken ?: (System.getProperty("parikshan.token") ?: "")
         val sessionsDir = File(baseDir, "sessions")
         sessionsDir.mkdirs()
         val sessionJson = """{"instanceId":"$instanceId","target":"wasm","port":$port,"sessionToken":"$token","timestamp":${System.currentTimeMillis()}}"""
@@ -1081,7 +1245,7 @@ internal class WasmDriver internal constructor(
      * Writes session state properties to `build/parikshan/wasm-session.properties`
      * and clears actor-keyed descriptor in `build/parikshan/sessions/{instanceId}.json`.
      */
-    private fun markWasmSessionClosed() {
+    private fun markWasmSessionClosed(instanceId: String? = null) {
       runCatching {
         val projectRootDirProp = System.getProperty("parikshan.projectRootDir")
         val baseDir = if (!projectRootDirProp.isNullOrBlank()) {
@@ -1090,13 +1254,14 @@ internal class WasmDriver internal constructor(
           File(System.getProperty("user.dir"), "build/parikshan")
         }
         baseDir.mkdirs()
-        File(baseDir, "wasm-session.properties").writeText("status=closed\ntimestamp=${System.currentTimeMillis()}\n")
-
-        val ctx = activeContext
-        val instanceId = ctx?.instanceId ?: "wasm"
-        val sessionFile = File(baseDir, "sessions/$instanceId.json")
+        val id = instanceId ?: activeContext?.instanceId ?: "wasm"
+        val sessionFile = File(baseDir, "sessions/$id.json")
         if (sessionFile.exists()) {
           sessionFile.delete()
+        }
+        val remainingSessions = File(baseDir, "sessions").listFiles()?.filter { it.extension == "json" } ?: emptyList()
+        if (remainingSessions.isEmpty()) {
+          File(baseDir, "wasm-session.properties").writeText("status=closed\ntimestamp=${System.currentTimeMillis()}\n")
         }
       }
     }

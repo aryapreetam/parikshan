@@ -784,12 +784,46 @@ abstract class E2ETestTask : DefaultTask() {
 
         val activeToken = if (canReuse && session != null) session.token else token.get()
 
+        val rawInstances = instances.ifBlank {
+          providers.gradleProperty("parikshan.instances").orNull
+            ?: providers.systemProperty("parikshan.instances").orNull
+            ?: autoDiscoveredInstances.getOrElse(emptyList()).joinToString(",")
+        }
+        val instanceList = if (rawInstances.isNotBlank()) {
+          rawInstances.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        } else {
+          emptyList()
+        }
+        val isMultiInstance = instanceList.size > 1 || (instanceList.size == 1 && instanceList.first() != "wasm")
+
+        val sessionsDir = File(buildDir.get().asFile, "parikshan/sessions")
+        if (isMultiInstance) {
+          logger.lifecycle("Parikshan [wasm]: Setting up multi-instance cluster for: $instanceList")
+          instanceList.forEach { instanceId ->
+            val dataDir = File(buildDir.get().asFile, "parikshan/data/$instanceId").apply { mkdirs() }
+            val targetSession = TargetSession(
+              token = activeToken,
+              port = resolvedPort,
+              timestamp = System.currentTimeMillis(),
+              instanceId = instanceId,
+              target = "wasm",
+              pid = null,
+              dataDir = dataDir.absolutePath
+            )
+            SessionStore.writeInstanceSession(sessionsDir, targetSession)
+          }
+        }
+
         val systemProps = mutableMapOf(
           "parikshan.target" to "wasm",
           "parikshan.token" to activeToken,
           "parikshan.wasm.url" to "http://127.0.0.1:$resolvedPort",
           "parikshan.projectRootDir" to projectRootDir.get()
         )
+        if (isMultiInstance) {
+          systemProps["parikshan.instances"] = instanceList.joinToString(",")
+          systemProps["parikshan.sessionsDir"] = sessionsDir.absolutePath
+        }
         val isAppModeActive = appMode || (layout == "side-by-side")
         systemProps["parikshan.wasm.appMode"] = isAppModeActive.toString()
         val resolvedWasmSize = parseSize(wasmWindowSize.takeIf { it.isNotBlank() } ?: windowSize) ?: Pair(800, 600)
@@ -807,7 +841,8 @@ abstract class E2ETestTask : DefaultTask() {
           systemProps["parikshan.wasm.windowX"] = resolvedWasmPos.first.toString()
           systemProps["parikshan.wasm.windowY"] = resolvedWasmPos.second.toString()
         }
-        logger.lifecycle("Parikshan [wasm]: Running test suite across ${classes.size} classes in single browser window...")
+        val windowMsg = if (isMultiInstance) "multi-instance cluster: $instanceList" else "single browser window"
+        logger.lifecycle("Parikshan [wasm]: Running test suite across ${classes.size} classes in $windowMsg...")
         val exitCode = spawnTestJvmForClasses(
           target = "wasm",
           testClasses = classes,
@@ -818,6 +853,11 @@ abstract class E2ETestTask : DefaultTask() {
           classes.forEach { testClass ->
             printTestFailures("wasm", testClass)
           }
+          if (isMultiInstance) {
+            instanceList.forEach { instanceId ->
+              SessionStore.clearInstanceSession(sessionsDir, instanceId)
+            }
+          }
           if (!keepAlive) {
             WasmServer.stop()
             clearSession("wasm")
@@ -825,6 +865,11 @@ abstract class E2ETestTask : DefaultTask() {
           return createTargetResult("wasm", false, classes, "Test class execution failed (exit code $exitCode). Check logs at build/parikshan/logs/wasm-*.log")
         }
 
+        if (isMultiInstance) {
+          instanceList.forEach { instanceId ->
+            SessionStore.clearInstanceSession(sessionsDir, instanceId)
+          }
+        }
         if (!keepAlive) {
           WasmServer.stop()
           clearSession("wasm")

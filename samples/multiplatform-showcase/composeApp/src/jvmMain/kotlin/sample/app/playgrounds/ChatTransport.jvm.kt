@@ -4,13 +4,7 @@ import java.io.File
 
 actual object ChatTransport {
   private fun resolveChatFile(): File {
-    val dataDirProp = System.getProperty("parikshan.data.dir")
-    val dir = if (!dataDirProp.isNullOrBlank()) {
-      val dataDir = File(dataDirProp)
-      dataDir.parentFile ?: dataDir
-    } else {
-      File(System.getProperty("java.io.tmpdir"), "parikshan_chat")
-    }
+    val dir = File(System.getProperty("java.io.tmpdir"), "parikshan_chat")
     dir.mkdirs()
     return File(dir, "shared_chat_messages.txt")
   }

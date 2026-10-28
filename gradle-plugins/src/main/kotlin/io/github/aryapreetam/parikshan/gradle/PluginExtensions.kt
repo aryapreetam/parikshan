@@ -354,9 +354,59 @@ private fun discoverE2eTestClassesInFile(file: File): List<String> {
     .toList()
 }
 
+internal fun Project.discoverE2eTestInstances(): List<String> {
+  val dirsToCheck = mutableListOf<File>()
+  val hasKmp = pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform")
+  if (hasKmp) {
+    dirsToCheck.add(layout.projectDirectory.dir("src/commonTest/kotlin").asFile)
+  } else {
+    dirsToCheck.add(layout.projectDirectory.dir("src/test/java").asFile)
+    dirsToCheck.add(layout.projectDirectory.dir("src/test/kotlin").asFile)
+  }
+
+  return dirsToCheck
+    .filter { it.exists() }
+    .flatMap { dir ->
+      dir.walkTopDown()
+        .filter { it.isFile && (it.extension == "kt" || it.extension == "java") }
+        .flatMap { file -> discoverE2eTestInstancesInFile(file).asSequence() }
+        .toList()
+    }
+    .distinct()
+    .sorted()
+}
+
+internal fun discoverE2eTestInstancesInFile(file: File): List<String> {
+  val source = file.readText()
+  val instances = mutableListOf<String>()
+
+  // 1. Matches e2eTest(listOf("alice", "bob")) or e2eTest(instances = listOf("alice", "bob"))
+  val listOfRegex = Regex("""(?<!\w)e2eTest\s*\(\s*(?:instances\s*=\s*)?listOf\s*\(([^)]+)\)""", RegexOption.DOT_MATCHES_ALL)
+  listOfRegex.findAll(source).forEach { match ->
+    val inner = match.groupValues[1]
+    STRING_LITERAL_REGEX.findAll(inner).forEach { strMatch ->
+      val actor = strMatch.groupValues[1].trim()
+      if (actor.isNotEmpty()) instances.add(actor)
+    }
+  }
+
+  // 2. Matches e2eTest("alice", "bob") or e2eTest("alice")
+  val varargRegex = Regex("""(?<!\w)e2eTest\s*\(\s*("[\w-]+"(?:\s*,\s*[\r\n\s]*"[\w-]+")*)""", RegexOption.DOT_MATCHES_ALL)
+  varargRegex.findAll(source).forEach { match ->
+    val inner = match.groupValues[1]
+    STRING_LITERAL_REGEX.findAll(inner).forEach { strMatch ->
+      val actor = strMatch.groupValues[1].trim()
+      if (actor.isNotEmpty()) instances.add(actor)
+    }
+  }
+
+  return instances.distinct()
+}
+
 private val PACKAGE_REGEX = Regex("""\bpackage\s+([a-zA-Z_][a-zA-Z0-9_.]*)""")
 private val CLASS_OR_OBJECT_REGEX = Regex("""\b(?:class|object)\s+([a-zA-Z_][a-zA-Z0-9_]*)""")
 private val E2E_TEST_INVOCATION_REGEX = Regex("""(?<!\w)e2eTest\s*(?:\(|\{)""")
+private val STRING_LITERAL_REGEX = Regex(""""([^"\r\n]+)"""")
 
 private fun String.findMatchingBrace(openIndex: Int): Int {
   var depth = 0

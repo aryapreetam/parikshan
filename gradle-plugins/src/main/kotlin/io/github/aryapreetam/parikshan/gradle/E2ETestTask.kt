@@ -53,6 +53,10 @@ abstract class E2ETestTask : DefaultTask() {
   var layout: String = "default"
 
   @get:Input
+  @set:Option(option = "instances", description = "Comma-separated list of multi-instance actors to launch and control (e.g. alice,bob)")
+  var instances: String = ""
+
+  @get:Input
   @set:Option(option = "window-size", description = "Global window width and height override (format: <width>x<height>, e.g. 360x800)")
   var windowSize: String = ""
 
@@ -188,6 +192,9 @@ abstract class E2ETestTask : DefaultTask() {
 
   @get:Input
   abstract val e2eTestClasses: ListProperty<String>
+
+  @get:Input
+  abstract val autoDiscoveredInstances: ListProperty<String>
 
   @get:Input
   abstract val host: Property<String>
@@ -579,6 +586,18 @@ abstract class E2ETestTask : DefaultTask() {
             System.clearProperty("parikshan.desktop.windowY")
           }
 
+          val rawInstances = instances.ifBlank {
+            providers.gradleProperty("parikshan.instances").orNull
+              ?: providers.systemProperty("parikshan.instances").orNull
+              ?: autoDiscoveredInstances.getOrElse(emptyList()).joinToString(",")
+          }
+          val instanceList = if (rawInstances.isNotBlank()) {
+            rawInstances.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+          } else {
+            emptyList()
+          }
+          val isMultiInstance = instanceList.size > 1 || (instanceList.size == 1 && instanceList.first() != "desktop")
+
           val jarFile = appJarFile.orNull?.asFile
           val resolvedPort = if (canReuse && session != null) {
             logger.lifecycle("Parikshan [$target]: Keeping active instance alive (skipping build/launch).")
@@ -599,34 +618,75 @@ abstract class E2ETestTask : DefaultTask() {
               logger = logger
             )
             if (jarFile != null) {
-              DesktopProcess.start(
-                jar = jarFile,
-                token = token.get(),
-                logFile = File(buildDir.get().asFile, "parikshan/${target}-app-logs.log"),
-                manifestFile = desktopLaunchManifestFile.get().asFile,
-                appArgs = appArgs.get(),
-                host = host.get(),
-                port = port,
-                timeoutMs = 15000L,
-                pollMs = 250L,
-                title = title.orNull,
-                background = true
-              )
-              writeSession(target, TargetSession(token.get(), port, System.currentTimeMillis()))
+              if (isMultiInstance) {
+                logger.lifecycle("Parikshan [$target]: Spawning multi-instance cluster for: $instanceList")
+                val launched = DesktopProcessManager.launchInstances(
+                  jarFile = jarFile,
+                  instances = instanceList,
+                  baseOutputDir = File(buildDir.get().asFile, "parikshan"),
+                  preferredWindowWidth = size?.first ?: 800,
+                  preferredWindowHeight = size?.second ?: 700,
+                  appArgs = appArgs.get(),
+                  host = host.get(),
+                  timeoutMs = 15000L,
+                  pollMs = 250L,
+                  titlePrefix = title.orNull,
+                  background = true
+                )
+                if (launched.isNotEmpty()) {
+                  val primary = launched.first()
+                  writeSession(target, TargetSession(primary.token, primary.port, System.currentTimeMillis()))
+                }
+              } else {
+                DesktopProcess.start(
+                  jar = jarFile,
+                  token = token.get(),
+                  logFile = File(buildDir.get().asFile, "parikshan/${target}-app-logs.log"),
+                  manifestFile = desktopLaunchManifestFile.get().asFile,
+                  appArgs = appArgs.get(),
+                  host = host.get(),
+                  port = port,
+                  timeoutMs = 15000L,
+                  pollMs = 250L,
+                  title = title.orNull,
+                  background = true
+                )
+                writeSession(target, TargetSession(token.get(), port, System.currentTimeMillis()))
+              }
             } else {
               logger.lifecycle("Parikshan [$target]: No application JAR was provided. Skipping application startup; running tests against an external or manually-started instance.")
             }
             port
           }
 
-          val activeToken = if (canReuse && session != null) session.token else token.get()
+          val activePort = if (isMultiInstance && jarFile != null) {
+            val sessionsDir = File(buildDir.get().asFile, "parikshan/sessions")
+            val primarySession = instanceList.firstOrNull()?.let { SessionStore.readInstanceSession(sessionsDir, it) }
+            primarySession?.port ?: resolvedPort
+          } else {
+            resolvedPort
+          }
+          val activeToken = if (canReuse && session != null) session.token else {
+            if (isMultiInstance && jarFile != null) {
+              val sessionsDir = File(buildDir.get().asFile, "parikshan/sessions")
+              val primarySession = instanceList.firstOrNull()?.let { SessionStore.readInstanceSession(sessionsDir, it) }
+              primarySession?.token ?: token.get()
+            } else {
+              token.get()
+            }
+          }
           val systemProps = mutableMapOf(
             "parikshan.target" to target,
             "parikshan.host" to host.get(),
-            "parikshan.port" to resolvedPort.toString(),
+            "parikshan.port" to activePort.toString(),
             "parikshan.token" to activeToken,
-            "parikshan.desktop.launchManifest" to desktopLaunchManifestFile.get().asFile.absolutePath
+            "parikshan.desktop.launchManifest" to desktopLaunchManifestFile.get().asFile.absolutePath,
+            "parikshan.projectRootDir" to projectRootDir.get()
           )
+          if (isMultiInstance) {
+            systemProps["parikshan.instances"] = instanceList.joinToString(",")
+            systemProps["parikshan.sessionsDir"] = File(buildDir.get().asFile, "parikshan/sessions").absolutePath
+          }
           System.getProperty("parikshan.desktop.windowX")?.let { systemProps["parikshan.desktop.windowX"] = it }
           System.getProperty("parikshan.desktop.windowY")?.let { systemProps["parikshan.desktop.windowY"] = it }
           System.getProperty("parikshan.desktop.windowWidth")?.let { systemProps["parikshan.desktop.windowWidth"] = it }
@@ -646,12 +706,16 @@ abstract class E2ETestTask : DefaultTask() {
               printTestFailures(target, testClass)
             }
             if (!keepAlive) {
-              DesktopProcess.stop(
-                host = host.get(),
-                port = resolvedPort,
-                token = activeToken,
-                manifestFile = desktopLaunchManifestFile.get().asFile
-              )
+              if (isMultiInstance) {
+                DesktopProcessManager.stopAll(baseOutputDir = File(buildDir.get().asFile, "parikshan"), host = host.get())
+              } else {
+                DesktopProcess.stop(
+                  host = host.get(),
+                  port = resolvedPort,
+                  token = activeToken,
+                  manifestFile = desktopLaunchManifestFile.get().asFile
+                )
+              }
               clearSession("desktop")
             }
             return createTargetResult("desktop", false, classes, "Test class execution failed (exit code $exitCode). Check logs at build/parikshan/logs/desktop-*.log")
@@ -670,12 +734,16 @@ abstract class E2ETestTask : DefaultTask() {
             }
           } else {
             if (jarFile != null) {
-              DesktopProcess.stop(
-                host = host.get(),
-                port = resolvedPort,
-                token = activeToken,
-                manifestFile = desktopLaunchManifestFile.get().asFile
-              )
+              if (isMultiInstance) {
+                DesktopProcessManager.stopAll(baseOutputDir = File(buildDir.get().asFile, "parikshan"), host = host.get())
+              } else {
+                DesktopProcess.stop(
+                  host = host.get(),
+                  port = resolvedPort,
+                  token = activeToken,
+                  manifestFile = desktopLaunchManifestFile.get().asFile
+                )
+              }
               clearSession(target)
             }
           }
@@ -2468,6 +2536,7 @@ abstract class E2ETestTask : DefaultTask() {
           writeSession("desktop", TargetSession(desktopToken, desktopPort, System.currentTimeMillis()))
         }
       } else {
+        DesktopProcessManager.stopAll(baseOutputDir = File(buildDir.get().asFile, "parikshan"), host = host.get())
         DesktopProcess.stop(
           host = host.get(),
           port = desktopPort,

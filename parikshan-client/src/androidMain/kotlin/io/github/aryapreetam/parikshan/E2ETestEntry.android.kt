@@ -71,7 +71,7 @@ actual fun e2eTest(
 actual fun e2eTest(
   instances: List<String>,
   config: E2ETestConfig,
-  block: suspend E2EMultiInstanceScope.() -> Unit
+  block: suspend E2EMultiInstanceScope.(E2EMultiInstanceScope) -> Unit
 ) {
   error("Multi-instance Parikshan E2E tests run via the JVM test runner. Use ./gradlew e2eTest")
 }

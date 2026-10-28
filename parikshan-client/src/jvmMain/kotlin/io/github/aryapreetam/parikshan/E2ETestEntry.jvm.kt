@@ -134,7 +134,7 @@ actual fun e2eTest(
 actual fun e2eTest(
   instances: List<String>,
   config: E2ETestConfig,
-  block: suspend E2EMultiInstanceScope.() -> Unit
+  block: suspend E2EMultiInstanceScope.(E2EMultiInstanceScope) -> Unit
 ) {
   require(instances.isNotEmpty()) { "Multi-instance E2E test requires at least one instance identifier" }
   require(instances.distinct().size == instances.size) {
@@ -181,7 +181,7 @@ actual fun e2eTest(
       e2eTest(
         drivers = drivers,
         config = effectiveConfig,
-        block = block
+        block = { this.block(this) }
       )
     } finally {
       drivers.forEach { (name, driver) ->
@@ -211,6 +211,10 @@ private data class InstanceSessionDescriptor(
 )
 
 private fun resolveSessionDirectory(): java.io.File {
+  val sessionsDirProp = System.getProperty("parikshan.sessionsDir")
+  if (!sessionsDirProp.isNullOrBlank()) {
+    return java.io.File(sessionsDirProp)
+  }
   val projectRootDirProp = System.getProperty("parikshan.projectRootDir")
   val baseDir = if (!projectRootDirProp.isNullOrBlank()) {
     java.io.File(projectRootDirProp, "build/parikshan")
@@ -245,9 +249,17 @@ private fun resolveInstanceContext(name: String): Pair<String, ParikshanTestCont
   val host = System.getProperty("parikshan.instance.$name.host")
     ?: System.getProperty("parikshan.host")
     ?: "127.0.0.1"
-  val port = System.getProperty("parikshan.instance.$name.port")?.toIntOrNull()
-    ?: System.getProperty("parikshan.port")?.toIntOrNull()
-    ?: if (target.lowercase() == "desktop") PortAllocator.allocate() else 9877
+  val explicitPort = System.getProperty("parikshan.instance.$name.port")?.toIntOrNull()
+  val port = explicitPort
+    ?: if (name == "desktop") {
+      System.getProperty("parikshan.port")?.toIntOrNull() ?: 9877
+    } else {
+      error(
+        "No session descriptor or port configuration found for actor '$name'. " +
+          "Expected session descriptor at '${instanceFile.absolutePath}' or system property 'parikshan.instance.$name.port'. " +
+          "Ensure the multi-instance cluster was launched via '--instances' or 'parikshan.instances'."
+      )
+    }
   val token = System.getProperty("parikshan.instance.$name.token")
     ?: System.getProperty("parikshan.token")
     ?: ""

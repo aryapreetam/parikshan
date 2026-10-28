@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -188,15 +189,32 @@ private fun ProductFeedScreen(
         Text("Logged in as ${uiState.userEmail ?: "Guest"}", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
       }
 
-      val itemCount = uiState.cart.sumOf { it.quantity }
-      if (itemCount > 0) {
-        Button(
-          onClick = { onAction(StorefrontUserAction.ProceedToCheckout) },
-          modifier = Modifier.testTag("checkout_button")
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(
+          onClick = { onAction(StorefrontUserAction.RefreshCatalog) },
+          modifier = Modifier.testTag("refresh_catalog_button")
         ) {
-          Icon(Icons.Default.ShoppingCart, contentDescription = "Cart", modifier = Modifier.size(18.dp))
-          Spacer(modifier = Modifier.width(6.dp))
-          Text("Checkout ($itemCount)", fontWeight = FontWeight.Bold)
+          Icon(Icons.Default.Refresh, contentDescription = "Refresh Catalog")
+        }
+
+        TextButton(
+          onClick = { onAction(StorefrontUserAction.SignOut) },
+          modifier = Modifier.testTag("storefront_sign_out_button")
+        ) {
+          Text("Sign Out")
+        }
+
+        val itemCount = uiState.cart.sumOf { it.quantity }
+        if (itemCount > 0) {
+          Spacer(modifier = Modifier.width(4.dp))
+          Button(
+            onClick = { onAction(StorefrontUserAction.ProceedToCheckout) },
+            modifier = Modifier.testTag("checkout_button")
+          ) {
+            Icon(Icons.Default.ShoppingCart, contentDescription = "Cart", modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Checkout ($itemCount)", fontWeight = FontWeight.Bold)
+          }
         }
       }
     }
@@ -240,7 +258,20 @@ private fun ProductCard(
         }
       }
 
-      Text(text = "$${product.price}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Text(text = "$${product.price}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+        if (product.stock <= 0) {
+          Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.errorContainer) {
+            Text(text = "Out of Stock", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp).testTag("out_of_stock_badge_${product.id}"))
+          }
+        } else {
+          Text(text = "Stock: ${product.stock}", style = MaterialTheme.typography.labelMedium, color = Color.Gray, modifier = Modifier.testTag("stock_text_${product.id}"))
+        }
+      }
 
       Row(
         modifier = Modifier.fillMaxWidth(),
@@ -255,9 +286,10 @@ private fun ProductCard(
 
         Button(
           onClick = onAddToCart,
+          enabled = product.stock > 0,
           modifier = Modifier.weight(1f).testTag("add_to_cart_button_${product.id}")
         ) {
-          Text("Add to Cart")
+          Text(if (product.stock > 0) "Add to Cart" else "Out of Stock")
         }
       }
     }
@@ -319,9 +351,10 @@ private fun ProductDetailsBottomSheet(
 
       Button(
         onClick = onAddToCart,
+        enabled = product.stock > 0,
         modifier = Modifier.fillMaxWidth().height(44.dp).testTag("details_add_to_cart_button")
       ) {
-        Text("Add to Cart", fontWeight = FontWeight.Bold)
+        Text(if (product.stock > 0) "Add to Cart" else "Out of Stock", fontWeight = FontWeight.Bold)
       }
     }
   }

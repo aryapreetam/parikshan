@@ -9,7 +9,8 @@ data class Product(
   val price: Double,
   val description: String,
   val tags: List<String>,
-  val rating: Double
+  val rating: Double,
+  val stock: Int = 10
 )
 
 data class CartItem(
@@ -52,9 +53,11 @@ sealed interface StorefrontUserAction {
   data class ToggleGiftWrap(val giftWrap: Boolean) : StorefrontUserAction
   data class AddToCart(val product: Product) : StorefrontUserAction
   data object ProceedToCheckout : StorefrontUserAction
+  data object RefreshCatalog : StorefrontUserAction
 
   data class AddSignaturePoint(val point: Offset) : StorefrontUserAction
   data object ClearSignature : StorefrontUserAction
   data object ConfirmCheckout : StorefrontUserAction
   data object ResetFlow : StorefrontUserAction
+  data object SignOut : StorefrontUserAction
 }

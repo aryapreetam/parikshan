@@ -465,6 +465,7 @@ class ParikshanPlugin : Plugin<Project> {
         }
         junitConsoleJars.setFrom(junitConsoleConfig.incoming.files)
         this.e2eTestClasses.set(e2eTestClasses)
+        this.autoDiscoveredInstances.set(project.discoverE2eTestInstances())
         this.projectPath.set(project.path)
         this.host.set(extension.host)
         this.originalDesktopPort.set(extension.port)

@@ -43,6 +43,7 @@ class StorefrontViewModel(
       is StorefrontUserAction.ProceedToCheckout -> {
         _uiState.update { it.copy(step = StorefrontStep.CHECKOUT) }
       }
+      is StorefrontUserAction.RefreshCatalog -> refreshCatalog()
       is StorefrontUserAction.AddSignaturePoint -> {
         _uiState.update { it.copy(signaturePoints = it.signaturePoints + action.point) }
       }
@@ -51,6 +52,18 @@ class StorefrontViewModel(
       }
       is StorefrontUserAction.ConfirmCheckout -> confirmCheckout()
       is StorefrontUserAction.ResetFlow -> resetFlow()
+      is StorefrontUserAction.SignOut -> {
+        _uiState.value = StorefrontUiState()
+      }
+    }
+  }
+
+  fun refreshCatalog() {
+    scope.launch {
+      val productsResult = repository.fetchProducts().getOrDefault(emptyList())
+      _uiState.update {
+        it.copy(products = productsResult)
+      }
     }
   }
 

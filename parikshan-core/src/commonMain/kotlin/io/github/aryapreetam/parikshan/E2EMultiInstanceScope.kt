@@ -100,4 +100,10 @@ class E2EMultiInstanceScope(
       }.awaitAll()
     }
   }
+
+  operator fun component1(): E2ETestScope = instances.values.elementAt(0)
+  operator fun component2(): E2ETestScope = instances.values.elementAt(1)
+  operator fun component3(): E2ETestScope = instances.values.elementAt(2)
+  operator fun component4(): E2ETestScope = instances.values.elementAt(3)
+  operator fun component5(): E2ETestScope = instances.values.elementAt(4)
 }

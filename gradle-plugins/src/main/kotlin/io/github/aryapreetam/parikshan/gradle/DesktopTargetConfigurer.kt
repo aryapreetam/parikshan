@@ -63,6 +63,11 @@ internal object DesktopTargetConfigurer {
       .orElse(optWindowSize)
     val optDesktopPos = project.providers.gradleProperty("parikshan.desktop.windowPosition")
       .orElse(project.providers.systemProperty("parikshan.desktop.windowPosition"))
+    val autoDiscoveredInstances = project.discoverE2eTestInstances()
+    val autoInstStr = if (autoDiscoveredInstances.size > 1) autoDiscoveredInstances.joinToString(",") else ""
+    val optInstances = project.providers.gradleProperty("parikshan.instances")
+      .orElse(project.providers.systemProperty("parikshan.instances"))
+      .orElse(autoInstStr)
 
     val startDesktopTask = project.tasks.register(startTaskName) {
       group = "verification"
@@ -95,25 +100,69 @@ internal object DesktopTargetConfigurer {
           System.setProperty("parikshan.desktop.windowY", pos.second.toString())
         }
 
-        DesktopProcess.start(
-          jar = jar,
-          token = tokenVal,
-          logFile = File(buildDirVal, "parikshan/${targetName.lowercase()}-app.log"),
-          manifestFile = manifestFileVal,
-          appArgs = appArgsVal,
-          host = hostVal,
-          port = resolvedPort,
-          timeoutMs = startupTimeoutMsVal,
-          pollMs = startupPollIntervalMsVal,
-          title = titleVal,
-          background = isBackgroundRequested
-        )
+        val rawInstances = optInstances.orNull
+        val instancesList = if (!rawInstances.isNullOrBlank()) {
+          rawInstances.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        } else {
+          emptyList()
+        }
+
+        if (instancesList.size > 1 || (instancesList.size == 1 && instancesList.first() != "desktop")) {
+          logger.lifecycle("Parikshan: Launching multi-instance desktop cluster for instances: $instancesList")
+          val launched = DesktopProcessManager.launchInstances(
+            jarFile = jar,
+            instances = instancesList,
+            baseOutputDir = File(buildDirVal, "parikshan"),
+            preferredWindowWidth = size?.first ?: 800,
+            preferredWindowHeight = size?.second ?: 700,
+            appArgs = appArgsVal,
+            host = hostVal,
+            timeoutMs = startupTimeoutMsVal,
+            pollMs = startupPollIntervalMsVal,
+            titlePrefix = titleVal,
+            background = isBackgroundRequested
+          )
+          if (launched.isNotEmpty()) {
+            val primary = launched.first()
+            val javaExecutable = System.getProperty("java.home") + "/bin/java"
+            val mainClass = java.util.jar.JarFile(jar).manifest?.mainAttributes?.getValue("Main-Class") ?: ""
+            DesktopProcess.writeLaunchManifest(
+              manifestFile = manifestFileVal,
+              pid = primary.process.pid(),
+              javaExecutable = javaExecutable,
+              jar = jar,
+              appMainClass = mainClass,
+              token = primary.token,
+              logFile = File(buildDirVal, "parikshan/logs/desktop-${primary.instanceId}.log"),
+              appArgs = appArgsVal,
+              host = hostVal,
+              port = primary.port,
+              title = titleVal,
+              background = isBackgroundRequested
+            )
+          }
+        } else {
+          DesktopProcess.start(
+            jar = jar,
+            token = tokenVal,
+            logFile = File(buildDirVal, "parikshan/${targetName.lowercase()}-app.log"),
+            manifestFile = manifestFileVal,
+            appArgs = appArgsVal,
+            host = hostVal,
+            port = resolvedPort,
+            timeoutMs = startupTimeoutMsVal,
+            pollMs = startupPollIntervalMsVal,
+            title = titleVal,
+            background = isBackgroundRequested
+          )
+        }
       }
     }
 
     project.tasks.register(stopTaskName) {
       group = "verification"
       doLast {
+        DesktopProcessManager.stopAll(baseOutputDir = File(buildDirVal, "parikshan"), host = hostVal)
         DesktopProcess.stop(
           host = hostVal,
           port = portVal,
@@ -150,6 +199,10 @@ internal object DesktopTargetConfigurer {
         val port = if (manifest.exists()) {
           val props = Properties()
           runCatching { manifest.inputStream().use { props.load(it) } }
+          val pToken = props.getProperty("token")
+          if (!pToken.isNullOrBlank()) {
+            systemProperty("parikshan.token", pToken)
+          }
           props.getProperty("port") ?: portVal.toString()
         } else {
           portVal.toString()
@@ -175,6 +228,12 @@ internal object DesktopTargetConfigurer {
       systemProperty("parikshan.desktop.launchManifest", manifestFileVal.absolutePath)
       val videosDir = project.layout.buildDirectory.dir("parikshan/videos/$targetName").get().asFile.absolutePath
       systemProperty("parikshan.video.outputDir", videosDir)
+      systemProperty("parikshan.projectRootDir", project.rootDir.absolutePath)
+      val instStr = optInstances.orNull
+      if (!instStr.isNullOrBlank()) {
+        systemProperty("parikshan.instances", instStr)
+        systemProperty("parikshan.sessionsDir", File(buildDirVal, "parikshan/sessions").absolutePath)
+      }
       if (isBackgroundRequested) {
         systemProperty("parikshan.background", "true")
       }
@@ -196,6 +255,14 @@ internal object DesktopTargetConfigurer {
       val granularity = project.findProperty("parikshan.video.granularity")?.toString()
       if (!granularity.isNullOrBlank()) {
         systemProperty("parikshan.video.granularity", granularity)
+      }
+    }
+
+    if (capitalizedTarget == "Jvm" && project.tasks.findByName("e2eDesktopTest") == null) {
+      project.tasks.register("e2eDesktopTest") {
+        group = "verification"
+        description = "Runs E2E tests on Desktop target (alias for $e2eTaskName)."
+        dependsOn(e2eTaskName)
       }
     }
   }
@@ -321,7 +388,7 @@ internal object DesktopProcess {
     return ProcessHandle.of(pid).map { it.isAlive }.orElse(false)
   }
 
-  private fun writeLaunchManifest(
+  internal fun writeLaunchManifest(
     manifestFile: File,
     pid: Long,
     javaExecutable: String,

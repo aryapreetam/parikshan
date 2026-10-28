@@ -57,24 +57,25 @@ expect fun e2eTest(
 expect fun e2eTest(
   instances: List<String>,
   config: E2ETestConfig = E2ETestConfig(),
-  block: suspend E2EMultiInstanceScope.() -> Unit
+  block: suspend E2EMultiInstanceScope.(E2EMultiInstanceScope) -> Unit
 )
 
 /**
  * Executes a multi-instance end-to-end test across named application actors (vararg overload).
  *
- * @param instances Variable number of unique instance identifiers (e.g. `"alice"`, `"bob"`).
+ * @param firstInstance The first unique instance identifier.
+ * @param otherInstances Additional unique instance identifiers.
  * @param config Optional [E2ETestConfig] to customize timeouts, screenshot behavior, and step delays.
  * @param block Suspending test execution block with multi-instance handle access.
  */
 fun e2eTest(
-  vararg instances: String,
+  firstInstance: String,
+  vararg otherInstances: String,
   config: E2ETestConfig = E2ETestConfig(),
-  block: suspend E2EMultiInstanceScope.() -> Unit
+  block: suspend E2EMultiInstanceScope.(E2EMultiInstanceScope) -> Unit
 ) {
-  e2eTest(instances = instances.toList(), config = config, block = block)
+  e2eTest(instances = listOf(firstInstance, *otherInstances), config = config, block = block)
 }
-
 
 /**
  * Extension entrypoint for test classes implementing [E2ETestLifecycle].
@@ -131,16 +132,18 @@ fun E2ETestLifecycle.e2eTest(
 fun E2ETestLifecycle.e2eTest(
   instances: List<String>,
   config: E2ETestConfig = E2ETestConfig(),
-  block: suspend E2EMultiInstanceScope.() -> Unit
+  block: suspend E2EMultiInstanceScope.(E2EMultiInstanceScope) -> Unit
 ) {
   io.github.aryapreetam.parikshan.e2eTest(instances = instances, config = config, block = block)
 }
 
 fun E2ETestLifecycle.e2eTest(
-  vararg instances: String,
+  firstInstance: String,
+  vararg otherInstances: String,
   config: E2ETestConfig = E2ETestConfig(),
-  block: suspend E2EMultiInstanceScope.() -> Unit
+  block: suspend E2EMultiInstanceScope.(E2EMultiInstanceScope) -> Unit
 ) {
-  e2eTest(instances = instances.toList(), config = config, block = block)
+  e2eTest(instances = listOf(firstInstance, *otherInstances), config = config, block = block)
 }
+
 

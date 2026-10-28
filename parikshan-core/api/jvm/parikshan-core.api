@@ -6,6 +6,11 @@ public abstract interface annotation class io/github/aryapreetam/parikshan/Befor
 
 public final class io/github/aryapreetam/parikshan/E2EMultiInstanceScope {
 	public fun <init> (Ljava/util/Map;)V
+	public final fun component1 ()Lio/github/aryapreetam/parikshan/E2ETestScope;
+	public final fun component2 ()Lio/github/aryapreetam/parikshan/E2ETestScope;
+	public final fun component3 ()Lio/github/aryapreetam/parikshan/E2ETestScope;
+	public final fun component4 ()Lio/github/aryapreetam/parikshan/E2ETestScope;
+	public final fun component5 ()Lio/github/aryapreetam/parikshan/E2ETestScope;
 	public final fun get (Ljava/lang/String;)Lio/github/aryapreetam/parikshan/E2ETestScope;
 	public final fun getInstanceNames ()Ljava/util/Set;
 	public final fun getSize ()I

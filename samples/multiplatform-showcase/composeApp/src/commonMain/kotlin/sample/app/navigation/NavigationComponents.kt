@@ -42,6 +42,7 @@ fun SidebarNavigation(
     NavigationItemButton("A11y & Semantics", SampleScreen.AccessibilityPlayground, activeScreen, onScreenSelected, "nav_accessibility_playground")
     NavigationItemButton("Selector Parity", SampleScreen.SelectorParityPlayground, activeScreen, onScreenSelected, "nav_selector_parity_playground")
     NavigationItemButton("File Picker", SampleScreen.FilePickerPlayground, activeScreen, onScreenSelected, "nav_file_picker_playground")
+    NavigationItemButton("Collaboration Chat", SampleScreen.ChatPlayground, activeScreen, onScreenSelected, "nav_chat_playground")
   }
 }
 

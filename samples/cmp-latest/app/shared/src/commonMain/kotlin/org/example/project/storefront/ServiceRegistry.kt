@@ -60,12 +60,13 @@ class StorefrontApi(private val clientProvider: () -> HttpClient?) {
     }
   }
 
-  suspend fun submitOrder(signature: String, items: List<CartItem>): String {
+   suspend fun submitOrder(signature: String, items: List<CartItem>): String {
     val client = try { clientProvider() } catch (e: Throwable) { null }
     if (client == null) return "ORD-" + (1000..9999).random()
     return try {
+      val productIds = items.joinToString(",") { it.product.id }
       val response = client.post("$baseUrl/orders") {
-        setBody("""{"signature":"$signature","itemsCount":${items.size}}""")
+        setBody("""{"signature":"$signature","itemsCount":${items.size},"productIds":"$productIds"}""")
       }.bodyAsText()
       extractField(response, "orderId") ?: ("ORD-" + (1000..9999).random())
     } catch (e: Throwable) {
@@ -83,6 +84,7 @@ class StorefrontApi(private val clientProvider: () -> HttpClient?) {
       val category = extractField(block, "category") ?: "Electronics"
       val priceStr = extractNumberField(block, "price") ?: "99.99"
       val desc = extractField(block, "description") ?: "High quality item."
+      val stock = extractNumberField(block, "stock")?.toIntOrNull() ?: 10
       val price = priceStr.toDoubleOrNull() ?: 99.99
       products.add(
         Product(
@@ -92,7 +94,8 @@ class StorefrontApi(private val clientProvider: () -> HttpClient?) {
           price = price,
           description = desc,
           tags = listOf("Popular", category),
-          rating = 4.7
+          rating = 4.7,
+          stock = stock
         )
       )
     }

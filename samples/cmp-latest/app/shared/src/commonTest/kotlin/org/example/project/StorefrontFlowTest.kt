@@ -5,63 +5,24 @@ import io.github.aryapreetam.parikshan.E2ETestScope
 import io.github.aryapreetam.parikshan.e2eTest
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.protocol.atIndex
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.mock.MockEngine
-import io.ktor.client.engine.mock.respond
-import io.ktor.http.HttpHeaders
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.headersOf
 import org.example.project.storefront.ServiceRegistry
 import kotlinx.coroutines.delay
-import kotlin.test.BeforeTest
+import kotlin.test.AfterTest
 import kotlin.test.Test
 
 class StorefrontFlowTest : E2ETestLifecycle {
 
-  @kotlin.test.AfterTest
+  @AfterTest
   fun cleanupState() {
-    // Reset test environment state after each execution
-    ServiceRegistry.resetForTesting()
-  }
-
-  @BeforeTest
-  fun setupMocking() {
-    val mockEngine = MockEngine { request ->
-      when {
-        request.url.encodedPath.contains("/products") -> respond(
-          content = """[
-            {"id":"p1","title":"Wireless Noise-Canceling Headphones","category":"Electronics","price":199.99,"description":"Premium over-ear headphones with active noise cancellation.","tags":["Audio","Wireless","Premium"],"rating":4.8},
-            {"id":"p2","title":"Ergonomic Mechanical Keyboard","category":"Electronics","price":129.50,"description":"Custom RGB mechanical keyboard with tactile switches.","tags":["Peripheral","Office"],"rating":4.7},
-            {"id":"p3","title":"Smart Fitness Watch","category":"Wearables","price":149.00,"description":"Track workouts, heart rate, and sleep quality.","tags":["Fitness","Health"],"rating":4.5}
-          ]""",
-          status = HttpStatusCode.OK,
-          headers = headersOf(HttpHeaders.ContentType, "application/json")
-        )
-        request.url.encodedPath.contains("/login") -> respond(
-          content = """{"status":"success","user":{"email":"alex@example.com"}}""",
-          status = HttpStatusCode.OK,
-          headers = headersOf(HttpHeaders.ContentType, "application/json")
-        )
-        request.url.encodedPath.contains("/orders") -> respond(
-          content = """{"status":"success","orderId":"ORD-8821"}""",
-          status = HttpStatusCode.OK,
-          headers = headersOf(HttpHeaders.ContentType, "application/json")
-        )
-        else -> respond(
-          content = """{"status":"ok"}""",
-          status = HttpStatusCode.OK,
-          headers = headersOf(HttpHeaders.ContentType, "application/json")
-        )
-      }
-    }
-
-    val testClient = HttpClient(mockEngine)
-    ServiceRegistry.registerHttpClient(testClient)
     ServiceRegistry.resetForTesting()
   }
 
   @Test
   fun testCompleteStorefrontE2EFlow() = e2eTest {
+    if (hasVisibleNode("storefront_sign_out_button")) {
+      click("storefront_sign_out_button")
+    }
+
     // 1. Auth Screen Validation & Login
     assertVisible("Customer Sign In")
     assertVisible("Sign In")
@@ -111,6 +72,9 @@ class StorefrontFlowTest : E2ETestLifecycle {
     // Reset flow back to products catalog
     click(Selector.Tag("back_to_products_button"))
     assertVisible("Storefront Catalog")
+    if (hasVisibleNode("storefront_sign_out_button")) {
+      click("storefront_sign_out_button")
+    }
   }
 
   private suspend fun E2ETestScope.drawCursiveHiSignature(canvasTag: String) {

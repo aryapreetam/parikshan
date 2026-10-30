@@ -1,0 +1,153 @@
+# Parikshan
+
+> End-to-End (E2E) UI testing framework for Compose Multiplatform applications across Desktop (JVM), Web (Wasm), Android, and iOS. Write intent-based UI tests once in Kotlin, execute them across physical targets, and inspect unified HTML reports and video recordings.
+
+---
+
+## 1. Core Architecture & Mental Model
+
+* **Intent-Based DSL**: Tests interact with UI elements using high-level user intents (`click`, `input`, `assertVisible`, `assertText`, `scrollUntilVisible`) rather than target-specific platform drivers.
+* **Platform Isolation**: Tests reside in `src/commonTest/kotlin` as pure Kotlin Multiplatform code. Never import platform-specific packages (`java.io.*`, `java.lang.System`, `android.util.*`) in common test code.
+* **Non-Invasive**: Production application code does not bundle testing frameworks, test harnesses, or mock drivers in production builds.
+
+---
+
+## 2. Selector Resolution Hierarchy
+
+When an intent function accepts a `selector: String` (e.g., `click("login_button")`), the resolution engine matches in the following strict order:
+1. **Explicit Compose Test Tag**: Matches `Modifier.testTag("tag")`.
+2. **Exact Visible Text**: Matches the full visible text of buttons, labels, or input fields.
+3. **Visible Substring / Content Description**: Matches partial visible text or accessibility content description (`Modifier.semantics { contentDescription = "..." }`).
+
+For explicit matching, use typed selectors:
+* `Selector.Tag("my_tag")`
+* `Selector.Text("Exact Text")`
+* `Selector.ContentDescription("Description")`
+
+---
+
+## 3. Test Authoring Patterns
+
+### A. Standard Single-Actor Test
+Used for typical single-user flows running across any target platform:
+
+```kotlin
+package sample.app
+
+import io.github.aryapreetam.parikshan.e2eTest
+import kotlin.test.Test
+
+class LoginFlowTest {
+  @Test
+  fun testUserLogin() = e2eTest {
+    input("username_input", "test_user")
+    input("password_input", "secret123")
+    click("login_button")
+    assertVisible("Welcome back, test_user!")
+  }
+}
+```
+
+### B. Multi-Instance Testing (Same Target, Multiple Windows/Tabs)
+Used when testing peer-to-peer interactions between multiple users on the same platform (spawns 2 Desktop windows or 2 isolated Web browser contexts):
+
+```kotlin
+@Test
+fun testChatCollaboration() = e2eTest(listOf("alice", "bob")) { (alice, bob) ->
+  alice.input("chat_input", "Hello Bob!")
+  alice.click("send_button")
+
+  bob.assertVisible("alice: Hello Bob!")
+  bob.input("chat_input", "Hey Alice, received!")
+  bob.click("send_button")
+
+  alice.assertVisible("bob: Hey Alice, received!")
+}
+```
+
+### C. Multi-Target Testing (Cross-Platform Actors)
+Used when Alice runs on Desktop (JVM) while Bob runs on Web (Wasm) interacting across a shared backend:
+
+```kotlin
+@Test
+fun testDesktopToWebCollaboration() = e2eTest(
+  instances = mapOf("alice" to Target.Desktop, "bob" to Target.Wasm)
+) { (alice, bob) ->
+  alice.input("chat_input", "Message from Desktop")
+  alice.click("send_button")
+
+  bob.assertVisible("alice: Message from Desktop")
+}
+```
+
+### D. Native File Picker Automation
+Automates modal OS file dialogs and browser file upload inputs without blocking the UI thread:
+
+```kotlin
+@Test
+fun testDocumentUpload() = e2eTest {
+  withFilePicker("document.pdf") {
+    click("upload_file_button")
+  }
+  assertVisible("document.pdf uploaded successfully")
+}
+```
+
+---
+
+## 4. Test Selection Decision Matrix
+
+| Requirement | Recommended Declaration | Execution Command |
+| :--- | :--- | :--- |
+| Single user flow / screen verification | `e2eTest { ... }` | `./gradlew e2eDesktopTest` (or `e2eWasmTest`, `e2eAndroidTest`, `e2eIosTest`) |
+| Run single user flow on all targets | `e2eTest { ... }` | `./gradlew e2eTest --targets=desktop,wasm,android,ios` |
+| Visual UI parity check across viewports | `e2eTest { ... }` | `./gradlew e2eTest --targets=jvm,wasm --sync` |
+| Two users on Desktop or two tabs on Web | `e2eTest(listOf("alice", "bob")) { (alice, bob) -> ... }` | `./gradlew e2eDesktopTest` or `./gradlew e2eWasmTest` |
+| One user on Desktop and one on Web | `e2eTest(instances = mapOf("alice" to Target.Desktop, "bob" to Target.Wasm))` | `./gradlew e2eTest --targets=jvm,wasm` |
+| Native file upload / attachment | `withFilePicker("file.ext") { ... }` | Any target test task |
+
+---
+
+## 5. Gradle Command-Line Options
+
+```bash
+# Target Selection
+--targets=desktop,wasm,android,ios   # Select physical targets to execute
+
+# Layout & Sizing (Desktop & Web)
+--layout=side-by-side                # Auto-tile Desktop and Web viewports side-by-side
+--window-size=360x720                # Set viewport dimensions (Width x Height)
+--desktop-window-position=X,Y        # Screen coordinates for primary Desktop window
+--wasm-window-position=X,Y           # Screen coordinates for Web browser window
+--app-mode                           # Launch Web browser without browser navigation chrome
+
+# Execution Modes
+--sync                               # Lockstep barrier synchronization across active targets
+--watch                              # Re-run matching tests on source file save
+--video                              # Capture MP4 video recordings of test runs
+--step-delay=500                     # Delay in milliseconds between intent steps
+```
+
+---
+
+## 6. Guardrails for AI Agents
+
+1. **Deterministic Sequential Flows**: Multi-actor tests should execute sequentially (`alice.input(...) -> bob.assertVisible(...)`) unless testing true concurrency.
+2. **Never Fabricate Targets**: Only use physical targets (`Target.Desktop`, `Target.Wasm`, `Target.Android`, `Target.Ios`).
+3. **No Thread Sleep**: Use `waitFor("element_tag")` or built-in auto-waiting on `click` / `assertVisible` instead of `Thread.sleep` or `delay`.
+4. **Scope Isolation**: Single-actor tests use `E2ETestScope`. Multi-actor tests receive `E2EMultiInstanceScope` with destructured `Actor` instances.
+
+---
+
+## 7. Documentation Index
+
+* [Quickstart Guide](getting-started/quickstart.md): Applying the Gradle plugin and writing your first test.
+* [Capabilities Matrix](features/index.md): Feature matrix across Desktop, Wasm, Android, and iOS.
+* [Multi-Instance Testing](features/multi-instance.md): Tiled Desktop processes, ephemeral ports, and Playwright context isolation.
+* [Multi-Target Testing](features/multi-target.md): Orchestrating actors across platforms, method filtering, and target guards.
+* [File Picker Automation](features/file-picker.md): Non-blocking native file dialog interception.
+* [Synchronized Execution](features/synchronized-execution.md): Lockstep multi-target broadcasting with `--sync`.
+* [Window Layout & Sizing](features/window-layout.md): Geometry, positioning, and side-by-side layouts.
+* [Continuous Watch Mode](features/watch-mode.md): Active test-driven development loop.
+* [Test Reports & Video](features/test-reports.md): MP4 recordings, screenshots, and HTML reports.
+* [API Reference](https://aryapreetam.github.io/parikshan/api/): Full Dokka API documentation.

@@ -69,6 +69,8 @@ nav:
       - Architecture & Security: reference/architecture.md
   - Features:
       - Capabilities Matrix: features/index.md
+      - Multi-Instance Testing: features/multi-instance.md
+      - Multi-Target Testing: features/multi-target.md
       - File Picker Automation: features/file-picker.md
       - Synchronized Execution (--sync): features/synchronized-execution.md
       - Window Layout & Sizing (JVM & Wasm): features/window-layout.md

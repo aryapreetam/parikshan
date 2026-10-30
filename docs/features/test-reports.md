@@ -1,12 +1,12 @@
 # Test Reports & Video Recording
 
-Parikshan automatically aggregates test execution outputs into unified HTML reports and JUnit XML logs across all targets.
+Parikshan automatically aggregates test execution outputs into unified HTML reports and JUnit XML logs across all target platforms.
 
 ---
 
 ## Report Directory & Output Structure
 
-When executing `./gradlew e2eTest` or target-specific tasks (`e2eDesktopTest`, `e2eWasmTest`, `e2eAndroidTest`, `e2eIosTest`), reports are output to:
+When executing `./gradlew e2eTest` or target-specific tasks (`e2eDesktopTest`, `e2eWasmTest`, `e2eAndroidTest`, `e2eIosTest`), reports are generated in the module build directory:
 
 ```text
 <module>/build/reports/tests/e2eTest/index.html
@@ -35,8 +35,18 @@ The generated HTML report includes execution durations, target breakdowns, failu
 
 ![Test Results Target Breakdown](../assets/test-results-with-target.png)
 
-### Failure Screenshots & Video Embedding
+---
 
-When video recording is enabled, the report embeds MP4 video links directly alongside failure screenshots for rapid triage.
+## Failure Screenshots & Video Embedding
+
+When video recording is enabled with `--video`, the report embeds MP4 video links directly alongside failure screenshots for rapid triage.
 
 ![Report with Video Links](../assets/report-with-video-links.png)
+
+```bash
+# Enable video recording across active targets
+./gradlew e2eTest --video
+
+# Configure recording granularity
+./gradlew e2eTest --video --granularity=class
+```

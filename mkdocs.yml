@@ -66,22 +66,28 @@ nav:
   - Getting Started:
       - Installation: getting-started/installation.md
       - Quickstart: getting-started/quickstart.md
-  - Examples: examples.md
-  - Test Reports: reports/test-reports.md
-  - CLI Options: configuration/cli-options.md
-  - CI Integration: configuration/ci.md
-  - Plugins: advanced/plugins.md
-  - Roadmap: roadmap.md
+      - Architecture & Security: reference/architecture.md
+  - Features:
+      - Capabilities Matrix: features/index.md
+      - Synchronized Execution (--sync): features/synchronized-execution.md
+      - Window Layout & Sizing (JVM & Wasm): features/window-layout.md
+      - Continuous Watch Mode: features/watch-mode.md
+      - Video Recording & Reports: features/test-reports.md
   - User Guides:
       - Compose Multiplatform (KMP):
           - Your First Test: guides/your-first-test.md
           - Testing Forms & Inputs: guides/forms-and-inputs.md
       - Standalone Android: guides/first-test-android.md
+  - Configuration & CI:
+      - CLI Options: configuration/cli-options.md
+      - CI Integration: configuration/ci.md
+      - Gradle Plugin Options: advanced/plugins.md
+  - Examples: examples.md
   - Blog:
       - blog/index.md
   - Reference:
       - API Overview: reference/api-overview.md
-      - Architecture & Security: reference/architecture.md
       - API Reference: https://aryapreetam.github.io/parikshan/api/
       - FAQ: getting-started/faq.md
       - Known Limitations: getting-started/known-limitations.md
+      - Roadmap: roadmap.md

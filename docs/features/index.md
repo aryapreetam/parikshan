@@ -11,6 +11,7 @@ The following table outlines platform capabilities available in Parikshan:
 | Capability | Desktop (JVM) | Web (Wasm) | Android | iOS |
 | :--- | :---: | :---: | :---: | :---: |
 | **[Core Intent DSL](../getting-started/quickstart.md)** | Supported | Supported | Supported | Supported |
+| **[File Picker Automation](file-picker.md)** | Supported | Supported | Supported | Supported |
 | **[Synchronized Lockstep (`--sync`)](synchronized-execution.md)** | Supported | Supported | Supported | Supported |
 | **[Window Layout & Sizing](window-layout.md)** | Supported | Supported | Fixed Viewport | Fixed Viewport |
 | **[Continuous Watch Mode (`--watch`)](watch-mode.md)** | Supported | Supported | Planned | Planned |
@@ -22,6 +23,9 @@ The following table outlines platform capabilities available in Parikshan:
 
 ### [Unified Intent DSL](../getting-started/quickstart.md)
 Write UI tests in Kotlin using clean, high-level intents (`click`, `input`, `assertVisible`, `scrollUntilVisible`) that execute identically across all target platforms without target-specific selectors or boilerplate.
+
+### [File Picker Automation](file-picker.md)
+Automate native OS dialogs and browser file choosers using `withFilePicker` and `withFilePickerCancel` without blocking the application UI thread.
 
 ### [Synchronized Execution (`--sync`)](synchronized-execution.md)
 Run multiple platform targets in lockstep barrier synchronization. Every action is dispatched simultaneously across active targets, allowing side-by-side visual comparison of UI transitions and layouts.

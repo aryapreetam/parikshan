@@ -69,6 +69,7 @@ nav:
       - Architecture & Security: reference/architecture.md
   - Features:
       - Capabilities Matrix: features/index.md
+      - File Picker Automation: features/file-picker.md
       - Synchronized Execution (--sync): features/synchronized-execution.md
       - Window Layout & Sizing (JVM & Wasm): features/window-layout.md
       - Continuous Watch Mode: features/watch-mode.md

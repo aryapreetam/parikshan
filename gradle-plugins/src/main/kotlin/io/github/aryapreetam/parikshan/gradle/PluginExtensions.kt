@@ -400,7 +400,226 @@ internal fun discoverE2eTestInstancesInFile(file: File): List<String> {
     }
   }
 
+  // 3. Matches e2eTest(mapOf("alice" to Target.Desktop, ...)) or e2eTest(instances = mapOf(...))
+  val mapOfRegex = Regex("""(?<!\w)e2eTest\s*\(\s*(?:instances\s*=\s*)?mapOf\s*\(([^)]+)\)""", RegexOption.DOT_MATCHES_ALL)
+  mapOfRegex.findAll(source).forEach { match ->
+    val inner = match.groupValues[1]
+    STRING_LITERAL_REGEX.findAll(inner).forEach { strMatch ->
+      val actor = strMatch.groupValues[1].trim()
+      if (actor.isNotEmpty()) instances.add(actor)
+    }
+  }
+
   return instances.distinct()
+}
+
+internal fun discoverE2eTestInstanceTargetsInFile(file: File): Map<String, String> {
+  val source = file.readText()
+  val map = mutableMapOf<String, String>()
+
+  val mapEntryRegex = Regex(""""([\w-]+)"\s+to\s+Target\.(\w+)""")
+  mapEntryRegex.findAll(source).forEach { match ->
+    val actor = match.groupValues[1].trim()
+    val target = match.groupValues[2].trim().lowercase()
+    if (actor.isNotEmpty() && target.isNotEmpty()) {
+      map[actor] = when (target) {
+        "jvm" -> "desktop"
+        "web" -> "wasm"
+        else -> target
+      }
+    }
+  }
+  return map
+}
+
+internal fun discoverMultiTargetTestMethodsInFile(file: File): List<String> {
+  val source = file.readText()
+  val targetMap = discoverE2eTestInstanceTargetsInFile(file)
+  if (targetMap.values.distinct().size <= 1) return emptyList()
+
+  val pkg = PACKAGE_REGEX.find(source)?.groupValues?.get(1)
+  val result = mutableListOf<String>()
+
+  val testAnnotationRegex = Regex("""@(?:[a-zA-Z0-9_.]+\.)?Test\b""")
+  val classMatches = CLASS_OR_OBJECT_REGEX.findAll(source).toList()
+
+  classMatches.forEach { classMatch ->
+    val className = classMatch.groupValues[1]
+    val fullClassName = if (pkg != null) "$pkg.$className" else className
+    val classStartIndex = classMatch.range.first
+    val classOpenBrace = source.indexOf('{', classStartIndex)
+    if (classOpenBrace == -1) return@forEach
+    val classEndIndex = source.findMatchingBrace(classOpenBrace)
+
+    val classSource = if (classEndIndex > classOpenBrace) {
+      source.substring(classOpenBrace, classEndIndex)
+    } else {
+      source.substring(classOpenBrace)
+    }
+
+    val classTestMatches = testAnnotationRegex.findAll(classSource).toList()
+    classTestMatches.forEachIndexed { i, match ->
+      val start = match.range.first
+      val end = if (i + 1 < classTestMatches.size) {
+        classTestMatches[i + 1].range.first
+      } else {
+        classSource.length
+      }
+      val methodChunk = classSource.substring(start, end)
+      val funNameMatch = Regex("""\bfun\s+([a-zA-Z0-9_]+)""").find(methodChunk)
+      if (funNameMatch != null) {
+        val methodName = funNameMatch.groupValues[1]
+        val methodTargets = mutableMapOf<String, String>()
+        val mapEntryRegex = Regex(""""([\w-]+)"\s+to\s+Target\.(\w+)""")
+        mapEntryRegex.findAll(methodChunk).forEach { m ->
+          val actor = m.groupValues[1].trim()
+          val target = m.groupValues[2].trim().lowercase()
+          if (actor.isNotEmpty() && target.isNotEmpty()) {
+            methodTargets[actor] = when (target) {
+              "jvm" -> "desktop"
+              "web" -> "wasm"
+              else -> target
+            }
+          }
+        }
+        if (methodTargets.values.distinct().size > 1) {
+          result.add("$fullClassName#$methodName")
+        }
+      }
+    }
+  }
+
+  return result.distinct()
+}
+
+internal fun discoverMultiTargetTestClassesInFile(file: File): List<String> {
+  return discoverMultiTargetTestMethodsInFile(file).map { it.substringBefore('#') }.distinct()
+}
+
+internal fun Project.discoverMultiTargetTestClasses(): List<String> {
+  val dirsToCheck = mutableListOf<File>()
+  val hasKmp = pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform")
+  if (hasKmp) {
+    dirsToCheck.add(layout.projectDirectory.dir("src/commonTest/kotlin").asFile)
+  } else {
+    dirsToCheck.add(layout.projectDirectory.dir("src/test/java").asFile)
+    dirsToCheck.add(layout.projectDirectory.dir("src/test/kotlin").asFile)
+  }
+
+  val result = mutableListOf<String>()
+  dirsToCheck.filter { it.exists() }.forEach { dir ->
+    dir.walkTopDown()
+      .filter { it.isFile && (it.extension == "kt" || it.extension == "java") }
+      .forEach { file ->
+        result.addAll(discoverMultiTargetTestClassesInFile(file))
+      }
+  }
+  return result.distinct()
+}
+
+internal fun Project.discoverMultiTargetTestMethods(): List<String> {
+  val dirsToCheck = mutableListOf<File>()
+  val hasKmp = pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform")
+  if (hasKmp) {
+    dirsToCheck.add(layout.projectDirectory.dir("src/commonTest/kotlin").asFile)
+  } else {
+    dirsToCheck.add(layout.projectDirectory.dir("src/test/java").asFile)
+    dirsToCheck.add(layout.projectDirectory.dir("src/test/kotlin").asFile)
+  }
+
+  val result = mutableListOf<String>()
+  dirsToCheck.filter { it.exists() }.forEach { dir ->
+    dir.walkTopDown()
+      .filter { it.isFile && (it.extension == "kt" || it.extension == "java") }
+      .forEach { file ->
+        result.addAll(discoverMultiTargetTestMethodsInFile(file))
+      }
+  }
+  return result.distinct()
+}
+
+internal fun discoverMultiInstanceTestClassesInFile(file: File): List<String> {
+  val source = file.readText()
+  val pkg = PACKAGE_REGEX.find(source)?.groupValues?.get(1)
+  val result = mutableListOf<String>()
+
+  val classMatches = CLASS_OR_OBJECT_REGEX.findAll(source).toList()
+  classMatches.forEach { classMatch ->
+    val className = classMatch.groupValues[1]
+    val fullClassName = if (pkg != null) "$pkg.$className" else className
+    val classStartIndex = classMatch.range.first
+    val classOpenBrace = source.indexOf('{', classStartIndex)
+    if (classOpenBrace == -1) return@forEach
+    val classEndIndex = source.findMatchingBrace(classOpenBrace)
+    val classSource = if (classEndIndex > classOpenBrace) {
+      source.substring(classOpenBrace, classEndIndex)
+    } else {
+      source.substring(classOpenBrace)
+    }
+
+    val listOfRegex = Regex("""(?<!\w)e2eTest\s*\(\s*(?:instances\s*=\s*)?listOf\s*\(([^)]+)\)""", RegexOption.DOT_MATCHES_ALL)
+    val varargRegex = Regex("""(?<!\w)e2eTest\s*\(\s*("[\w-]+"(?:\s*,\s*[\r\n\s]*"[\w-]+")+)""", RegexOption.DOT_MATCHES_ALL)
+
+    var hasMulti = false
+    listOfRegex.findAll(classSource).forEach { match ->
+      val inner = match.groupValues[1]
+      val count = STRING_LITERAL_REGEX.findAll(inner).count()
+      if (count > 1) hasMulti = true
+    }
+    varargRegex.findAll(classSource).forEach { match ->
+      val inner = match.groupValues[1]
+      val count = STRING_LITERAL_REGEX.findAll(inner).count()
+      if (count > 1) hasMulti = true
+    }
+
+    if (hasMulti) {
+      result.add(fullClassName)
+    }
+  }
+
+  return result.distinct()
+}
+
+internal fun Project.discoverMultiInstanceTestClasses(): List<String> {
+  val dirsToCheck = mutableListOf<File>()
+  val hasKmp = pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform")
+  if (hasKmp) {
+    dirsToCheck.add(layout.projectDirectory.dir("src/commonTest/kotlin").asFile)
+  } else {
+    dirsToCheck.add(layout.projectDirectory.dir("src/test/java").asFile)
+    dirsToCheck.add(layout.projectDirectory.dir("src/test/kotlin").asFile)
+  }
+
+  val result = mutableListOf<String>()
+  dirsToCheck.filter { it.exists() }.forEach { dir ->
+    dir.walkTopDown()
+      .filter { it.isFile && (it.extension == "kt" || it.extension == "java") }
+      .forEach { file ->
+        result.addAll(discoverMultiInstanceTestClassesInFile(file))
+      }
+  }
+  return result.distinct().sorted()
+}
+
+internal fun Project.discoverE2eTestInstanceTargets(): Map<String, String> {
+  val dirsToCheck = mutableListOf<File>()
+  val hasKmp = pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform")
+  if (hasKmp) {
+    dirsToCheck.add(layout.projectDirectory.dir("src/commonTest/kotlin").asFile)
+  } else {
+    dirsToCheck.add(layout.projectDirectory.dir("src/test/java").asFile)
+    dirsToCheck.add(layout.projectDirectory.dir("src/test/kotlin").asFile)
+  }
+
+  val result = mutableMapOf<String, String>()
+  dirsToCheck.filter { it.exists() }.forEach { dir ->
+    dir.walkTopDown()
+      .filter { it.isFile && (it.extension == "kt" || it.extension == "java") }
+      .forEach { file ->
+        result.putAll(discoverE2eTestInstanceTargetsInFile(file))
+      }
+  }
+  return result
 }
 
 private val PACKAGE_REGEX = Regex("""\bpackage\s+([a-zA-Z_][a-zA-Z0-9_.]*)""")

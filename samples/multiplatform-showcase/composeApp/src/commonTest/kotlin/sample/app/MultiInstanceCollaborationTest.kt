@@ -1,11 +1,12 @@
 package sample.app
 
+import io.github.aryapreetam.parikshan.Actor
+import io.github.aryapreetam.parikshan.Target
 import io.github.aryapreetam.parikshan.e2eTest
 import sample.app.playgrounds.ChatTransport
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
-import kotlin.test.assertNotNull
 
 class MultiInstanceCollaborationTest {
 
@@ -21,6 +22,17 @@ class MultiInstanceCollaborationTest {
 
   @Test
   fun testTwoPartyChatCollaboration() = e2eTest(listOf("alice", "bob")) { (alice, bob) ->
+    runChatCollaborationScenario(alice, bob)
+  }
+
+  @Test
+  fun testDesktopToWebChatCollaboration() = e2eTest(
+    instances = mapOf("alice" to Target.Desktop, "bob" to Target.Wasm)
+  ) { (alice, bob) ->
+    runChatCollaborationScenario(alice, bob)
+  }
+
+  private suspend fun runChatCollaborationScenario(alice: Actor, bob: Actor) {
     // 1. Both instances navigate to the Chat Playground
     alice.navigateToSection("nav_chat_playground")
     bob.navigateToSection("nav_chat_playground")

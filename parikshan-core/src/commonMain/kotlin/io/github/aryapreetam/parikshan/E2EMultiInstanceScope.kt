@@ -5,6 +5,11 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 
 /**
+ * Represents an independent actor or application instance within a multi-instance E2E test.
+ */
+typealias Actor = E2ETestScope
+
+/**
  * Test execution scope orchestrating multiple independent application instances.
  *
  * Each instance corresponds to an isolated application process, browser context,

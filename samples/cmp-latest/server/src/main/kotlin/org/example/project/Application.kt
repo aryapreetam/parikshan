@@ -46,8 +46,9 @@ fun Application.module() {
 
     get("/api/inventory/reset") {
       val stock = call.request.queryParameters["stock"]?.toIntOrNull() ?: 2
-      resetInventoryForTesting(stock)
-      call.respondText("""{"status":"ok","p1Stock":${productInventory["p1"]?.get()}}""", ContentType.Application.Json)
+      val productId = call.request.queryParameters["productId"] ?: "p1"
+      productInventory[productId]?.set(stock) ?: productInventory.put(productId, java.util.concurrent.atomic.AtomicInteger(stock))
+      call.respondText("""{"status":"ok","${productId}Stock":${productInventory[productId]?.get()}}""", ContentType.Application.Json)
     }
 
     get("/api/products") {

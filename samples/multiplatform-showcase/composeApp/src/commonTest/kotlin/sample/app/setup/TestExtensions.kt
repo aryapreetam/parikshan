@@ -295,9 +295,12 @@ private suspend fun E2ETestScope.selectDateFromCalendarNative(day: Int, month: I
         
         val yearTargetText = "Navigate to year $year"
         val target = Selector.Text(yearTargetText)
-        
-        scrollUntilVisible(Selector.Tag("date_picker_dialog"), target, if (year > curYear) ScrollDirection.Down else ScrollDirection.Up)
-        click(target.atIndex(-1))
+        if (hasVisibleNode(target)) {
+            click(target.atIndex(-1))
+        } else {
+            scrollUntilVisible(Selector.Tag("date_picker_dialog"), target, if (year > curYear) ScrollDirection.Down else ScrollDirection.Up)
+            click(target.atIndex(-1))
+        }
         delay(1500)
         
         clickAt(dialog.bounds.left + 20.0, dialog.bounds.top + 20.0)
@@ -397,6 +400,7 @@ private suspend fun E2ETestScope.selectDateFromCalendarNative(day: Int, month: I
  */
 private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int, year: Int) {
     // 1. Initial State Calibration
+    waitFor("selecting a year")
     val initialTree = getTree()
     val dialog = initialTree.find { it.tag == "date_picker_dialog" } ?: throw AssertionError("DatePicker missing")
     
@@ -437,9 +441,12 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
         // Year list is VISIBLE thanks to core fix.
         val yearTargetText = "Navigate to year $year"
         val target = Selector.Text(yearTargetText)
-        
-        scrollUntilVisible(Selector.Tag("date_picker_dialog"), target, if (year > curYear) ScrollDirection.Down else ScrollDirection.Up)
-        click(target.atIndex(-1))
+        if (hasVisibleNode(target)) {
+            click(target.atIndex(-1))
+        } else {
+            scrollUntilVisible(Selector.Tag("date_picker_dialog"), target, if (year > curYear) ScrollDirection.Down else ScrollDirection.Up)
+            click(target.atIndex(-1))
+        }
         delay(1500)
         
         // Wake up ping

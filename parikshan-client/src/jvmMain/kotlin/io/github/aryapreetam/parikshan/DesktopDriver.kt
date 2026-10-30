@@ -31,17 +31,22 @@ internal class DesktopDriver(
 
   init {
     if (context == null) {
-      runCatching {
-        val manifestPath = System.getProperty(DESKTOP_LAUNCH_MANIFEST_PROPERTY)
-        if (!manifestPath.isNullOrBlank()) {
-          val file = File(manifestPath)
-          if (file.exists()) {
-            val props = Properties().apply {
-              file.inputStream().use(::load)
-            }
-            val activePort = props.getProperty("port")?.toIntOrNull()
-            if (activePort != null) {
-              port = activePort
+      val explicitPortProp = System.getProperty("parikshan.port")?.toIntOrNull()
+      if (explicitPortProp != null) {
+        port = explicitPortProp
+      } else {
+        runCatching {
+          val manifestPath = System.getProperty(DESKTOP_LAUNCH_MANIFEST_PROPERTY)
+          if (!manifestPath.isNullOrBlank()) {
+            val file = File(manifestPath)
+            if (file.exists()) {
+              val props = Properties().apply {
+                file.inputStream().use(::load)
+              }
+              val activePort = props.getProperty("port")?.toIntOrNull()
+              if (activePort != null) {
+                port = activePort
+              }
             }
           }
         }

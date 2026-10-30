@@ -118,4 +118,63 @@ class InstanceDiscoveryTest {
     val instances = discoverE2eTestInstancesInFile(file)
     assertTrue(instances.isEmpty())
   }
+
+  @Test
+  fun testDiscoverMultiTargetMethodsAndClasses() {
+    val file = File(tempDir, "MultiTargetCollaborationTest.kt").apply {
+      writeText(
+        """
+        package sample.app
+
+        import io.github.aryapreetam.parikshan.Target
+        import io.github.aryapreetam.parikshan.e2eTest
+        import kotlin.test.Test
+
+        class MultiTargetCollaborationTest {
+          @Test
+          fun testTwoPartyChatCollaboration() = e2eTest(listOf("alice", "bob")) {
+          }
+
+          @Test
+          fun testDesktopToWebChatCollaboration() = e2eTest(
+            instances = mapOf("alice" to Target.Desktop, "bob" to Target.Wasm)
+          ) {
+          }
+        }
+        """.trimIndent()
+      )
+    }
+
+    val methods = discoverMultiTargetTestMethodsInFile(file)
+    assertEquals(listOf("sample.app.MultiTargetCollaborationTest#testDesktopToWebChatCollaboration"), methods)
+
+    val classes = discoverMultiTargetTestClassesInFile(file)
+    assertEquals(listOf("sample.app.MultiTargetCollaborationTest"), classes)
+
+    val multiClasses = discoverMultiInstanceTestClassesInFile(file)
+    assertEquals(listOf("sample.app.MultiTargetCollaborationTest"), multiClasses)
+  }
+
+  @Test
+  fun testSingleInstanceClassNotDiscoveredAsMultiInstance() {
+    val file = File(tempDir, "SingleInstanceTest.kt").apply {
+      writeText(
+        """
+        package sample.app
+
+        import io.github.aryapreetam.parikshan.e2eTest
+        import kotlin.test.Test
+
+        class SingleInstanceTest {
+          @Test
+          fun testHome() = e2eTest {
+          }
+        }
+        """.trimIndent()
+      )
+    }
+
+    val multiClasses = discoverMultiInstanceTestClassesInFile(file)
+    assertTrue(multiClasses.isEmpty())
+  }
 }

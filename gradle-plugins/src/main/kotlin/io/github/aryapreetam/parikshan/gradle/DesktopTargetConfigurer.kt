@@ -232,7 +232,7 @@ internal object DesktopTargetConfigurer {
       val instStr = optInstances.orNull
       if (!instStr.isNullOrBlank()) {
         systemProperty("parikshan.instances", instStr)
-        systemProperty("parikshan.sessionsDir", File(buildDirVal, "parikshan/sessions").absolutePath)
+        systemProperty("parikshan.sessionsDir", File(buildDirVal, "parikshan/desktop/sessions").absolutePath)
       }
       if (isBackgroundRequested) {
         systemProperty("parikshan.background", "true")

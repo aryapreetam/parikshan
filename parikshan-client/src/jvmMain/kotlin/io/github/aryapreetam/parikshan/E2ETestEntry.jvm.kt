@@ -15,6 +15,13 @@ actual fun e2eTest(
   config: E2ETestConfig,
   block: suspend E2ETestScope.() -> Unit
 ) {
+  val executionMode = System.getProperty("parikshan.executionMode")?.lowercase()
+  val targetProperty = System.getProperty("parikshan.target")?.lowercase()
+  val isMultiTarget = executionMode == "multi-target" || targetProperty == "multi-target"
+  if (isMultiTarget && targetProperty != "sync") {
+    abortTestExecution("Single-instance test skipped during multi-target run.")
+  }
+
   runBlocking {
     val targetProperty = System.getProperty("parikshan.target")?.lowercase()
     val driver =
@@ -136,6 +143,20 @@ actual fun e2eTest(
   config: E2ETestConfig,
   block: suspend E2EMultiInstanceScope.(E2EMultiInstanceScope) -> Unit
 ) {
+  val executionMode = System.getProperty("parikshan.executionMode")?.lowercase()
+  val targetProperty = System.getProperty("parikshan.target")?.lowercase()
+  if (executionMode == "multi-target" || targetProperty == "multi-target") {
+    abortTestExecution("Multi-instance test skipped during multi-target run.")
+  }
+
+  runMultiInstanceTest(instances, config, block)
+}
+
+private fun runMultiInstanceTest(
+  instances: List<String>,
+  config: E2ETestConfig,
+  block: suspend E2EMultiInstanceScope.(E2EMultiInstanceScope) -> Unit
+) {
   require(instances.isNotEmpty()) { "Multi-instance E2E test requires at least one instance identifier" }
   require(instances.distinct().size == instances.size) {
     "Duplicate instance identifier detected in test declaration: $instances"
@@ -196,6 +217,97 @@ actual fun e2eTest(
   }
 }
 
+actual fun e2eTest(
+  instances: Map<String, Target>,
+  config: E2ETestConfig,
+  block: suspend E2EMultiInstanceScope.(E2EMultiInstanceScope) -> Unit
+) {
+  require(instances.isNotEmpty()) { "Multi-target E2E test requires at least one instance mapping" }
+  require(instances.keys.distinct().size == instances.size) {
+    "Duplicate instance identifier detected in test declaration: ${instances.keys}"
+  }
+
+  val requiredTargets = instances.values.map { canonicalizeTarget(it.platformName) }.toSet()
+  val activeTargets = resolveActiveTargets()
+
+  if (activeTargets.isNotEmpty() && !activeTargets.containsAll(requiredTargets)) {
+    val missing = requiredTargets - activeTargets
+    abortTestExecution(
+      "Test requires target(s) [${requiredTargets.joinToString()}], but [${missing.joinToString()}] is not active in this run (active: [${activeTargets.joinToString()}])."
+    )
+  }
+
+  instances.forEach { (name, target) ->
+    System.setProperty("parikshan.instance.$name.target", target.platformName)
+  }
+
+  runMultiInstanceTest(
+    instances = instances.keys.toList(),
+    config = config,
+    block = block
+  )
+}
+
+private fun canonicalizeTarget(target: String): String = when (target.trim().lowercase()) {
+  "jvm" -> "desktop"
+  "web" -> "wasm"
+  else -> target.trim().lowercase()
+}
+
+private fun resolveActiveTargets(): Set<String> {
+  val activeProp = System.getProperty("parikshan.activeTargets")
+  if (!activeProp.isNullOrBlank()) {
+    return activeProp.split(",").map { canonicalizeTarget(it) }.filter { it.isNotEmpty() }.toSet()
+  }
+
+  val singleTarget = System.getProperty("parikshan.target")?.trim()?.lowercase()
+  if (singleTarget == "sync") {
+    val syncTargets = System.getProperty("parikshan.sync.targets")
+    if (!syncTargets.isNullOrBlank()) {
+      return syncTargets.split(",").map { canonicalizeTarget(it) }.filter { it.isNotEmpty() }.toSet()
+    }
+  }
+
+  if (!singleTarget.isNullOrBlank() && singleTarget != "sync" && singleTarget != "multi-target") {
+    return setOf(canonicalizeTarget(singleTarget))
+  }
+
+  val sessionsDir = resolveSessionDirectory()
+  if (sessionsDir.exists()) {
+    val sessionFiles = sessionsDir.listFiles { f -> f.extension == "json" }
+    if (!sessionFiles.isNullOrEmpty()) {
+      val foundTargets = sessionFiles.mapNotNull { f ->
+        val text = runCatching { f.readText() }.getOrNull().orEmpty()
+        val parsed = runCatching { sessionJson.decodeFromString<InstanceSessionDescriptor>(text) }.getOrNull()
+        parsed?.target?.let { canonicalizeTarget(it) }
+      }.toSet()
+      if (foundTargets.isNotEmpty()) return foundTargets
+    }
+  }
+
+  return setOf("desktop")
+}
+
+private fun abortTestExecution(reason: String): Nothing {
+  try {
+    val clazz = Class.forName("org.opentest4j.TestAbortedException")
+    val ctor = clazz.getConstructor(String::class.java)
+    throw (ctor.newInstance(reason) as Throwable)
+  } catch (e: Throwable) {
+    if (e.javaClass.name == "org.opentest4j.TestAbortedException") throw e
+  }
+
+  try {
+    val clazz = Class.forName("org.junit.AssumptionViolatedException")
+    val ctor = clazz.getConstructor(String::class.java)
+    throw (ctor.newInstance(reason) as Throwable)
+  } catch (e: Throwable) {
+    if (e.javaClass.name == "org.junit.AssumptionViolatedException") throw e
+  }
+
+  throw IllegalStateException("SKIPPED: $reason")
+}
+
 private val sessionJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
 @kotlinx.serialization.Serializable
@@ -221,42 +333,65 @@ private fun resolveSessionDirectory(): java.io.File {
   } else {
     java.io.File(System.getProperty("user.dir"), "build/parikshan")
   }
+  val executionMode = System.getProperty("parikshan.executionMode")?.trim()?.lowercase()
+  val activeTarget = System.getProperty("parikshan.target")?.trim()?.lowercase()
+
+  if (executionMode == "multi-target" || activeTarget == "multi-target") {
+    return java.io.File(baseDir, "multi-target/sessions")
+  }
+  if (activeTarget == "sync") {
+    return java.io.File(baseDir, "sync/sessions")
+  }
+  if (!activeTarget.isNullOrBlank()) {
+    val targetDir = java.io.File(baseDir, "$activeTarget/sessions")
+    if (targetDir.exists()) return targetDir
+    val legacyTargetDir = java.io.File(baseDir, "sessions/$activeTarget")
+    if (legacyTargetDir.exists()) return legacyTargetDir
+  }
   return java.io.File(baseDir, "sessions")
 }
 
 private fun resolveInstanceContext(name: String): Pair<String, ParikshanTestContext> {
+  val activeRunnerTarget = System.getProperty("parikshan.target")?.trim()?.lowercase()
+    ?.takeIf { it.isNotBlank() && it != "sync" && it != "multi-target" }
   val sessionsDir = resolveSessionDirectory()
   val instanceFile = java.io.File(sessionsDir, "$name.json")
   if (instanceFile.exists()) {
     val text = runCatching { instanceFile.readText() }.getOrNull().orEmpty()
     val parsed = runCatching { sessionJson.decodeFromString<InstanceSessionDescriptor>(text) }.getOrNull()
     if (parsed != null) {
-      val target = parsed.target.ifBlank { "desktop" }
-      val ctx = ParikshanTestContext(
-        instanceId = parsed.instanceId.ifBlank { name },
-        host = parsed.host.ifBlank { "127.0.0.1" },
-        port = parsed.port,
-        sessionToken = parsed.sessionToken,
-        dataDir = parsed.dataDir
-      )
-      return target to ctx
+      val rawTarget = parsed.target.ifBlank { "desktop" }
+      val isCompatible = activeRunnerTarget == null || canonicalizeTarget(rawTarget) == canonicalizeTarget(activeRunnerTarget)
+      if (isCompatible) {
+        val target = if (activeRunnerTarget != null) canonicalizeTarget(activeRunnerTarget) else rawTarget
+        val ctx = ParikshanTestContext(
+          instanceId = parsed.instanceId.ifBlank { name },
+          host = parsed.host.ifBlank { "127.0.0.1" },
+          port = parsed.port,
+          sessionToken = parsed.sessionToken,
+          dataDir = parsed.dataDir
+        )
+        return target to ctx
+      }
     }
   }
 
-  val target = System.getProperty("parikshan.instance.$name.target")
-    ?: System.getProperty("parikshan.target")
+  val target = activeRunnerTarget
+    ?: System.getProperty("parikshan.instance.$name.target")
     ?: "desktop"
   val host = System.getProperty("parikshan.instance.$name.host")
     ?: System.getProperty("parikshan.host")
     ?: "127.0.0.1"
   val explicitPort = System.getProperty("parikshan.instance.$name.port")?.toIntOrNull()
   val port = explicitPort
-    ?: if (name == "desktop") {
-      System.getProperty("parikshan.port")?.toIntOrNull() ?: 9877
-    } else if (target == "wasm" || target == "web") {
+    ?: if (name == "desktop" || canonicalizeTarget(target) == "desktop") {
+      System.getProperty("parikshan.desktop.port")?.toIntOrNull()
+        ?: System.getProperty("parikshan.port")?.toIntOrNull()
+        ?: 9877
+    } else if (canonicalizeTarget(target) == "wasm") {
       System.getProperty("parikshan.wasm.port")?.toIntOrNull()
         ?: System.getProperty("parikshan.port")?.toIntOrNull()
-        ?: 8080
+        ?: 8081
     } else {
       error(
         "No session descriptor or port configuration found for actor '$name'. " +

@@ -14,3 +14,11 @@ actual fun e2eTest(
 ) {
   error("Parikshan multi-instance E2E tests run via the JVM test runner. Use ./gradlew e2eWasmTest")
 }
+
+actual fun e2eTest(
+  instances: Map<String, Target>,
+  config: E2ETestConfig,
+  block: suspend E2EMultiInstanceScope.(E2EMultiInstanceScope) -> Unit
+) {
+  error("Parikshan multi-target E2E tests run via the JVM test runner. Use ./gradlew e2eTest")
+}

@@ -78,6 +78,20 @@ fun e2eTest(
 }
 
 /**
+ * Executes a multi-target multi-instance end-to-end test across named application actors,
+ * mapping each instance to its required execution target platform.
+ *
+ * @param instances Mapping of unique instance identifier to its target platform.
+ * @param config Optional [E2ETestConfig] to customize timeouts, screenshot behavior, and step delays.
+ * @param block Suspending test execution block with multi-instance handle access.
+ */
+expect fun e2eTest(
+  instances: Map<String, Target>,
+  config: E2ETestConfig = E2ETestConfig(),
+  block: suspend E2EMultiInstanceScope.(E2EMultiInstanceScope) -> Unit
+)
+
+/**
  * Extension entrypoint for test classes implementing [E2ETestLifecycle].
  *
  * Automatically invokes [E2ETestLifecycle.beforeEach] before executing the test scenario block,
@@ -144,6 +158,14 @@ fun E2ETestLifecycle.e2eTest(
   block: suspend E2EMultiInstanceScope.(E2EMultiInstanceScope) -> Unit
 ) {
   e2eTest(instances = listOf(firstInstance, *otherInstances), config = config, block = block)
+}
+
+fun E2ETestLifecycle.e2eTest(
+  instances: Map<String, Target>,
+  config: E2ETestConfig = E2ETestConfig(),
+  block: suspend E2EMultiInstanceScope.(E2EMultiInstanceScope) -> Unit
+) {
+  io.github.aryapreetam.parikshan.e2eTest(instances = instances, config = config, block = block)
 }
 
 

@@ -29,10 +29,10 @@
 ### Features
 
 - Write tests in Kotlin, execute and visually watch them run across Android, iOS, Desktop, and Web (Wasm).
-- Built-in [video recording](configuration/cli-options.md#video-recording-options), screenshot capture, and [test reports](reports/test-reports.md).
-- [Window layout and positioning](configuration/cli-options.md#layout-size-position-control), [synchronized execution](configuration/cli-options.md#synchronized-multi-target-execution-sync), and continuous [watch mode](configuration/cli-options.md#continuous-watch-mode-watch).
+- Built-in [video recording](features/test-reports.md), screenshot capture, and unified [test reports](features/test-reports.md).
+- [Window layout and positioning](features/window-layout.md), [synchronized execution](features/synchronized-execution.md), and continuous [watch mode](features/watch-mode.md).
 
-[**API Reference**](https://aryapreetam.github.io/parikshan/api/) | [**Quickstart Guide**](getting-started/quickstart.md) | [**Examples**](examples.md)
+[**API Reference**](https://aryapreetam.github.io/parikshan/api/) | [**Quickstart Guide**](getting-started/quickstart.md) | [**Features Hub**](features/index.md) | [**Examples**](examples.md)
 
 ---
 
@@ -61,10 +61,10 @@ class SimpleGreetTest {
   fun testSimpleGreeting() = e2eTest {
     // enter in the input component tagged name_input
     input("name_input", "परिक्षण")
-    
+
     // click button with text 'Greet!'
     click("Greet!")
-    
+
     // check if greeting is displayed
     assertVisible("Hello, परिक्षण!")
   }

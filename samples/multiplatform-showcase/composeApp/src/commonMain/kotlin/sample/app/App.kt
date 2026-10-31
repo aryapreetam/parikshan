@@ -147,6 +147,7 @@ private fun ContentSurface(
         SampleScreen.TimingPlayground -> TimingPlayground()
         SampleScreen.AccessibilityPlayground -> AccessibilityPlayground()
         SampleScreen.SelectorParityPlayground -> SelectorParityPlayground()
+        SampleScreen.FilePickerPlayground -> FilePickerPlayground()
       }
     }
   }

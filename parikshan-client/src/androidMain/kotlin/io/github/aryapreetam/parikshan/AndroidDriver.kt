@@ -346,6 +346,8 @@ internal class AndroidDriver private constructor(
         } catch (_: Throwable) {}
         Response.Ok(command.id)
       }
+      is Command.RegisterFilePicker -> Response.Error(command.id, "RegisterFilePicker is not supported on Android")
+      is Command.UnregisterFilePicker -> Response.Ok(command.id)
     }
   }
 

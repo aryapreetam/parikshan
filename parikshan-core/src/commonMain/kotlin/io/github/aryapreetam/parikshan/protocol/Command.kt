@@ -202,7 +202,50 @@ sealed class Command {
     override var token: String = ""
   ) : Command()
 
+  @Serializable
+  @SerialName("register_file_picker")
+  data class RegisterFilePicker(
+    override val id: String,
+    val action: PickerAction,
+    val timeoutMs: Long = 10_000L,
+    override var token: String = ""
+  ) : Command()
+
+  @Serializable
+  @SerialName("unregister_file_picker")
+  data class UnregisterFilePicker(
+    override val id: String,
+    val awaitCompletion: Boolean = true,
+    val timeoutMs: Long = 10_000L,
+    override var token: String = ""
+  ) : Command()
+
 }
+
+/**
+ * Specifies the action to perform when a native file or directory picker is triggered.
+ */
+@Serializable
+sealed interface PickerAction {
+  /**
+   * Selects one or more files or directories.
+   *
+   * @property paths Absolute or project-relative file paths on the host system to select.
+   */
+  @Serializable
+  @SerialName("select")
+  data class Select(val paths: List<String>) : PickerAction
+
+  /**
+   * Dismisses or cancels the active picker dialog without selecting any file.
+   */
+  @Serializable
+  @SerialName("cancel")
+  data object Cancel : PickerAction
+}
+
+typealias RegisterFilePickerCommand = Command.RegisterFilePicker
+typealias UnregisterFilePickerCommand = Command.UnregisterFilePicker
 
 /**
  * Resolves the effective [Selector] from a [Command].

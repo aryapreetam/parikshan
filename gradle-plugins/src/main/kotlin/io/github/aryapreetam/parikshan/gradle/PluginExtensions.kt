@@ -137,6 +137,8 @@ internal fun Test.configureE2eHostTestExecution(
     }
   }
 
+  systemProperty("parikshan.projectDir", project.projectDir.absolutePath)
+
   jvmArgumentProviders.add(CommandLineArgumentProvider {
     listOf("-Dparikshan.video.outputDir=${videoOutputDirProvider.get().absolutePath}")
   })

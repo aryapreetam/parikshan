@@ -11,5 +11,6 @@ enum class SampleScreen {
   GesturePlayground,
   TimingPlayground,
   AccessibilityPlayground,
-  SelectorParityPlayground
+  SelectorParityPlayground,
+  FilePickerPlayground
 }

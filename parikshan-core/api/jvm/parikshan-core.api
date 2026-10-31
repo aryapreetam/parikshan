@@ -120,6 +120,12 @@ public final class io/github/aryapreetam/parikshan/E2ETestScope {
 	public final fun waitFor (Ljava/lang/String;JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun waitFor$default (Lio/github/aryapreetam/parikshan/E2ETestScope;Lio/github/aryapreetam/parikshan/protocol/Selector;JLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static synthetic fun waitFor$default (Lio/github/aryapreetam/parikshan/E2ETestScope;Ljava/lang/String;JLkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun withFilePicker (Ljava/util/List;JLkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun withFilePicker ([Ljava/lang/String;JLkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun withFilePicker$default (Lio/github/aryapreetam/parikshan/E2ETestScope;Ljava/util/List;JLkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun withFilePicker$default (Lio/github/aryapreetam/parikshan/E2ETestScope;[Ljava/lang/String;JLkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun withFilePickerCancel (JLkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun withFilePickerCancel$default (Lio/github/aryapreetam/parikshan/E2ETestScope;JLkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 }
 
 public abstract interface annotation class io/github/aryapreetam/parikshan/InternalParikshanApi : java/lang/annotation/Annotation {
@@ -127,6 +133,10 @@ public abstract interface annotation class io/github/aryapreetam/parikshan/Inter
 
 public abstract interface annotation class io/github/aryapreetam/parikshan/ParikshanScenario : java/lang/annotation/Annotation {
 	public abstract fun testName ()Ljava/lang/String;
+}
+
+public final class io/github/aryapreetam/parikshan/PickerNotOpenedException : java/lang/AssertionError {
+	public fun <init> (Ljava/lang/String;)V
 }
 
 public final class io/github/aryapreetam/parikshan/ResolvedSelector {
@@ -188,6 +198,7 @@ public abstract interface class io/github/aryapreetam/parikshan/TestDriver {
 	public abstract fun send (Lio/github/aryapreetam/parikshan/protocol/Command;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun setRouteTarget (Ljava/lang/String;)V
 	public fun updateVirtualCursor (DD)V
+	public fun validateAndNormalizePickerPaths (Ljava/util/List;)Ljava/util/List;
 }
 
 public final class io/github/aryapreetam/parikshan/TestDriver$DefaultImpls {
@@ -198,6 +209,7 @@ public final class io/github/aryapreetam/parikshan/TestDriver$DefaultImpls {
 	public static fun resolveArtifactPath (Lio/github/aryapreetam/parikshan/TestDriver;Ljava/lang/String;)Ljava/lang/String;
 	public static fun setRouteTarget (Lio/github/aryapreetam/parikshan/TestDriver;Ljava/lang/String;)V
 	public static fun updateVirtualCursor (Lio/github/aryapreetam/parikshan/TestDriver;DD)V
+	public static fun validateAndNormalizePickerPaths (Lio/github/aryapreetam/parikshan/TestDriver;Ljava/util/List;)Ljava/util/List;
 }
 
 public abstract interface class io/github/aryapreetam/parikshan/client/VideoRecorder {
@@ -609,6 +621,41 @@ public final class io/github/aryapreetam/parikshan/protocol/Command$PressHome$Co
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class io/github/aryapreetam/parikshan/protocol/Command$RegisterFilePicker : io/github/aryapreetam/parikshan/protocol/Command {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$RegisterFilePicker$Companion;
+	public fun <init> (Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/PickerAction;JLjava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/PickerAction;JLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lio/github/aryapreetam/parikshan/protocol/PickerAction;
+	public final fun component3 ()J
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/PickerAction;JLjava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$RegisterFilePicker;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$RegisterFilePicker;Ljava/lang/String;Lio/github/aryapreetam/parikshan/protocol/PickerAction;JLjava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$RegisterFilePicker;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAction ()Lio/github/aryapreetam/parikshan/protocol/PickerAction;
+	public fun getId ()Ljava/lang/String;
+	public final fun getTimeoutMs ()J
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$RegisterFilePicker$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$RegisterFilePicker$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$RegisterFilePicker;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$RegisterFilePicker;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$RegisterFilePicker$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class io/github/aryapreetam/parikshan/protocol/Command$RelaunchApp : io/github/aryapreetam/parikshan/protocol/Command {
 	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$RelaunchApp$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
@@ -846,6 +893,41 @@ public final class io/github/aryapreetam/parikshan/protocol/Command$StopRecordin
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class io/github/aryapreetam/parikshan/protocol/Command$UnregisterFilePicker : io/github/aryapreetam/parikshan/protocol/Command {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$UnregisterFilePicker$Companion;
+	public fun <init> (Ljava/lang/String;ZJLjava/lang/String;)V
+	public synthetic fun <init> (Ljava/lang/String;ZJLjava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Z
+	public final fun component3 ()J
+	public final fun component4 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;ZJLjava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command$UnregisterFilePicker;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Command$UnregisterFilePicker;Ljava/lang/String;ZJLjava/lang/String;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Command$UnregisterFilePicker;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAwaitCompletion ()Z
+	public fun getId ()Ljava/lang/String;
+	public final fun getTimeoutMs ()J
+	public fun getToken ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun setToken (Ljava/lang/String;)V
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Command$UnregisterFilePicker$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Command$UnregisterFilePicker$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Command$UnregisterFilePicker;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Command$UnregisterFilePicker;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Command$UnregisterFilePicker$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class io/github/aryapreetam/parikshan/protocol/Command$WaitFor : io/github/aryapreetam/parikshan/protocol/Command, io/github/aryapreetam/parikshan/protocol/Command$HasSelector {
 	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Command$WaitFor$Companion;
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;JLio/github/aryapreetam/parikshan/protocol/Selector;Ljava/lang/String;)V
@@ -926,6 +1008,49 @@ public final class io/github/aryapreetam/parikshan/protocol/NodeSnapshot$Compani
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public abstract interface class io/github/aryapreetam/parikshan/protocol/PickerAction {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/PickerAction$Companion;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/PickerAction$Cancel : io/github/aryapreetam/parikshan/protocol/PickerAction {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/PickerAction$Cancel;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/PickerAction$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/PickerAction$Select : io/github/aryapreetam/parikshan/protocol/PickerAction {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/PickerAction$Select$Companion;
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Lio/github/aryapreetam/parikshan/protocol/PickerAction$Select;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/PickerAction$Select;Ljava/util/List;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/PickerAction$Select;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPaths ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/PickerAction$Select$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/PickerAction$Select$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/PickerAction$Select;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/PickerAction$Select;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/PickerAction$Select$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class io/github/aryapreetam/parikshan/protocol/ProtocolJson {
 	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/ProtocolJson;
 	public final fun decodeCommand (Ljava/lang/String;)Lio/github/aryapreetam/parikshan/protocol/Command;
@@ -970,6 +1095,42 @@ public final synthetic class io/github/aryapreetam/parikshan/protocol/Response$E
 }
 
 public final class io/github/aryapreetam/parikshan/protocol/Response$Error$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Response$FilePickerHandled : io/github/aryapreetam/parikshan/protocol/Response {
+	public static final field Companion Lio/github/aryapreetam/parikshan/protocol/Response$FilePickerHandled$Companion;
+	public fun <init> (Ljava/lang/String;ZLjava/util/List;ZJ)V
+	public synthetic fun <init> (Ljava/lang/String;ZLjava/util/List;ZJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Z
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()Z
+	public final fun component5 ()J
+	public final fun copy (Ljava/lang/String;ZLjava/util/List;ZJ)Lio/github/aryapreetam/parikshan/protocol/Response$FilePickerHandled;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/protocol/Response$FilePickerHandled;Ljava/lang/String;ZLjava/util/List;ZJILjava/lang/Object;)Lio/github/aryapreetam/parikshan/protocol/Response$FilePickerHandled;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getElapsedMs ()J
+	public fun getId ()Ljava/lang/String;
+	public final fun getSelectedPaths ()Ljava/util/List;
+	public final fun getWasCancelled ()Z
+	public final fun getWasHandled ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/protocol/Response$FilePickerHandled$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/protocol/Response$FilePickerHandled$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/protocol/Response$FilePickerHandled;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/protocol/Response$FilePickerHandled;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/protocol/Response$FilePickerHandled$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 

@@ -38,6 +38,53 @@ internal class WasmDriver private constructor(
   private val page: Page
     get() = checkNotNull(sharedPage) { "WasmDriver shared page is not initialized" }
 
+  private val pickerArmed = java.util.concurrent.atomic.AtomicBoolean(false)
+  private val pickerHandled = java.util.concurrent.atomic.AtomicBoolean(false)
+  @Volatile private var activePickerAction: io.github.aryapreetam.parikshan.protocol.PickerAction? = null
+  @Volatile private var pickerSelectedPaths: List<String> = emptyList()
+  @Volatile private var pickerWasCancelled: Boolean = false
+  @Volatile private var pickerStartTimestamp: Long = 0L
+  @Volatile private var pickerElapsedMs: Long = 0L
+  private var pickerLatch = java.util.concurrent.CountDownLatch(1)
+  private var fileChooserConsumer: java.util.function.Consumer<com.microsoft.playwright.FileChooser>? = null
+
+  override fun validateAndNormalizePickerPaths(paths: List<String>): List<String> {
+    val projectDirProp = System.getProperty("parikshan.projectDir")
+    return paths.map { pathStr ->
+      val expandedPath = if (pathStr == "~" || pathStr.startsWith("~/")) {
+        val userHome = System.getProperty("user.home") ?: ""
+        if (pathStr == "~") userHome else userHome + pathStr.removePrefix("~")
+      } else {
+        pathStr
+      }
+      val directFile = File(expandedPath)
+      val file = when {
+        directFile.isAbsolute -> directFile
+        directFile.exists() -> directFile.absoluteFile
+        projectDirProp != null && File(projectDirProp, expandedPath).exists() -> File(projectDirProp, expandedPath).absoluteFile
+        else -> directFile.absoluteFile
+      }
+      if (!file.exists()) {
+        throw java.io.FileNotFoundException(
+          "File or directory does not exist: $pathStr\n" +
+            "  Resolved absolute path: ${file.absolutePath}"
+        )
+      }
+      file.canonicalPath
+    }
+  }
+
+  private fun disarmFileChooser() {
+    pickerArmed.set(false)
+    fileChooserConsumer?.let { consumer ->
+      runCatching {
+        page.offFileChooser(consumer)
+      }
+      fileChooserConsumer = null
+    }
+    pickerLatch.countDown()
+  }
+
   override suspend fun send(command: Command): Response {
     command.token = sessionToken
     return runCatching {
@@ -289,6 +336,81 @@ internal class WasmDriver private constructor(
           Response.Error(command.id, throwable.message ?: "StopRecording failed")
         }
       }
+      is Command.RegisterFilePicker -> {
+        disarmFileChooser()
+        activePickerAction = command.action
+        pickerSelectedPaths = emptyList()
+        pickerWasCancelled = false
+        pickerStartTimestamp = System.currentTimeMillis()
+        pickerElapsedMs = 0L
+        pickerHandled.set(false)
+        pickerLatch = java.util.concurrent.CountDownLatch(1)
+        pickerArmed.set(true)
+
+        val consumer = java.util.function.Consumer<com.microsoft.playwright.FileChooser> { fileChooser ->
+          if (!pickerArmed.get() || !pickerHandled.compareAndSet(false, true)) return@Consumer
+          pickerElapsedMs = System.currentTimeMillis() - pickerStartTimestamp
+
+          when (val action = activePickerAction) {
+            is io.github.aryapreetam.parikshan.protocol.PickerAction.Select -> {
+              pickerSelectedPaths = action.paths
+              pickerWasCancelled = false
+              val pathsArray = action.paths.map { Paths.get(it).toAbsolutePath().normalize() }.toTypedArray()
+              runCatching {
+                fileChooser.setFiles(pathsArray)
+              }.onFailure {
+                System.err.println("Parikshan Wasm: fileChooser.setFiles failed: ${it.message}")
+                it.printStackTrace()
+              }
+            }
+            is io.github.aryapreetam.parikshan.protocol.PickerAction.Cancel, null -> {
+              pickerSelectedPaths = emptyList()
+              pickerWasCancelled = true
+              runCatching {
+                fileChooser.element().dispatchEvent("cancel")
+              }
+              runCatching {
+                page.keyboard().press("Escape")
+              }
+            }
+          }
+          disarmFileChooser()
+          pickerLatch.countDown()
+        }
+        fileChooserConsumer = consumer
+        runCatching {
+          page.onFileChooser(consumer)
+          page.evaluate("() => 1")
+        }
+        Response.Ok(command.id)
+      }
+
+      is Command.UnregisterFilePicker -> {
+        if (command.awaitCompletion && pickerArmed.get() && !pickerHandled.get()) {
+          val deadline = System.currentTimeMillis() + command.timeoutMs
+          while (System.currentTimeMillis() < deadline && pickerArmed.get() && !pickerHandled.get()) {
+            runCatching {
+              page.waitForTimeout(20.0)
+            }
+          }
+        }
+
+        val handled = pickerHandled.get()
+        val paths = pickerSelectedPaths
+        val cancelled = pickerWasCancelled
+        val elapsed = pickerElapsedMs
+
+        disarmFileChooser()
+
+        Response.FilePickerHandled(
+          id = command.id,
+          wasHandled = handled,
+          selectedPaths = paths,
+          wasCancelled = cancelled,
+          elapsedMs = elapsed
+        )
+      }
+
       is Command.Shutdown -> {
         Response.Ok(command.id)
       }

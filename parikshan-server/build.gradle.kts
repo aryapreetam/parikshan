@@ -20,6 +20,7 @@ dependencies {
   implementation(libs.ktor.server.netty)
   implementation(libs.ktor.server.websockets)
   implementation(libs.jcodec.javase)
+  implementation(libs.asm)
   compileOnly(compose.desktop.currentOs)
 }
 
@@ -36,5 +37,13 @@ tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach 
       "-opt-in=io.github.aryapreetam.parikshan.InternalParikshanApi",
       "-opt-in=androidx.compose.runtime.tooling.ComposeToolingApi"
     )
+  }
+}
+
+tasks.withType<Jar>().configureEach {
+  manifest {
+    attributes["Premain-Class"] = "io.github.aryapreetam.parikshan.server.ParikshanAgent"
+    attributes["Can-Retransform-Classes"] = "true"
+    attributes["Can-Redefine-Classes"] = "true"
   }
 }

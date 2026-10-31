@@ -653,6 +653,8 @@ object AndroidServer {
         }
         Response.Ok(command.id)
       }
+      is Command.RegisterFilePicker -> Response.Error(command.id, "RegisterFilePicker is not supported on Android")
+      is Command.UnregisterFilePicker -> Response.Ok(command.id)
     }
   }
 

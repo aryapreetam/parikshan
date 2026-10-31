@@ -491,6 +491,7 @@ class ParikshanPlugin : Plugin<Project> {
         this.title.set(extension.desktopWindowTitle)
         buildDir.set(project.layout.buildDirectory)
         projectRootDir.set(project.rootDir.absolutePath)
+        projectDirectory.set(project.layout.projectDirectory)
         val isCc = try {
           val sp = project.gradle.startParameter
           val ccProp = sp.javaClass.methods.firstOrNull { it.name == "isConfigurationCache" || it.name == "isConfigurationCacheRequested" }

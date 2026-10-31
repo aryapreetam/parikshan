@@ -36,7 +36,19 @@ sealed interface Response {
     val text: String? = null
   ) : Response
 
+  @Serializable
+  @SerialName("file_picker_handled")
+  data class FilePickerHandled(
+    override val id: String,
+    val wasHandled: Boolean = false,
+    val selectedPaths: List<String> = emptyList(),
+    val wasCancelled: Boolean = false,
+    val elapsedMs: Long = 0L
+  ) : Response
+
 }
+
+typealias FilePickerHandledResponse = Response.FilePickerHandled
 
 @Serializable
 data class Bounds(

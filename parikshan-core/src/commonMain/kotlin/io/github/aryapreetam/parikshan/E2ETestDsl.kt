@@ -2,6 +2,7 @@ package io.github.aryapreetam.parikshan
 
 import io.github.aryapreetam.parikshan.protocol.Command
 import io.github.aryapreetam.parikshan.protocol.NodeSnapshot
+import io.github.aryapreetam.parikshan.protocol.PickerAction
 import io.github.aryapreetam.parikshan.protocol.Response
 import io.github.aryapreetam.parikshan.protocol.ScrollDirection
 import io.github.aryapreetam.parikshan.protocol.Selector
@@ -49,6 +50,8 @@ interface TestDriver {
 
   fun resolveArtifactPath(relativePath: String): String =
     "build/parikshan/${relativePath.trimStart('/', '\\')}"
+
+  fun validateAndNormalizePickerPaths(paths: List<String>): List<String> = paths
 
   fun setRouteTarget(platform: String?) {}
 
@@ -1342,7 +1345,134 @@ class E2ETestScope @InternalParikshanApi constructor(
       block()
     }
   }
+
+  /**
+   * Executes the enclosed UI [block] while actively intercepting a native file or directory picker dialog,
+   * selecting the specified [paths] upon appearance.
+   *
+   * The file picker listener starts immediately before [block] begins and is automatically
+   * torn down when [block] finishes. If no picker is triggered within [timeoutMs],
+   * a [PickerNotOpenedException] is thrown.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * @Test
+   * fun testUploadPhoto() = e2eTest {
+   *   withFilePicker("src/commonTest/resources/sample.png") {
+   *     click("choose_photo_button")
+   *   }
+   *   assertVisible("upload_success_indicator")
+   * }
+   * ```
+   *
+   * @param paths One or more file or directory paths to supply to the picker dialog.
+   * @param timeoutMs Maximum duration in milliseconds to wait for the picker to be triggered (default 10,000ms).
+   * @param block The UI interaction(s) expected to trigger the file picker.
+   * @throws PickerNotOpenedException If no picker is triggered within [timeoutMs].
+   */
+  suspend fun withFilePicker(
+    vararg paths: String,
+    timeoutMs: Long = 10_000L,
+    block: suspend E2ETestScope.() -> Unit
+  ) = withFilePicker(paths = paths.toList(), timeoutMs = timeoutMs, block = block)
+
+  /**
+   * Executes the enclosed UI [block] while intercepting a native file or directory picker dialog with multiple file paths.
+   */
+  suspend fun withFilePicker(
+    paths: List<String>,
+    timeoutMs: Long = 10_000L,
+    block: suspend E2ETestScope.() -> Unit
+  ) {
+    require(paths.isNotEmpty()) { "withFilePicker requires at least one file path. To cancel, use withFilePickerCancel." }
+    executeScopedPicker(action = PickerAction.Select(paths), timeoutMs = timeoutMs, block = block)
+  }
+
+  /**
+   * Executes the enclosed UI [block] while intercepting a native file or directory picker dialog and explicitly
+   * cancelling or dismissing it without selecting any files.
+   *
+   * ### Example Usage
+   * ```kotlin
+   * @Test
+   * fun testCancelPicker() = e2eTest {
+   *   withFilePickerCancel {
+   *     click("choose_photo_button")
+   *   }
+   *   assertVisible("cancelled_text")
+   * }
+   * ```
+   */
+  suspend fun withFilePickerCancel(
+    timeoutMs: Long = 10_000L,
+    block: suspend E2ETestScope.() -> Unit
+  ) {
+    executeScopedPicker(action = PickerAction.Cancel, timeoutMs = timeoutMs, block = block)
+  }
+
+  private suspend fun executeScopedPicker(
+    action: PickerAction,
+    timeoutMs: Long,
+    block: suspend E2ETestScope.() -> Unit
+  ) {
+    val validatedAction = when (action) {
+      is PickerAction.Select -> {
+        val validatedPaths = driver.validateAndNormalizePickerPaths(action.paths)
+        PickerAction.Select(validatedPaths)
+      }
+      is PickerAction.Cancel -> PickerAction.Cancel
+    }
+
+    val registerCmd = Command.RegisterFilePicker(
+      id = nextId(),
+      action = validatedAction,
+      timeoutMs = timeoutMs
+    )
+    val registerResp = driver.send(registerCmd)
+    if (registerResp is Response.Error) {
+      throw AssertionError("Failed to register file picker: ${registerResp.message}")
+    }
+
+    var blockException: Throwable? = null
+    try {
+      block()
+    } catch (t: Throwable) {
+      blockException = t
+      throw t
+    } finally {
+      val unregisterCmd = Command.UnregisterFilePicker(
+        id = nextId(),
+        awaitCompletion = (blockException == null),
+        timeoutMs = timeoutMs
+      )
+      val unregisterResp = runCatching { driver.send(unregisterCmd) }.getOrNull()
+      if (blockException == null) {
+        when (unregisterResp) {
+          is Response.FilePickerHandled -> {
+            if (!unregisterResp.wasHandled) {
+              throw PickerNotOpenedException(
+                "Native file picker was not triggered within ${timeoutMs}ms"
+              )
+            }
+          }
+          is Response.Error -> {
+            throw AssertionError("Error while handling file picker: ${unregisterResp.message}")
+          }
+          else -> {
+            throw AssertionError("Unexpected response to unregister file picker: $unregisterResp")
+          }
+        }
+      }
+    }
+  }
 }
+
+/**
+ * Thrown when a native file or directory picker was expected to appear within a
+ * [withFilePicker] or [withFilePickerCancel] scope, but no picker dialog was triggered
+ * before the timeout elapsed.
+ */
+class PickerNotOpenedException(message: String) : AssertionError(message)
 
 /**
  * @suppress

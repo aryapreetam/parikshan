@@ -43,8 +43,15 @@ internal object DesktopTargetConfigurer {
     )
 
     val appJarFileProvider = if (targetProjectForJar != null && targetProjectForJar.tasks.names.contains(appJarTaskNameVal)) {
-      targetProjectForJar.tasks.named<org.gradle.jvm.tasks.Jar>(appJarTaskNameVal)
-        .flatMap { it.archiveFile }
+      targetProjectForJar.tasks.named<org.gradle.jvm.tasks.Jar>(appJarTaskNameVal).also { jarTaskProvider ->
+        jarTaskProvider.configure {
+          manifest {
+            attributes["Premain-Class"] = "io.github.aryapreetam.parikshan.server.ParikshanAgent"
+            attributes["Can-Retransform-Classes"] = "true"
+            attributes["Can-Redefine-Classes"] = "true"
+          }
+        }
+      }.flatMap { it.archiveFile }
     } else {
       null
     }
@@ -212,10 +219,20 @@ internal object DesktopProcess {
   ) {
     stop(host = host, port = port, token = token, manifestFile = manifestFile)
     val javaExecutable = System.getProperty("java.home") + "/bin/java"
-    val mainClass = java.util.jar.JarFile(jar).manifest.mainAttributes.getValue("Main-Class")
+    val mainClass = java.util.jar.JarFile(jar).use { jarFile ->
+      jarFile.manifest.mainAttributes.getValue("Main-Class")
+    }
+    val hasPremain = runCatching {
+      java.util.jar.JarFile(jar).use { jarFile ->
+        jarFile.manifest?.mainAttributes?.getValue("Premain-Class") != null
+      }
+    }.getOrDefault(false)
     logFile.parentFile.mkdirs()
     val command = buildList {
       add(javaExecutable)
+      if (hasPremain) {
+        add("-javaagent:${jar.absolutePath}")
+      }
       add("-Dparikshan.host=$host")
       add("-Dparikshan.port=$port")
       add("-Dparikshan.token=$token")

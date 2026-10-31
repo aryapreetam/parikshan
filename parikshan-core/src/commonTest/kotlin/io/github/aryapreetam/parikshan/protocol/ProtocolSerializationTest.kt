@@ -52,4 +52,57 @@ class ProtocolSerializationTest {
         assertTrue(decoded is Command.Ping)
         assertEquals("token-123", decoded.token)
     }
+
+    @Test
+    fun testFilePickerProtocolSerialization() {
+        val selectCmd = Command.RegisterFilePicker(
+            id = "rfp1",
+            action = PickerAction.Select(listOf("/path/to/image1.png", "/path/to/image2.png")),
+            timeoutMs = 5000L
+        )
+        val selectJson = ProtocolJson.encodeCommand(selectCmd)
+        val decodedSelect = ProtocolJson.decodeCommand(selectJson)
+        assertTrue(decodedSelect is Command.RegisterFilePicker)
+        assertEquals("rfp1", decodedSelect.id)
+        assertEquals(5000L, decodedSelect.timeoutMs)
+        assertTrue(decodedSelect.action is PickerAction.Select)
+        assertEquals(listOf("/path/to/image1.png", "/path/to/image2.png"), decodedSelect.action.paths)
+
+        val cancelCmd = Command.RegisterFilePicker(
+            id = "rfp2",
+            action = PickerAction.Cancel
+        )
+        val cancelJson = ProtocolJson.encodeCommand(cancelCmd)
+        val decodedCancel = ProtocolJson.decodeCommand(cancelJson)
+        assertTrue(decodedCancel is Command.RegisterFilePicker)
+        assertTrue(decodedCancel.action is PickerAction.Cancel)
+
+        val unregisterCmd = Command.UnregisterFilePicker(
+            id = "ufp1",
+            awaitCompletion = true,
+            timeoutMs = 8000L
+        )
+        val unregisterJson = ProtocolJson.encodeCommand(unregisterCmd)
+        val decodedUnregister = ProtocolJson.decodeCommand(unregisterJson)
+        assertTrue(decodedUnregister is Command.UnregisterFilePicker)
+        assertEquals("ufp1", decodedUnregister.id)
+        assertTrue(decodedUnregister.awaitCompletion)
+        assertEquals(8000L, decodedUnregister.timeoutMs)
+
+        val handledResp = Response.FilePickerHandled(
+            id = "fph1",
+            wasHandled = true,
+            selectedPaths = listOf("/selected/file.txt"),
+            wasCancelled = false,
+            elapsedMs = 120L
+        )
+        val respJson = ProtocolJson.encodeResponse(handledResp)
+        val decodedResp = ProtocolJson.decodeResponse(respJson)
+        assertTrue(decodedResp is Response.FilePickerHandled)
+        assertEquals("fph1", decodedResp.id)
+        assertTrue(decodedResp.wasHandled)
+        assertEquals(listOf("/selected/file.txt"), decodedResp.selectedPaths)
+        assertEquals(false, decodedResp.wasCancelled)
+        assertEquals(120L, decodedResp.elapsedMs)
+    }
 }

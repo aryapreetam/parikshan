@@ -143,6 +143,9 @@ abstract class E2ETestTask : DefaultTask() {
   @get:Input
   abstract val projectRootDir: Property<String>
 
+  @get:Internal
+  abstract val projectDirectory: DirectoryProperty
+
   @get:Input
   abstract val projectPath: Property<String>
 
@@ -1333,7 +1336,8 @@ abstract class E2ETestTask : DefaultTask() {
       "parikshan.wasm.windowX",
       "parikshan.wasm.windowY",
       "parikshan.wasm.appMode",
-      "parikshan.projectRootDir"
+      "parikshan.projectRootDir",
+      "parikshan.projectDir"
     )
     propsToForward.forEach { prop ->
       if (!systemProperties.containsKey(prop)) {
@@ -1361,6 +1365,9 @@ abstract class E2ETestTask : DefaultTask() {
 
     val reportsDir = File(buildDir.get().asFile, "test-results/e2eTest/$target/$testClass").absolutePath
     pbArgs.add("-Dparikshan.video.outputDir=" + File(buildDir.get().asFile, "parikshan/videos/$target").absolutePath)
+    if (projectDirectory.isPresent) {
+      pbArgs.add("-Dparikshan.projectDir=" + projectDirectory.get().asFile.absolutePath)
+    }
     pbArgs.add("org.junit.platform.console.ConsoleLauncher")
     pbArgs.add("execute")
     pbArgs.add("--reports-dir")
@@ -1382,6 +1389,9 @@ abstract class E2ETestTask : DefaultTask() {
 
     val pb = ProcessBuilder(pbArgs)
     cleanXcodeEnv(pb)
+    if (projectDirectory.isPresent) {
+      pb.directory(projectDirectory.get().asFile)
+    }
     pb.environment()["NSAppSleepDisabled"] = "YES"
     if (target == "wasm") {
       pb.environment()["PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD"] = "1"
@@ -1446,7 +1456,8 @@ abstract class E2ETestTask : DefaultTask() {
       "parikshan.wasm.windowX",
       "parikshan.wasm.windowY",
       "parikshan.wasm.appMode",
-      "parikshan.projectRootDir"
+      "parikshan.projectRootDir",
+      "parikshan.projectDir"
     )
     propsToForward.forEach { prop ->
       if (!systemProperties.containsKey(prop)) {
@@ -1476,6 +1487,9 @@ abstract class E2ETestTask : DefaultTask() {
     reportsDirFile.mkdirs()
     val reportsDir = reportsDirFile.absolutePath
     pbArgs.add("-Dparikshan.video.outputDir=" + File(buildDir.get().asFile, "parikshan/videos/$target").absolutePath)
+    if (projectDirectory.isPresent) {
+      pbArgs.add("-Dparikshan.projectDir=" + projectDirectory.get().asFile.absolutePath)
+    }
     pbArgs.add("org.junit.platform.console.ConsoleLauncher")
     pbArgs.add("execute")
     pbArgs.add("--disable-ansi-colors")
@@ -1497,6 +1511,9 @@ abstract class E2ETestTask : DefaultTask() {
 
     val pb = ProcessBuilder(pbArgs)
     cleanXcodeEnv(pb)
+    if (projectDirectory.isPresent) {
+      pb.directory(projectDirectory.get().asFile)
+    }
     pb.environment()["NSAppSleepDisabled"] = "YES"
     if (target == "wasm") {
       pb.environment()["PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD"] = "1"

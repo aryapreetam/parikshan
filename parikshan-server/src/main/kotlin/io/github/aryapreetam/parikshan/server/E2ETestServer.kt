@@ -67,6 +67,7 @@ private class RunningE2ETestServer(
   private val semantics = DesktopSemanticsAccessor(window)
   private val injector = DesktopEventInjector()
   private val videoRecorder = DesktopVideoRecorder(semanticsAccessor = semantics)
+  private val filePickerWatcher = DesktopFilePickerWatcher()
 
   private val shutdownHook = Thread({
     videoRecorder.stop()
@@ -90,6 +91,7 @@ private class RunningE2ETestServer(
       Runtime.getRuntime().removeShutdownHook(shutdownHook)
     }
     videoRecorder.stop()
+    filePickerWatcher.disarm()
     runCatching {
       server.stop(gracePeriodMillis = 500, timeoutMillis = 2_000)
     }
@@ -401,6 +403,20 @@ private class RunningE2ETestServer(
         Response.Ok(command.id)
       }
       is Command.HideKeyboard -> Response.Ok(command.id)
+      is Command.RegisterFilePicker -> {
+        filePickerWatcher.register(command.action, command.timeoutMs)
+        Response.Ok(command.id)
+      }
+      is Command.UnregisterFilePicker -> {
+        val result = filePickerWatcher.unregister(command.awaitCompletion, command.timeoutMs)
+        Response.FilePickerHandled(
+          id = command.id,
+          wasHandled = result.wasHandled,
+          selectedPaths = result.selectedPaths,
+          wasCancelled = result.wasCancelled,
+          elapsedMs = result.elapsedMs
+        )
+      }
     }
   }
 

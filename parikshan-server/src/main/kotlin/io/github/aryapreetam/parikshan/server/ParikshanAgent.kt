@@ -29,11 +29,26 @@ object ParikshanAgent {
         protectionDomain: ProtectionDomain?,
         classfileBuffer: ByteArray
       ): ByteArray? {
-        if (className != "java/awt/Dialog") return null
-        return try {
-          val cr = ClassReader(classfileBuffer)
-          val cw = ClassWriter(cr, ClassWriter.COMPUTE_FRAMES or ClassWriter.COMPUTE_MAXS)
-          val cv = object : ClassVisitor(Opcodes.ASM9, cw) {
+        if (className == "java/awt/Dialog") {
+          return transformDialog(classfileBuffer)
+        }
+        if (className == "io/github/vinceglb/filekit/dialogs/platform/PlatformFilePicker\$Companion") {
+          return transformFileKitCompanion(classfileBuffer)
+        }
+        return null
+      }
+    }, true)
+
+    runCatching {
+      inst.retransformClasses(Dialog::class.java)
+    }
+  }
+
+  private fun transformDialog(classfileBuffer: ByteArray): ByteArray? {
+    return try {
+      val cr = ClassReader(classfileBuffer)
+      val cw = ClassWriter(cr, ClassWriter.COMPUTE_FRAMES or ClassWriter.COMPUTE_MAXS)
+      val cv = object : ClassVisitor(Opcodes.ASM9, cw) {
             override fun visitMethod(
               access: Int,
               name: String?,
@@ -216,15 +231,104 @@ object ParikshanAgent {
           }
           cr.accept(cv, ClassReader.EXPAND_FRAMES)
           cw.toByteArray()
-        } catch (t: Throwable) {
-          System.err.println("ParikshanAgent: Failed to transform Dialog: ${t.message}")
-          null
+    } catch (t: Throwable) {
+      System.err.println("ParikshanAgent: Failed to transform Dialog: ${t.message}")
+      null
+    }
+  }
+
+  private fun transformFileKitCompanion(classfileBuffer: ByteArray): ByteArray? {
+    return try {
+      val cr = ClassReader(classfileBuffer)
+      val cw = ClassWriter(cr, ClassWriter.COMPUTE_FRAMES or ClassWriter.COMPUTE_MAXS)
+      val cv = object : ClassVisitor(Opcodes.ASM9, cw) {
+        override fun visitMethod(
+          access: Int,
+          name: String?,
+          descriptor: String?,
+          signature: String?,
+          exceptions: Array<out String>?
+        ): MethodVisitor {
+          val mv = super.visitMethod(access, name, descriptor, signature, exceptions)
+          if (name == "createPlatformFilePicker" && descriptor?.endsWith("PlatformFilePicker;") == true) {
+            return object : MethodVisitor(Opcodes.ASM9, mv) {
+              override fun visitInsn(opcode: Int) {
+                if (opcode == Opcodes.ARETURN) {
+                  mv.visitMethodInsn(
+                    Opcodes.INVOKESTATIC,
+                    "io/github/aryapreetam/parikshan/server/ParikshanAgent",
+                    "wrapFileKitPicker",
+                    "(Ljava/lang/Object;)Ljava/lang/Object;",
+                    false
+                  )
+                  mv.visitTypeInsn(Opcodes.CHECKCAST, "io/github/vinceglb/filekit/dialogs/platform/PlatformFilePicker")
+                }
+                super.visitInsn(opcode)
+              }
+            }
+          }
+          return mv
         }
       }
-    }, true)
+      cr.accept(cv, ClassReader.EXPAND_FRAMES)
+      cw.toByteArray()
+    } catch (t: Throwable) {
+      System.err.println("ParikshanAgent: Failed to transform FileKit PlatformFilePicker: ${t.message}")
+      null
+    }
+  }
 
-    runCatching {
-      inst.retransformClasses(Dialog::class.java)
+  @JvmStatic
+  fun wrapFileKitPicker(original: Any): Any {
+    val iface = runCatching {
+      Class.forName("io.github.vinceglb.filekit.dialogs.platform.PlatformFilePicker", true, original.javaClass.classLoader)
+    }.getOrNull() ?: return original
+
+    return java.lang.reflect.Proxy.newProxyInstance(
+      original.javaClass.classLoader,
+      arrayOf(iface)
+    ) { _, method, args ->
+      val methodName = method.name
+      val active = System.getProperty(SYSTEM_PROPERTY_ACTIVE) != null
+      if (active) {
+        if (methodName == "openFilePicker") {
+          System.setProperty(SYSTEM_PROPERTY_HANDLED, "true")
+          if ("true" == System.getProperty(SYSTEM_PROPERTY_CANCEL)) {
+            return@newProxyInstance null
+          }
+          val paths = System.getProperty(SYSTEM_PROPERTY_PATHS)
+          if (!paths.isNullOrEmpty()) {
+            val first = paths.split(File.pathSeparator).firstOrNull()
+            if (first != null) return@newProxyInstance File(first)
+          }
+          return@newProxyInstance null
+        }
+        if (methodName == "openFilesPicker") {
+          System.setProperty(SYSTEM_PROPERTY_HANDLED, "true")
+          if ("true" == System.getProperty(SYSTEM_PROPERTY_CANCEL)) {
+            return@newProxyInstance null
+          }
+          val paths = System.getProperty(SYSTEM_PROPERTY_PATHS)
+          if (!paths.isNullOrEmpty()) {
+            val list = paths.split(File.pathSeparator).map { File(it) }
+            return@newProxyInstance list
+          }
+          return@newProxyInstance null
+        }
+        if (methodName == "openDirectoryPicker") {
+          System.setProperty(SYSTEM_PROPERTY_HANDLED, "true")
+          if ("true" == System.getProperty(SYSTEM_PROPERTY_CANCEL)) {
+            return@newProxyInstance null
+          }
+          val paths = System.getProperty(SYSTEM_PROPERTY_PATHS)
+          if (!paths.isNullOrEmpty()) {
+            val first = paths.split(File.pathSeparator).firstOrNull()
+            if (first != null) return@newProxyInstance File(first)
+          }
+          return@newProxyInstance null
+        }
+      }
+      method.invoke(original, *(args ?: emptyArray()))
     }
   }
 }

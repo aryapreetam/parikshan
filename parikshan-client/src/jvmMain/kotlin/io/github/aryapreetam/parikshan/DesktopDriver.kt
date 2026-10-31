@@ -42,31 +42,8 @@ internal class DesktopDriver(
     io.github.aryapreetam.parikshan.client.ParikshanVideoSessionManager.updateVirtualCursor(x, y)
   }
 
-  override fun validateAndNormalizePickerPaths(paths: List<String>): List<String> {
-    val projectDirProp = System.getProperty("parikshan.projectDir")
-    return paths.map { pathStr ->
-      val expandedPath = if (pathStr == "~" || pathStr.startsWith("~/")) {
-        val userHome = System.getProperty("user.home") ?: ""
-        if (pathStr == "~") userHome else userHome + pathStr.removePrefix("~")
-      } else {
-        pathStr
-      }
-      val directFile = File(expandedPath)
-      val file = when {
-        directFile.isAbsolute -> directFile
-        directFile.exists() -> directFile.absoluteFile
-        projectDirProp != null && File(projectDirProp, expandedPath).exists() -> File(projectDirProp, expandedPath).absoluteFile
-        else -> directFile.absoluteFile
-      }
-      if (!file.exists()) {
-        throw java.io.FileNotFoundException(
-          "File or directory does not exist: $pathStr\n" +
-            "  Resolved absolute path: ${file.absolutePath}"
-        )
-      }
-      file.canonicalPath
-    }
-  }
+  override fun validateAndNormalizePickerPaths(paths: List<String>): List<String> =
+    PickerPathResolver.resolveAndValidatePaths(paths)
 
   override suspend fun send(command: Command): Response {
     // SECURITY: Sign the command with the global session token

@@ -48,31 +48,8 @@ internal class WasmDriver private constructor(
   private var pickerLatch = java.util.concurrent.CountDownLatch(1)
   private var fileChooserConsumer: java.util.function.Consumer<com.microsoft.playwright.FileChooser>? = null
 
-  override fun validateAndNormalizePickerPaths(paths: List<String>): List<String> {
-    val projectDirProp = System.getProperty("parikshan.projectDir")
-    return paths.map { pathStr ->
-      val expandedPath = if (pathStr == "~" || pathStr.startsWith("~/")) {
-        val userHome = System.getProperty("user.home") ?: ""
-        if (pathStr == "~") userHome else userHome + pathStr.removePrefix("~")
-      } else {
-        pathStr
-      }
-      val directFile = File(expandedPath)
-      val file = when {
-        directFile.isAbsolute -> directFile
-        directFile.exists() -> directFile.absoluteFile
-        projectDirProp != null && File(projectDirProp, expandedPath).exists() -> File(projectDirProp, expandedPath).absoluteFile
-        else -> directFile.absoluteFile
-      }
-      if (!file.exists()) {
-        throw java.io.FileNotFoundException(
-          "File or directory does not exist: $pathStr\n" +
-            "  Resolved absolute path: ${file.absolutePath}"
-        )
-      }
-      file.canonicalPath
-    }
-  }
+  override fun validateAndNormalizePickerPaths(paths: List<String>): List<String> =
+    PickerPathResolver.resolveAndValidatePaths(paths)
 
   private fun disarmFileChooser() {
     pickerArmed.set(false)

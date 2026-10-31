@@ -214,6 +214,10 @@ internal class BroadcastDriver(
     }
   }
 
+  override fun validateAndNormalizePickerPaths(paths: List<String>): List<String> {
+    return drivers.firstOrNull()?.validateAndNormalizePickerPaths(paths) ?: paths
+  }
+
   override fun resolveArtifactPath(relativePath: String): String {
     return drivers.firstOrNull()?.resolveArtifactPath(relativePath)
       ?: "build/parikshan/${relativePath.trimStart('/', '\\')}"

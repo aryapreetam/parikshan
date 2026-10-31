@@ -18,6 +18,9 @@ internal class IosRemoteDriver private constructor(
 ) : TestDriver {
   override val targetPlatform: String = "ios"
 
+  override fun validateAndNormalizePickerPaths(paths: List<String>): List<String> =
+    PickerPathResolver.resolveAndValidatePaths(paths)
+
   override suspend fun send(command: Command): Response {
     command.token = sessionToken
 
@@ -27,8 +30,19 @@ internal class IosRemoteDriver private constructor(
     if (command is Command.StopRecording) {
       return stopHostRecording(command)
     }
+    val commandToSend = if (command is Command.RegisterFilePicker) {
+      val pickerAction = command.action
+      if (pickerAction is io.github.aryapreetam.parikshan.protocol.PickerAction.Select) {
+        val staged = stageFixturesToSimulator(pickerAction.paths)
+        command.copy(action = io.github.aryapreetam.parikshan.protocol.PickerAction.Select(staged))
+      } else {
+        command
+      }
+    } else {
+      command
+    }
 
-    val json = ProtocolJson.encodeCommand(command)
+    val json = ProtocolJson.encodeCommand(commandToSend)
     val responseJson = httpPost(json)
     val response = ProtocolJson.decodeResponse(responseJson)
 
@@ -207,6 +221,36 @@ internal class IosRemoteDriver private constructor(
       delay(500)
     }
     throw IllegalStateException("Could not reconnect to Parikshan iOS server after relaunch")
+  }
+
+  private fun stageFixturesToSimulator(paths: List<String>): List<String> {
+    try {
+      val udid = System.getProperty("parikshan.ios.udid")?.takeIf { it.isNotBlank() } ?: "booted"
+      val bundleId = System.getProperty("parikshan.ios.bundleId")?.takeIf { it.isNotBlank() } ?: "sample.app.ios"
+
+      val pb = ProcessBuilder("xcrun", "simctl", "get_app_container", udid, bundleId, "data")
+      val process = pb.start()
+      val output = process.inputStream.bufferedReader().readText().trim()
+      if (process.waitFor() == 0 && output.isNotEmpty()) {
+        val containerDir = java.io.File(output)
+        val documentsDir = java.io.File(containerDir, "Documents")
+        documentsDir.mkdirs()
+        return paths.map { path ->
+          val hostFile = java.io.File(path)
+          val destFile = java.io.File(documentsDir, hostFile.name)
+          if (hostFile.isFile) {
+            hostFile.copyTo(destFile, overwrite = true)
+            destFile.canonicalPath
+          } else if (hostFile.isDirectory) {
+            hostFile.copyRecursively(destFile, overwrite = true)
+            destFile.canonicalPath
+          } else {
+            path
+          }
+        }
+      }
+    } catch (_: Exception) {}
+    return paths
   }
 
   companion object {

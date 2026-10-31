@@ -613,9 +613,14 @@ object AndroidServer {
 
       is Command.Screenshot -> {
         val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
-        // Save to internal storage; the host driver will pull it via ADB
-        val deviceFile = java.io.File("/sdcard/parikshan-screenshot.png")
-        device.takeScreenshot(deviceFile)
+        val deviceFile = java.io.File("/sdcard/Download/parikshan-screenshot.png")
+        try {
+          deviceFile.parentFile?.mkdirs()
+          device.takeScreenshot(deviceFile)
+        } catch (_: Throwable) {
+          val cacheFile = java.io.File(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir, "parikshan-screenshot.png")
+          device.takeScreenshot(cacheFile)
+        }
         Response.Ok(command.id)
       }
       
@@ -653,8 +658,20 @@ object AndroidServer {
         }
         Response.Ok(command.id)
       }
-      is Command.RegisterFilePicker -> Response.Error(command.id, "RegisterFilePicker is not supported on Android")
-      is Command.UnregisterFilePicker -> Response.Ok(command.id)
+      is Command.RegisterFilePicker -> {
+        AndroidFilePickerWatcher.register(
+          commandId = command.id,
+          action = command.action,
+          timeoutMs = command.timeoutMs
+        )
+      }
+      is Command.UnregisterFilePicker -> {
+        AndroidFilePickerWatcher.unregister(
+          commandId = command.id,
+          awaitCompletion = command.awaitCompletion,
+          timeoutMs = command.timeoutMs
+        )
+      }
     }
   }
 

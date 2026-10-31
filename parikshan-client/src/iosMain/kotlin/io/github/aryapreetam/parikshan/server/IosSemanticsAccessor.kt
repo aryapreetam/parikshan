@@ -123,10 +123,7 @@ internal object IosSemanticsAccessor {
 
   internal fun logDebug(message: String) {
     try {
-      val formatted = "[Parikshan Accessor] $message"
-      @Suppress("CAST_NEVER_SUCCEEDS")
-      val nsString = formatted as platform.Foundation.NSString
-      platform.Foundation.NSLog("%@", nsString)
+      println("[Parikshan Accessor] $message")
     } catch (_: Throwable) {}
   }
 

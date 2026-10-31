@@ -67,9 +67,7 @@ import kotlinx.coroutines.*
 // --- DEFINITIVE EAGER INITIALIZATION ---
 // This top-level property forces the server to start as soon as the Kotlin framework is loaded by the iOS app.
 private fun logIosServer(message: String) {
-  @Suppress("CAST_NEVER_SUCCEEDS")
-  val nsString = message as platform.Foundation.NSString
-  platform.Foundation.NSLog("%@", nsString)
+  println("[Parikshan] $message")
 }
 
 @Suppress("unused")
@@ -88,6 +86,7 @@ object IosServer {
     signal(SIGPIPE, SIG_IGN)
 
     IosSemanticsAccessor.setup()
+    IosFilePickerWatcher.setup()
 
     // Resolve token and port from environment
     val tokenC = getenv("PARIKSHAN_TOKEN") ?: getenv("SIMCTL_CHILD_PARIKSHAN_TOKEN")
@@ -235,6 +234,18 @@ object IosServer {
             break
         }
 
+        if (command is Command.RegisterFilePicker) {
+            val response = IosFilePickerWatcher.register(command.id, command.action, command.timeoutMs)
+            sendHttpResponse(clientFd, 200, ProtocolJson.encodeResponse(response))
+            break
+        }
+
+        if (command is Command.UnregisterFilePicker) {
+            val response = IosFilePickerWatcher.unregister(command.id, command.awaitCompletion, command.timeoutMs)
+            sendHttpResponse(clientFd, 200, ProtocolJson.encodeResponse(response))
+            break
+        }
+
         val response = executeOnMainThread(command)
         sendHttpResponse(clientFd, 200, ProtocolJson.encodeResponse(response))
         break 
@@ -341,6 +352,12 @@ object IosServer {
         IosSemanticsAccessor.resignCurrentFirstResponder()
         pumpRunLoop(iterations = 6, intervalSeconds = 0.05)
         Response.Ok(command.id)
+      }
+      is Command.RegisterFilePicker -> {
+        IosFilePickerWatcher.register(command.id, command.action, command.timeoutMs)
+      }
+      is Command.UnregisterFilePicker -> {
+        IosFilePickerWatcher.unregister(command.id, command.awaitCompletion, command.timeoutMs)
       }
       else -> Response.Ok(command.id)
     }

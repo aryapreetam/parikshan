@@ -37,6 +37,23 @@ internal class AndroidDriver private constructor(
   private val composeUiTest: AndroidComposeTestRule<*, *>
 ) : TestDriver {
   override val targetPlatform: String = "android"
+
+  override fun validateAndNormalizePickerPaths(paths: List<String>): List<String> {
+    return paths.map { pathStr ->
+      val file = File(pathStr)
+      if (!file.exists()) {
+        val tmpFixture = File("/data/local/tmp/parikshan_fixtures", file.name)
+        val sdFixture = File("/sdcard/Download/parikshan_fixtures", file.name)
+        when {
+          tmpFixture.exists() -> tmpFixture.canonicalPath
+          sdFixture.exists() -> sdFixture.canonicalPath
+          else -> file.canonicalPath
+        }
+      } else {
+        file.canonicalPath
+      }
+    }
+  }
   override fun resolveArtifactPath(relativePath: String): String =
     File(
       composeUiTest.activity.cacheDir,
@@ -346,8 +363,20 @@ internal class AndroidDriver private constructor(
         } catch (_: Throwable) {}
         Response.Ok(command.id)
       }
-      is Command.RegisterFilePicker -> Response.Error(command.id, "RegisterFilePicker is not supported on Android")
-      is Command.UnregisterFilePicker -> Response.Ok(command.id)
+      is Command.RegisterFilePicker -> {
+        io.github.aryapreetam.parikshan.server.AndroidFilePickerWatcher.register(
+          commandId = command.id,
+          action = command.action,
+          timeoutMs = command.timeoutMs
+        )
+      }
+      is Command.UnregisterFilePicker -> {
+        io.github.aryapreetam.parikshan.server.AndroidFilePickerWatcher.unregister(
+          commandId = command.id,
+          awaitCompletion = command.awaitCompletion,
+          timeoutMs = command.timeoutMs
+        )
+      }
     }
   }
 

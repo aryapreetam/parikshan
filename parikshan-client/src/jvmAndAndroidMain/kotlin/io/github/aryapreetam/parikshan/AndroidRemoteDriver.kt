@@ -19,6 +19,9 @@ internal class AndroidRemoteDriver private constructor(
 ) : TestDriver {
   override val targetPlatform: String = "android"
 
+  override fun validateAndNormalizePickerPaths(paths: List<String>): List<String> =
+    PickerPathResolver.resolveAndValidatePaths(paths)
+
   override suspend fun send(command: Command): Response {
     command.token = sessionToken
 
@@ -28,10 +31,37 @@ internal class AndroidRemoteDriver private constructor(
     if (command is Command.StopRecording) {
       return stopHostRecording(command)
     }
+    if (command is Command.RegisterFilePicker) {
+      val pickerAction = command.action
+      if (pickerAction is io.github.aryapreetam.parikshan.protocol.PickerAction.Select) {
+        pushFixturesToDevice(pickerAction.paths)
+      }
+    }
 
     val json = ProtocolJson.encodeCommand(command)
     val responseJson = httpPost(json)
     return ProtocolJson.decodeResponse(responseJson)
+  }
+
+  private fun pushFixturesToDevice(paths: List<String>) {
+    val serial = System.getProperty("parikshan.android.serial") ?: ""
+    val adbPrefix = if (serial.isNotEmpty()) listOf("adb", "-s", serial) else listOf("adb")
+    try {
+      ProcessBuilder(adbPrefix + listOf("shell", "mkdir", "-p", "/data/local/tmp/parikshan_fixtures")).start().waitFor()
+      ProcessBuilder(adbPrefix + listOf("shell", "mkdir", "-p", "/sdcard/Download/parikshan_fixtures")).start().waitFor()
+      for (path in paths) {
+        val hostFile = java.io.File(path)
+        if (hostFile.isFile) {
+          ProcessBuilder(adbPrefix + listOf("push", hostFile.absolutePath, "/data/local/tmp/parikshan_fixtures/${hostFile.name}")).start().waitFor()
+          ProcessBuilder(adbPrefix + listOf("push", hostFile.absolutePath, "/sdcard/Download/parikshan_fixtures/${hostFile.name}")).start().waitFor()
+          ProcessBuilder(adbPrefix + listOf("shell", "chmod", "666", "/data/local/tmp/parikshan_fixtures/${hostFile.name}")).start().waitFor()
+        } else if (hostFile.isDirectory) {
+          ProcessBuilder(adbPrefix + listOf("shell", "mkdir", "-p", "/data/local/tmp/parikshan_fixtures/${hostFile.name}")).start().waitFor()
+          ProcessBuilder(adbPrefix + listOf("shell", "mkdir", "-p", "/sdcard/Download/parikshan_fixtures/${hostFile.name}")).start().waitFor()
+        }
+      }
+      ProcessBuilder(adbPrefix + listOf("shell", "chmod", "-R", "777", "/data/local/tmp/parikshan_fixtures")).start().waitFor()
+    } catch (_: Exception) {}
   }
 
   private suspend fun startHostRecording(command: Command.StartRecording): Response {

@@ -119,13 +119,22 @@ class OverlayIntegrationTest : E2ETestLifecycle {
     click("date_picker_trigger_button")
     assertVisible("date_picker_dialog")
 
-    // Select June 15, 2026 (Current month in session context)
-    // We use a date slightly before today to ensure it's selectable (not in the future if the picker has constraints)
-    // But today is June 17, 2026.
-    selectDateFromCalendar(day = 15, month = 6, year = 2026)
+    // Dynamically pick day 15 of whatever month/year the date picker currently opens to
+    val initialTree = getTree()
+    val headerNode = initialTree.find { node ->
+      val text = node.text ?: ""
+      text.contains(Regex("20\\d{2}")) && 
+      (1..12).any { m -> text.contains(sample.app.getMonthName(m), ignoreCase = true) }
+    } ?: initialTree.find { it.text?.contains("20") == true && it.text?.contains("selecting a year") == true }
+    val headerText = headerNode?.text ?: ""
+    val targetYear = Regex("20\\d{2}").find(headerText)?.value?.toIntOrNull() ?: 2026
+    val targetMonth = (1..12).firstOrNull { headerText.contains(sample.app.getMonthName(it), ignoreCase = true) } ?: 6
+    val formattedDate = "15/${targetMonth.toString().padStart(2, '0')}/$targetYear"
+
+    selectDateFromCalendar(day = 15, month = targetMonth, year = targetYear)
 
     // Verify it successfully dismissed and output updated to dd/mm/yyyy
-    assertContains("overlay_result_message", "Date Selected: 15/06/2026")
+    assertContains("overlay_result_message", "Date Selected: $formattedDate")
   }
 
   @Test

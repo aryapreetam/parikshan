@@ -29,7 +29,7 @@
 ### Features
 
 - Write tests in Kotlin, execute and visually watch them run across Android, iOS, Desktop, and Web (Wasm).
-- Built-in [video recording](https://aryapreetam.github.io/parikshan/configuration/cli-options/#video-recording-options), screenshot capture, and [test reports](https://aryapreetam.github.io/parikshan/reports/test-reports).
+- Built-in [file picker automation](https://aryapreetam.github.io/parikshan/features/file-picker), [video recording](https://aryapreetam.github.io/parikshan/configuration/cli-options/#video-recording-options), screenshot capture, and [test reports](https://aryapreetam.github.io/parikshan/features/test-reports).
 - [Window layout and positioning](https://aryapreetam.github.io/parikshan/configuration/cli-options/#layout-size-position-control), [synchronized execution](https://aryapreetam.github.io/parikshan/configuration/cli-options/#synchronized-multi-target-execution-sync), and continuous [watch mode](https://aryapreetam.github.io/parikshan/configuration/cli-options/#continuous-watch-mode-watch).
 
 [**API Reference**](https://aryapreetam.github.io/parikshan/api/) | [**Documentation**](https://aryapreetam.github.io/parikshan/)
@@ -43,7 +43,7 @@ In your shared library module (e.g. `:shared`/`:composeApp`) `build.gradle.kts`:
 
 ```kotlin
 plugins {
-  id("io.github.aryapreetam.parikshan") version "0.0.10"
+  id("io.github.aryapreetam.parikshan") version "0.0.11"
 }
 ```
 

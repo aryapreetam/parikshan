@@ -29,7 +29,7 @@
 ### Features
 
 - Write tests in Kotlin, execute and visually watch them run across Android, iOS, Desktop, and Web (Wasm).
-- Built-in [video recording](features/test-reports.md), screenshot capture, and unified [test reports](features/test-reports.md).
+- Built-in [file picker automation](features/file-picker.md), [video recording](features/test-reports.md), screenshot capture, and unified [test reports](features/test-reports.md).
 - [Window layout and positioning](features/window-layout.md), [synchronized execution](features/synchronized-execution.md), and continuous [watch mode](features/watch-mode.md).
 
 [**API Reference**](https://aryapreetam.github.io/parikshan/api/) | [**Quickstart Guide**](getting-started/quickstart.md) | [**Features Hub**](features/index.md) | [**Examples**](examples.md)
@@ -43,7 +43,7 @@ In your shared library module (e.g. `:composeApp`) `build.gradle.kts`:
 
 ```kotlin
 plugins {
-  id("io.github.aryapreetam.parikshan") version "0.0.10"
+  id("io.github.aryapreetam.parikshan") version "0.0.11"
 }
 ```
 

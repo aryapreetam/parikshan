@@ -13,7 +13,7 @@ import org.objectweb.asm.Label
 import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
 
-object ParikshanAgent {
+internal object ParikshanAgent {
   const val SYSTEM_PROPERTY_ACTIVE = "parikshan.picker.active"
   const val SYSTEM_PROPERTY_CANCEL = "parikshan.picker.cancel"
   const val SYSTEM_PROPERTY_PATHS = "parikshan.picker.paths"

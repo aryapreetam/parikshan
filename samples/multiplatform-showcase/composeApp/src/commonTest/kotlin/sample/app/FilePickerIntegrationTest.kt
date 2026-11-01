@@ -87,4 +87,31 @@ class FilePickerIntegrationTest : E2ETestLifecycle {
       }
     }
   }
+  @Test
+  fun testFilePickerEndToEndFlow() = e2eTest {
+    // 1. Single file selection
+    withFilePicker("build.gradle.kts") {
+      click("choose_single_file_button")
+    }
+    assertText("picker_action_status", "File selected")
+    assertText("selected_count_text", "1")
+    // 2. Directory selection
+    withFilePicker("src/commonMain") {
+      click("choose_directory_button")
+    }
+    assertText("picker_action_status", "Directory selected")
+    assertText("selected_count_text", "1")
+    // 3. Multiple file selection
+    withFilePicker("build.gradle.kts", "src/commonMain/kotlin/sample/app/App.kt") {
+      click("choose_multiple_files_button")
+    }
+    assertText("picker_action_status", "2 files selected")
+    assertText("selected_count_text", "2")
+    // 4. Cancellation
+    withFilePickerCancel {
+      click("choose_single_file_button")
+    }
+    assertText("picker_action_status", "Picker was cancelled")
+    assertText("selected_count_text", "0")
+  }
 }

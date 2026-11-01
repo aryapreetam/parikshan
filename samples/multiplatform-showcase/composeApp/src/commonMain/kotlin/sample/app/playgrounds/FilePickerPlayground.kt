@@ -56,8 +56,7 @@ fun FilePickerPlayground() {
     modifier = Modifier
       .fillMaxSize()
       .testTag("file_picker_playground")
-      .verticalScroll(rememberScrollState())
-      .padding(16.dp),
+      .verticalScroll(rememberScrollState()),
     verticalArrangement = Arrangement.spacedBy(16.dp)
   ) {
     Text(
@@ -65,7 +64,12 @@ fun FilePickerPlayground() {
       style = MaterialTheme.typography.headlineMedium
     )
 
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    @OptIn(ExperimentalLayoutApi::class)
+    FlowRow(
+      horizontalArrangement = Arrangement.spacedBy(12.dp),
+      verticalArrangement = Arrangement.spacedBy(8.dp),
+      modifier = Modifier.fillMaxWidth()
+    ) {
       Button(
         onClick = { singlePicker() },
         modifier = Modifier.testTag("choose_single_file_button")
@@ -74,17 +78,17 @@ fun FilePickerPlayground() {
       }
 
       Button(
-        onClick = { multiPicker() },
-        modifier = Modifier.testTag("choose_multiple_files_button")
-      ) {
-        Text("Choose Multiple Files")
-      }
-
-      Button(
         onClick = { directoryPicker() },
         modifier = Modifier.testTag("choose_directory_button")
       ) {
         Text("Choose Directory")
+      }
+
+      Button(
+        onClick = { multiPicker() },
+        modifier = Modifier.testTag("choose_multiple_files_button")
+      ) {
+        Text("Choose Multiple Files")
       }
     }
 

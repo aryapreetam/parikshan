@@ -6,7 +6,7 @@ plugins {
     alias(libs.plugins.androidMultiplatformLibrary)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
-    id("io.github.aryapreetam.parikshan") version "0.0.10"
+    id("io.github.aryapreetam.parikshan") version "0.0.11"
 }
 
 val profile = providers.gradleProperty("cmpProfile").orNull ?: "1.11"

@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.0.11] - 2026-10-15
+
+### Added
+- **Native File & Photo Picker Automation**: Added declarative `withFilePicker(paths)` and `withFilePickerCancel()` extensions on `E2ETestScope` to automate file and photo dialogs without modal window deadlocks.
+- **Desktop JVM Interception**: Added Java Agent (`ParikshanAgent`) bytecode instrumentation on `java.awt.Dialog.show()` to intercept AWT `FileDialog` and Swing `JFileChooser` synchronously on the EDT before native Cocoa/Win32 modal loops engage.
+- **Web WasmJs File Chooser**: Hooked Playwright `page.onFileChooser` to attach virtual file payloads to browser file inputs without spawning native operating system dialogs.
+- **Android In-App Interception**: Added `AndroidFilePickerWatcher` and `ParikshanFileProvider` to intercept `ActivityResultContracts` (`GetContent`, `GetMultipleContents`, `OpenDocument`, `OpenMultipleDocuments`, `PickVisualMedia`, `OpenDocumentTree`) and dispatch synthetic `content://` URIs with granted read permissions.
+- **iOS In-App Interception**: Added `IosFilePickerWatcher` to intercept `UIViewController.presentViewController` for `UIDocumentPickerViewController` and `PHPickerViewController` via dynamic runtime subclassing.
+- **Unified Fixture Path Resolution**: Added `PickerPathResolver` to automatically resolve test fixtures across exact paths, module roots, `src/commonTest/resources/`, `src/test/resources/`, and Android asset folders.
+- **Host-to-Device Asset Staging**: Automated file pushing to Android device storage (`adb push`) and iOS simulator media staging (`simctl addmedia` and app container copy).
+
+### Fixed & Resolved Issues
+- **Disabled Control Protection ([#25](https://github.com/aryapreetam/parikshan/issues/25))**: Rejected click actions on disabled semantic nodes with actionable diagnostics instead of executing clicks.
+- **Selector Text Priority ([#24](https://github.com/aryapreetam/parikshan/issues/24))**: Prioritized `editableText` over `contentDescription` in direct text resolution to prevent selector matching mismatches on text inputs.
+- **Android Showcase LaunchMode**: Removed `android:launchMode="singleInstance"` from multiplatform-showcase Android manifest to prevent `ActivityTaskManager` from cancelling pending activity results (`RESULT_CANCELED`).
+- **iOS Delegate Retention**: Maintained strong Compose state references to `UIDocumentPickerDelegateProtocol` in multiplatform-showcase to prevent UIKit weak delegate deallocation during presentation.
+
 ## [0.0.10] - 2026-09-24
 
 ### Added

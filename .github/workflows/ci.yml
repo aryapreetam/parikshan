@@ -19,7 +19,7 @@ jobs:
   lint:
     name: Lint and code style
     if: "inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'lint')"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -52,13 +52,13 @@ jobs:
       matrix:
         include:
           - target: jvm
-            os: ubuntu-latest
+            os: ubuntu-24.04
           - target: ios
             os: macos-latest
           - target: wasm
-            os: ubuntu-latest
+            os: ubuntu-24.04
           - target: android
-            os: ubuntu-latest
+            os: ubuntu-24.04
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
@@ -107,7 +107,7 @@ jobs:
 
   e2e-android:
     name: E2E Android (CMP ${{ matrix.profile }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [ unit-tests ]
     if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'android'))"
     strategy:
@@ -149,7 +149,7 @@ jobs:
 
   e2e-desktop:
     name: E2E Desktop (CMP ${{ matrix.profile }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [ unit-tests ]
     if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'desktop'))"
     strategy:
@@ -180,7 +180,7 @@ jobs:
 
   e2e-wasm:
     name: E2E Wasm (CMP ${{ matrix.profile }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [ unit-tests ]
     if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'wasm'))"
     strategy:
@@ -240,7 +240,7 @@ jobs:
 
   e2e-sync:
     name: E2E Sync (JVM + Wasm)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [ unit-tests ]
     if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'sync'))"
     steps:
@@ -267,7 +267,7 @@ jobs:
 
   e2e-watch-script:
     name: E2E Watch Verification Script
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [ unit-tests ]
     if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'watch-script'))"
     steps:
@@ -493,7 +493,7 @@ jobs:
 
   dex-pollution-audit:
     name: DEX Footprint Audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [ lint ]
     if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'dex-pollution-audit'))"
     steps:
@@ -533,7 +533,7 @@ jobs:
 
   ci-success:
     name: CI Success
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: always()
     needs:
       - lint

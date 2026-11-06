@@ -15,8 +15,6 @@ kotlin {
     listOf(
         iosArm64(),
         iosSimulatorArm64()
-    ).plus(
-        if (profile == "1.10") listOf(iosX64()) else emptyList()
     ).forEach { iosTarget ->
         iosTarget.binaries.framework {
             baseName = "Shared"
@@ -58,6 +56,7 @@ kotlin {
     
     sourceSets {
         androidMain.dependencies {
+            implementation(libs.androidx.activity.compose)
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.compose.uiTooling)
         }
@@ -70,6 +69,8 @@ kotlin {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+            implementation(libs.filekit.core)
+            implementation(libs.filekit.dialogs.compose)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -82,4 +83,21 @@ kotlin {
 
 dependencies {
     androidRuntimeClasspath(libs.compose.uiTooling)
+}
+
+abstract class CreateEmptyFixtureDirTask : DefaultTask() {
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun execute() {
+        outputDir.get().asFile.mkdirs()
+    }
+}
+
+val createEmptyFixtureDirTask = tasks.register<CreateEmptyFixtureDirTask>("createEmptyFixtureDir") {
+    outputDir.set(layout.projectDirectory.dir("src/commonTest/resources/fixtures/issue29_dir/empty_dir"))
+}
+tasks.matching { it.name.startsWith("e2e") || it.name.contains("Test") }.configureEach {
+    dependsOn(createEmptyFixtureDirTask)
 }

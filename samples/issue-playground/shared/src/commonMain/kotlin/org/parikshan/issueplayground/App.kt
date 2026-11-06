@@ -32,6 +32,11 @@ val issueList = listOf(
         id = "25",
         title = "Issue #25",
         description = "Desktop semantic click attempts to invoke disabled controls and hides callback errors"
+    ),
+    IssueItem(
+        id = "29",
+        title = "Issue #29",
+        description = "Android directory picker: invalid tree metadata and missing recursive fixture staging"
     )
 )
 
@@ -78,6 +83,17 @@ fun App() {
                             Text("← Back to Issue Index")
                         }
                         org.parikshan.issueplayground.issue25.Issue25Screen()
+                    }
+                }
+                "29" -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        TextButton(
+                            onClick = { selectedIssueId = null },
+                            modifier = Modifier.testTag("back_to_issue_index").padding(8.dp)
+                        ) {
+                            Text("← Back to Issue Index")
+                        }
+                        org.parikshan.issueplayground.issue29.Issue29Screen()
                     }
                 }
                 else -> {

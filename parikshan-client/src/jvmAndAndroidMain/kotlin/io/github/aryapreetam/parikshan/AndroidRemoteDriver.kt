@@ -56,8 +56,18 @@ internal class AndroidRemoteDriver private constructor(
           ProcessBuilder(adbPrefix + listOf("push", hostFile.absolutePath, "/sdcard/Download/parikshan_fixtures/${hostFile.name}")).start().waitFor()
           ProcessBuilder(adbPrefix + listOf("shell", "chmod", "666", "/data/local/tmp/parikshan_fixtures/${hostFile.name}")).start().waitFor()
         } else if (hostFile.isDirectory) {
-          ProcessBuilder(adbPrefix + listOf("shell", "mkdir", "-p", "/data/local/tmp/parikshan_fixtures/${hostFile.name}")).start().waitFor()
-          ProcessBuilder(adbPrefix + listOf("shell", "mkdir", "-p", "/sdcard/Download/parikshan_fixtures/${hostFile.name}")).start().waitFor()
+          val parentDir = hostFile.parentFile ?: java.io.File(".")
+          val subDirs = hostFile.walkTopDown().filter { it.isDirectory }.map { dir ->
+            dir.relativeTo(parentDir).path.replace('\\', '/')
+          }.toList()
+          if (subDirs.isNotEmpty()) {
+            val tmpArgs = subDirs.map { "/data/local/tmp/parikshan_fixtures/$it" }
+            val downloadArgs = subDirs.map { "/sdcard/Download/parikshan_fixtures/$it" }
+            ProcessBuilder(adbPrefix + listOf("shell", "mkdir", "-p") + tmpArgs).start().waitFor()
+            ProcessBuilder(adbPrefix + listOf("shell", "mkdir", "-p") + downloadArgs).start().waitFor()
+          }
+          ProcessBuilder(adbPrefix + listOf("push", "${hostFile.absolutePath}/.", "/data/local/tmp/parikshan_fixtures/${hostFile.name}/")).start().waitFor()
+          ProcessBuilder(adbPrefix + listOf("push", "${hostFile.absolutePath}/.", "/sdcard/Download/parikshan_fixtures/${hostFile.name}/")).start().waitFor()
         }
       }
       ProcessBuilder(adbPrefix + listOf("shell", "chmod", "-R", "777", "/data/local/tmp/parikshan_fixtures")).start().waitFor()

@@ -28,35 +28,51 @@ internal object TestReportingUtils {
       if (logFile != null) {
         runCatching {
           val lines = logFile.readLines()
-          val failureIndex = lines.indexOfFirst { it.trim().startsWith("Failures (") }
-          if (failureIndex >= 0) {
-            val classFailedMethods = mutableListOf<String>()
-            lines.drop(failureIndex + 1).forEach { line ->
-              val trimmed = line.trim()
-              if (trimmed.startsWith("JUnit Jupiter:")) {
-                val method = trimmed.substringAfter("JUnit Jupiter:").substringBefore("()").substringAfterLast(":")
-                if (method.isNotEmpty() && !classFailedMethods.contains(method)) {
+          val classFailedMethods = mutableListOf<String>()
+          lines.forEach { line ->
+            val trimmed = line.trim()
+            if (trimmed.startsWith("JUnit Jupiter:")) {
+              val targetClass = trimmed.substringAfter("JUnit Jupiter:").substringBefore(":")
+              val method = trimmed.substringAfter("JUnit Jupiter:").substringBefore("()").substringAfterLast(":")
+              if (method.isNotEmpty() && (targetClass.isEmpty() || targetClass == simpleName)) {
+                if (!classFailedMethods.contains(method)) {
                   classFailedMethods.add(method)
                 }
-              } else if (trimmed.contains("methodName = '")) {
-                val method = trimmed.substringAfter("methodName = '").substringBefore("'")
-                if (method.isNotEmpty() && !classFailedMethods.contains(method)) {
+              }
+            } else if (trimmed.contains("methodName = '")) {
+              val targetClass = trimmed.substringAfter("className = '").substringBefore("'").substringAfterLast('.')
+              val method = trimmed.substringAfter("methodName = '").substringBefore("'")
+              if (method.isNotEmpty() && (targetClass.isEmpty() || targetClass == simpleName)) {
+                if (!classFailedMethods.contains(method)) {
                   classFailedMethods.add(method)
                 }
               }
             }
-            if (classFailedMethods.isNotEmpty()) {
-              failedNames.addAll(classFailedMethods)
-            } else if (!failedNames.contains(simpleName)) {
-              failedNames.add(simpleName)
-            }
+          }
+          if (classFailedMethods.isNotEmpty()) {
+            failedNames.addAll(classFailedMethods)
           } else {
-            val hasFailedTests = lines.any { line ->
+            val hasClassFailureMarker = lines.any { line ->
+              val trimmed = line.trim()
+              trimmed.contains("✘") && trimmed.contains(simpleName)
+            }
+            val hasFailedSummary = lines.any { line ->
               val trimmed = line.trim()
               trimmed.endsWith("tests failed ]") && !trimmed.startsWith("[ 0")
             }
-            if (hasFailedTests && !failedNames.contains(simpleName)) {
-              failedNames.add(simpleName)
+            val hasFailuresBlock = lines.any { it.trim().startsWith("Failures (") }
+            val otherClassFailed = lines.any { line ->
+              val trimmed = line.trim()
+              trimmed.startsWith("JUnit Jupiter:") && !trimmed.contains(":$simpleName:")
+            }
+            val classPassedDirectly = lines.any { line ->
+              val trimmed = line.trim()
+              trimmed.contains("$simpleName ✔") || (trimmed.contains(simpleName) && trimmed.endsWith("✔"))
+            }
+            if (hasClassFailureMarker || ((hasFailedSummary || hasFailuresBlock) && !otherClassFailed && !classPassedDirectly)) {
+              if (!failedNames.contains(simpleName)) {
+                failedNames.add(simpleName)
+              }
             }
           }
         }

@@ -509,7 +509,17 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
         clickAt(dayList.bounds.left + (absIdx % 7 + 0.5) * colW, gridTop + (absIdx / 7 + 0.5) * 48.0)
     }
     
-    delay(500)
+    // Deterministic readiness verification: wait until selection is reflected in calendar state
+    for (i in 0 until 15) {
+        val tree = getTree()
+        val headlineSelected = tree.any { node ->
+            val t = node.text ?: ""
+            t != dayNode?.text && t.contains(day.toString()) && (t.contains(monthName, ignoreCase = true) || t.contains(year.toString()))
+        }
+        val multipleDayMatches = tree.count { (it.text ?: "").split(Regex("[\\s,]+")).contains(day.toString()) } > 1
+        if (headlineSelected || multipleDayMatches) break
+        delay(100)
+    }
     click("date_picker_ok_button")
 }
 

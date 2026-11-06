@@ -121,6 +121,9 @@ internal object AndroidFilePickerWatcher {
             val firstUri = uris.first()
             resultIntent.data = firstUri
             resultIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (isDirectoryIntent) {
+              resultIntent.addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            }
 
             val context = InstrumentationRegistry.getInstrumentation().targetContext
             val clipData = ClipData.newUri(context.contentResolver, "file", firstUri)

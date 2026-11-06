@@ -5,6 +5,7 @@
 )
 package io.github.aryapreetam.parikshan.server
 
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -389,7 +390,10 @@ internal object WasmSemanticsAccessor {
         } catch (_: Throwable) {
           false
         }
-        if (success) return true
+        if (success) {
+          syncState()
+          return true
+        }
       }
       if (performPhysicalClick(node)) return true
     }
@@ -435,7 +439,20 @@ internal object WasmSemanticsAccessor {
     val node = findBySelector(selector) ?: return false
     val target = inputTargetFor(node) ?: return false
     val action = target.config.getOrNull(SemanticsActions.SetText) ?: return false
-    return action.action?.invoke(AnnotatedString(text)) ?: false
+    val success = action.action?.invoke(AnnotatedString(text)) ?: false
+    if (success) {
+      syncState()
+    }
+    return success
+  }
+
+  internal fun syncState() {
+    try {
+      Snapshot.sendApplyNotifications()
+    } catch (_: Throwable) {}
+    try {
+      registeredOwners.toList().forEach { (it.rootForTest as? PlatformRootForTest)?.measureAndLayoutForTest() }
+    } catch (_: Throwable) {}
   }
 
   fun performScroll(selector: io.github.aryapreetam.parikshan.protocol.Selector, direction: ScrollDirection): Boolean {
@@ -553,7 +570,11 @@ private fun discoverA11yNodesJs(): String? = js(
 internal fun clickA11yNode(query: String, index: Int): Boolean {
   ParikshanA11yGlobals.query = query
   ParikshanA11yGlobals.index = index
-  return clickPendingA11yNodeJs()
+  val clicked = clickPendingA11yNodeJs()
+  if (clicked) {
+    WasmSemanticsAccessor.syncState()
+  }
+  return clicked
 }
 
 private fun clickPendingA11yNodeJs(): Boolean = js(
@@ -640,7 +661,8 @@ private fun clickPendingA11yNodeJs(): Boolean = js(
         if (a.score !== b.score) return a.score - b.score;
         return a.len - b.len;
       });
-      const target = (matched[index] || matched[0] || {}).el;
+      const targetIndex = (typeof index === 'number' && index < 0) ? (matched.length + index) : (index || 0);
+      const target = (matched[targetIndex] || matched[0] || {}).el;
       if (!target) return false;
       if (isElDisabled(target)) return false;
       const rect = target.getBoundingClientRect();
@@ -763,7 +785,8 @@ private fun isPendingA11yNodeDisabledJs(): Boolean = js(
         if (a.score !== b.score) return a.score - b.score;
         return a.len - b.len;
       });
-      const target = (matched[index] || matched[0] || {}).el;
+      const targetIndex = (typeof index === 'number' && index < 0) ? (matched.length + index) : (index || 0);
+      const target = (matched[targetIndex] || matched[0] || {}).el;
       if (!target) return false;
       return isElDisabled(target);
     } catch (e) {

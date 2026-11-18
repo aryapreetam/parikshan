@@ -403,8 +403,13 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
     }
 
     val treeAfterMode = getTree()
-    val headerNode = treeAfterMode.find { node ->
+    val headerNode = treeAfterMode.filter { node ->
+      node.visible &&
+      node.bounds.top >= dialog.bounds.top && node.bounds.bottom <= dialog.bounds.bottom &&
+      node.bounds.left >= dialog.bounds.left && node.bounds.right <= dialog.bounds.right
+    }.find { node ->
       val text = node.text ?: ""
+      !text.contains("Selected", ignoreCase = true) &&
       text.contains(Regex("20\\d{2}")) && 
       (1..12).any { m -> text.contains(sample.app.getMonthName(m), ignoreCase = true) }
     } ?: treeAfterMode.find { it.text?.contains("20") == true && it.text?.contains("selecting a year") == true }
@@ -438,8 +443,13 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
     var tries = 0
     while (tries < 24) {
         val currentTree = getTree()
-        val currentHeader = currentTree.find { node ->
+        val currentHeader = currentTree.filter { node ->
+          node.visible &&
+          node.bounds.top >= dialog.bounds.top && node.bounds.bottom <= dialog.bounds.bottom &&
+          node.bounds.left >= dialog.bounds.left && node.bounds.right <= dialog.bounds.right
+        }.find { node ->
           val text = node.text ?: ""
+          !text.contains("Selected", ignoreCase = true) &&
           text.contains(Regex("20\\d{2}")) && 
           (1..12).any { m -> text.contains(sample.app.getMonthName(m), ignoreCase = true) }
         } ?: currentTree.find { it.text?.contains("20") == true && it.text?.contains("selecting a year") == true }
@@ -463,8 +473,13 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
         var changed = false
         for (i in 0 until 15) {
             delay(400)
-            val updatedText = getTree().find { node ->
+            val updatedText = getTree().filter { node ->
+              node.visible &&
+              node.bounds.top >= dialog.bounds.top && node.bounds.bottom <= dialog.bounds.bottom &&
+              node.bounds.left >= dialog.bounds.left && node.bounds.right <= dialog.bounds.right
+            }.find { node ->
               val text = node.text ?: ""
+              !text.contains("Selected", ignoreCase = true) &&
               text.contains(Regex("20\\d{2}")) && 
               (1..12).any { mSub -> text.contains(sample.app.getMonthName(mSub), ignoreCase = true) }
             }?.text ?: ""
@@ -483,7 +498,11 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
     
     // Attempt semantic match (order-agnostic across US and UK date formats)
     val monthName = sample.app.getMonthName(month)
-    val dayNode = finalTree.find { 
+    val dayNode = finalTree.filter { node ->
+      node.visible &&
+      node.bounds.top >= dialog.bounds.top && node.bounds.bottom <= dialog.bounds.bottom &&
+      node.bounds.left >= dialog.bounds.left && node.bounds.right <= dialog.bounds.right
+    }.find { 
         val text = it.text ?: ""
         !text.contains("\n") &&
         text.contains(monthName, ignoreCase = true) &&
@@ -511,7 +530,11 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
     
     // Deterministic readiness verification: wait until selection is reflected in calendar state
     for (i in 0 until 15) {
-        val tree = getTree()
+        val tree = getTree().filter { node ->
+          node.visible &&
+          node.bounds.top >= dialog.bounds.top && node.bounds.bottom <= dialog.bounds.bottom &&
+          node.bounds.left >= dialog.bounds.left && node.bounds.right <= dialog.bounds.right
+        }
         val headlineSelected = tree.any { node ->
             val t = node.text ?: ""
             t != dayNode?.text && t.contains(day.toString()) && (t.contains(monthName, ignoreCase = true) || t.contains(year.toString()))

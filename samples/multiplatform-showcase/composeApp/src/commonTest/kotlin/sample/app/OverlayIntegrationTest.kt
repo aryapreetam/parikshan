@@ -119,10 +119,15 @@ class OverlayIntegrationTest : E2ETestLifecycle {
     click("date_picker_trigger_button")
     assertVisible("date_picker_dialog")
 
-    // Dynamically pick day 15 of whatever month/year the date picker currently opens to
+    val dialog = resolveNode(Selector.Tag("date_picker_dialog"))
     val initialTree = getTree()
-    val headerNode = initialTree.find { node ->
+    val headerNode = initialTree.filter { node ->
+      node.visible &&
+      node.bounds.top >= dialog.bounds.top && node.bounds.bottom <= dialog.bounds.bottom &&
+      node.bounds.left >= dialog.bounds.left && node.bounds.right <= dialog.bounds.right
+    }.find { node ->
       val text = node.text ?: ""
+      !text.contains("Selected", ignoreCase = true) &&
       text.contains(Regex("20\\d{2}")) && 
       (1..12).any { m -> text.contains(sample.app.getMonthName(m), ignoreCase = true) }
     } ?: initialTree.find { it.text?.contains("20") == true && it.text?.contains("selecting a year") == true }

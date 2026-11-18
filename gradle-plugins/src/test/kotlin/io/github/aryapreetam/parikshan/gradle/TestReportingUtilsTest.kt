@@ -78,4 +78,41 @@ class TestReportingUtilsTest {
 
     assertEquals(listOf("MissingIntegrationTest"), failedNames)
   }
+
+  @Test
+  fun `test parse failed test names ignores passing class when other class failed in multi-class run`() {
+    val logsDir = tempDir.resolve("logs").createDirectory().toFile()
+    val a11yLog = File(logsDir, "wasm-sample.app.AccessibilityIntegrationTest.log")
+    a11yLog.writeText(
+      """
+      +-- AccessibilityIntegrationTest ?
+      | +-- testSubtextMatching() ?
+      | +-- testInteractiveElementDisabled() ?
+      | \-- testDirectTextMatching() ?
+      Failures (1):
+      JUnit Jupiter:OverlayIntegrationTest:testCalendarDateSelectionCurrentMonth()
+      MethodSource [className = 'sample.app.OverlayIntegrationTest', methodName = 'testCalendarDateSelectionCurrentMonth']
+      => java.lang.AssertionError: Timeout
+      """.trimIndent()
+    )
+    val overlayLog = File(logsDir, "wasm-sample.app.OverlayIntegrationTest.log")
+    overlayLog.writeText(
+      """
+      +-- OverlayIntegrationTest ?
+      | \-- testCalendarDateSelectionCurrentMonth() ?
+      Failures (1):
+      JUnit Jupiter:OverlayIntegrationTest:testCalendarDateSelectionCurrentMonth()
+      MethodSource [className = 'sample.app.OverlayIntegrationTest', methodName = 'testCalendarDateSelectionCurrentMonth']
+      => java.lang.AssertionError: Timeout
+      """.trimIndent()
+    )
+
+    val failedNames = TestReportingUtils.parseFailedTestNames(
+      logsDir = logsDir,
+      target = "wasm",
+      classes = listOf("sample.app.AccessibilityIntegrationTest", "sample.app.OverlayIntegrationTest")
+    )
+
+    assertEquals(listOf("testCalendarDateSelectionCurrentMonth"), failedNames)
+  }
 }

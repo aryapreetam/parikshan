@@ -1536,6 +1536,9 @@ abstract class E2ETestTask : DefaultTask() {
           val simple = clazz.substringAfterLast('.')
           if (cleanLine.contains("└─  $simple") || cleanLine.contains("├─  $simple") ||
               cleanLine.contains("└─ $simple") || cleanLine.contains("├─ $simple") ||
+              cleanLine.contains("+-- $simple") || cleanLine.contains("+--  $simple") ||
+              cleanLine.contains("\\-- $simple") || cleanLine.contains("\\--  $simple") ||
+              cleanLine.contains("?-- $simple") || cleanLine.contains("?--  $simple") ||
               cleanLine.contains("Test Failures for $clazz") || cleanLine.contains("Test Failures for $simple") ||
               cleanLine.contains("JUnit Jupiter:$simple:") || cleanLine.contains("className = '$clazz'") || cleanLine.contains("className = '$simple'")) {
             matchedClass = clazz

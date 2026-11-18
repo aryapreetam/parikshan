@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.0.12] - 2026-11-18
+
+### Fixed & Resolved Issues
+- **Android Directory Picker Support ([#29](https://github.com/aryapreetam/parikshan/issues/29))**: Fixed directory picker automation (`withFilePicker`) on Android to support recursive directory traversal and sub-file reading with libraries like FileKit.
+- **Wasm State Synchronization**: Synchronized Compose snapshot state after semantic actions on Wasm to prevent timing flakes in CI.
+- **Selector Parity**: Fixed negative indexing (`atIndex(-1)`) on Wasm to match Desktop and Android behavior.
+- **Gradle Test Reporting**: Fixed an issue where test failures on Windows runners could be misattributed to adjacent test classes in multi-class runs.
+
 ## [0.0.11] - 2026-10-15
 
 ### Added

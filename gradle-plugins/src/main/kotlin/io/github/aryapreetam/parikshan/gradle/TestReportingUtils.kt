@@ -54,7 +54,11 @@ internal object TestReportingUtils {
           } else {
             val hasClassFailureMarker = lines.any { line ->
               val trimmed = line.trim()
-              trimmed.contains("✘") && trimmed.contains(simpleName)
+              (trimmed.contains("✘") || trimmed.contains("FAILED") || trimmed.contains("FAIL")) && trimmed.contains(simpleName)
+            }
+            val hasExplicitClassFailure = lines.any { line ->
+              val trimmed = line.trim()
+              (trimmed.contains("JUnit Jupiter:$simpleName:") || trimmed.contains("className = '$simpleName'") || trimmed.contains("className = '$testClass'"))
             }
             val hasFailedSummary = lines.any { line ->
               val trimmed = line.trim()
@@ -63,13 +67,18 @@ internal object TestReportingUtils {
             val hasFailuresBlock = lines.any { it.trim().startsWith("Failures (") }
             val otherClassFailed = lines.any { line ->
               val trimmed = line.trim()
-              trimmed.startsWith("JUnit Jupiter:") && !trimmed.contains(":$simpleName:")
+              (trimmed.startsWith("JUnit Jupiter:") || trimmed.contains("className = '")) &&
+                !trimmed.contains(":$simpleName:") && !trimmed.contains("className = '$simpleName'") && !trimmed.contains("className = '$testClass'")
             }
             val classPassedDirectly = lines.any { line ->
               val trimmed = line.trim()
-              trimmed.contains("$simpleName ✔") || (trimmed.contains(simpleName) && trimmed.endsWith("✔"))
+              trimmed.contains("$simpleName ✔") || trimmed.contains("$simpleName ?") ||
+                (trimmed.contains(simpleName) && (trimmed.endsWith("✔") || trimmed.endsWith("?"))) ||
+                trimmed.contains("$simpleName [OK]") || trimmed.contains("$simpleName PASSED")
             }
-            if (hasClassFailureMarker || ((hasFailedSummary || hasFailuresBlock) && !otherClassFailed && !classPassedDirectly)) {
+            if (hasClassFailureMarker || hasExplicitClassFailure ||
+                (classes.size == 1 && (hasFailedSummary || hasFailuresBlock)) ||
+                ((hasFailedSummary || hasFailuresBlock) && !otherClassFailed && !classPassedDirectly)) {
               if (!failedNames.contains(simpleName)) {
                 failedNames.add(simpleName)
               }

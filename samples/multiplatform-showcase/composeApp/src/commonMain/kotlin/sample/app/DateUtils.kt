@@ -55,6 +55,29 @@ fun parseMonthYear(text: String): Pair<Int, Int>? {
     return null
 }
 
+expect fun getCurrentEpochMillis(): Long
+
+fun parseUtcMonthYear(millis: Long): Pair<Int, Int> {
+    var days = millis / (1000 * 60 * 60 * 24)
+    var year = 1970
+    while (true) {
+        val daysInYear = if (isLeapYear(year)) 366 else 365
+        if (days < daysInYear) break
+        days -= daysInYear
+        year++
+    }
+    val isLeap = isLeapYear(year)
+    val monthDays = intArrayOf(31, if (isLeap) 29 else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+    var month = 0
+    while (days >= monthDays[month]) {
+        days -= monthDays[month]
+        month++
+    }
+    return (month + 1) to year
+}
+
+fun getCurrentUtcMonthAndYear(): Pair<Int, Int> = parseUtcMonthYear(getCurrentEpochMillis())
+
 private fun isLeapYear(year: Int): Boolean {
     return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
 }

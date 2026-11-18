@@ -8,3 +8,5 @@ actual fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit) {
 }
 
 actual fun getPlatformName(): String = "Android"
+
+actual fun getCurrentEpochMillis(): Long = System.currentTimeMillis()

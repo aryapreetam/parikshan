@@ -119,21 +119,7 @@ class OverlayIntegrationTest : E2ETestLifecycle {
     click("date_picker_trigger_button")
     assertVisible("date_picker_dialog")
 
-    val dialog = resolveNode(Selector.Tag("date_picker_dialog"))
-    val initialTree = getTree()
-    val headerNode = initialTree.filter { node ->
-      node.visible &&
-      node.bounds.top >= dialog.bounds.top && node.bounds.bottom <= dialog.bounds.bottom &&
-      node.bounds.left >= dialog.bounds.left && node.bounds.right <= dialog.bounds.right
-    }.find { node ->
-      val text = node.text ?: ""
-      !text.contains("Selected", ignoreCase = true) &&
-      text.contains(Regex("20\\d{2}")) && 
-      (1..12).any { m -> text.contains(sample.app.getMonthName(m), ignoreCase = true) }
-    } ?: initialTree.find { it.text?.contains("20") == true && it.text?.contains("selecting a year") == true }
-    val headerText = headerNode?.text ?: ""
-    val targetYear = Regex("20\\d{2}").find(headerText)?.value?.toIntOrNull() ?: 2026
-    val targetMonth = (1..12).firstOrNull { headerText.contains(sample.app.getMonthName(it), ignoreCase = true) } ?: 6
+    val (targetMonth, targetYear) = sample.app.getCurrentUtcMonthAndYear()
     val formattedDate = "15/${targetMonth.toString().padStart(2, '0')}/$targetYear"
 
     selectDateFromCalendar(day = 15, month = targetMonth, year = targetYear)

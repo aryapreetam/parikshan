@@ -269,8 +269,11 @@ private suspend fun E2ETestScope.selectDateFromCalendarNative(day: Int, month: I
         delay(1000)
     }
 
-    var curMonth = 6
-    var curYear = 2026
+    val (nowMonth, nowYear) = sample.app.getCurrentUtcMonthAndYear()
+    val isTargetCurrent = (year == nowYear && month == nowMonth)
+
+    var curMonth = nowMonth
+    var curYear = nowYear
     val monthYearNode = initialTree.find { node ->
       val text = node.text ?: ""
       text.contains(Regex("20\\d{2}")) && 
@@ -284,7 +287,7 @@ private suspend fun E2ETestScope.selectDateFromCalendarNative(day: Int, month: I
       if (monthMatch != null) curMonth = monthMatch
     }
 
-    if (curYear != year) {
+    if (!isTargetCurrent && curYear != year) {
         val selectYearNode = initialTree.find { it.text?.contains("selecting a year", ignoreCase = true) == true }
           ?: throw AssertionError("Could not find year selection toggle button")
         click(Selector.Text(selectYearNode.text!!))
@@ -301,50 +304,52 @@ private suspend fun E2ETestScope.selectDateFromCalendarNative(day: Int, month: I
         delay(500)
     }
 
-    var tries = 0
-    while (tries < 24) {
-        val currentTree = getTree()
-        var cMonth = 6
-        var cYear = 2026
-        val cMonthYearNode = currentTree.find { node ->
-          val text = node.text ?: ""
-          text.contains(Regex("20\\d{2}")) && 
-          (1..12).any { m -> text.contains(sample.app.getMonthName(m), ignoreCase = true) }
-        }
-        if (cMonthYearNode != null) {
-          val text = cMonthYearNode.text!!
-          val yearMatch = Regex("20\\d{2}").find(text)?.value?.toIntOrNull()
-          if (yearMatch != null) cYear = yearMatch
-          val monthMatch = (1..12).firstOrNull { m -> text.contains(sample.app.getMonthName(m), ignoreCase = true) }
-          if (monthMatch != null) cMonth = monthMatch
-        }
-        
-        if (cMonth == month && cYear == year) break
-        
-        val nextSelector = if ((year * 12 + month) > (cYear * 12 + cMonth)) {
-            "next month"
-        } else {
-            "previous month"
-        }
-        click(nextSelector)
-        
-        var changed = false
-        val prevText = cMonthYearNode?.text ?: ""
-        for (i in 0 until 15) {
-            delay(400)
-            val updatedTree = getTree()
-            val updatedNodeText = updatedTree.find { node ->
+    if (!isTargetCurrent) {
+        var tries = 0
+        while (tries < 24) {
+            val currentTree = getTree()
+            var cMonth = nowMonth
+            var cYear = nowYear
+            val cMonthYearNode = currentTree.find { node ->
               val text = node.text ?: ""
               text.contains(Regex("20\\d{2}")) && 
               (1..12).any { m -> text.contains(sample.app.getMonthName(m), ignoreCase = true) }
-            }?.text ?: ""
-            if (updatedNodeText != prevText && updatedNodeText.isNotEmpty()) {
-                changed = true
-                break
             }
+            if (cMonthYearNode != null) {
+              val text = cMonthYearNode.text!!
+              val yearMatch = Regex("20\\d{2}").find(text)?.value?.toIntOrNull()
+              if (yearMatch != null) cYear = yearMatch
+              val monthMatch = (1..12).firstOrNull { m -> text.contains(sample.app.getMonthName(m), ignoreCase = true) }
+              if (monthMatch != null) cMonth = monthMatch
+            }
+            
+            if (cMonth == month && cYear == year) break
+            
+            val nextSelector = if ((year * 12 + month) > (cYear * 12 + cMonth)) {
+                "next month"
+            } else {
+                "previous month"
+            }
+            click(nextSelector)
+            
+            var changed = false
+            val prevText = cMonthYearNode?.text ?: ""
+            for (i in 0 until 15) {
+                delay(400)
+                val updatedTree = getTree()
+                val updatedNodeText = updatedTree.find { node ->
+                  val text = node.text ?: ""
+                  text.contains(Regex("20\\d{2}")) && 
+                  (1..12).any { m -> text.contains(sample.app.getMonthName(m), ignoreCase = true) }
+                }?.text ?: ""
+                if (updatedNodeText != prevText && updatedNodeText.isNotEmpty()) {
+                    changed = true
+                    break
+                }
+            }
+            if (!changed) break
+            tries++
         }
-        if (!changed) break
-        tries++
     }
 
     delay(1000)
@@ -402,27 +407,30 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
         delay(1000)
     }
 
+    val (nowMonth, nowYear) = sample.app.getCurrentUtcMonthAndYear()
+    val isTargetCurrent = (year == nowYear && month == nowMonth)
+
     val treeAfterMode = getTree()
     val headerNode = treeAfterMode.filter { node ->
       node.visible &&
-      node.bounds.top >= dialog.bounds.top && node.bounds.bottom <= dialog.bounds.bottom &&
-      node.bounds.left >= dialog.bounds.left && node.bounds.right <= dialog.bounds.right
+      node.bounds.top >= dialog.bounds.top - 20 && node.bounds.bottom <= dialog.bounds.bottom + 20 &&
+      node.bounds.left >= dialog.bounds.left - 20 && node.bounds.right <= dialog.bounds.right + 20
     }.find { node ->
       val text = node.text ?: ""
       !text.contains("Selected", ignoreCase = true) &&
       text.contains(Regex("20\\d{2}")) && 
       (1..12).any { m -> text.contains(sample.app.getMonthName(m), ignoreCase = true) }
-    } ?: treeAfterMode.find { it.text?.contains("20") == true && it.text?.contains("selecting a year") == true }
+    }
     val headerText = headerNode?.text ?: ""
     val (curMonth, curYear) = sample.app.parseMonthYear(headerText.split(",").firstOrNull() ?: "") 
         ?: run {
-            val y = Regex("20\\d{2}").find(headerText)?.value?.toIntOrNull() ?: 2026
-            val m = (1..12).firstOrNull { headerText.contains(sample.app.getMonthName(it), ignoreCase = true) } ?: 6
-            m to y
+            val y = Regex("20\\d{2}").find(headerText)?.value?.toIntOrNull()
+            val m = (1..12).firstOrNull { headerText.contains(sample.app.getMonthName(it), ignoreCase = true) }
+            if (m != null && y != null) m to y else nowMonth to nowYear
         }
 
     // 2. Year Navigation (NATIVE SEMANTIC)
-    if (curYear != year) {
+    if (!isTargetCurrent && curYear != year) {
         click(Selector.Text(headerText))
         delay(1500)
         
@@ -440,56 +448,58 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
     }
 
     // 3. Month Navigation Loop (Native Semantic + Patient Observer)
-    var tries = 0
-    while (tries < 24) {
-        val currentTree = getTree()
-        val currentHeader = currentTree.filter { node ->
-          node.visible &&
-          node.bounds.top >= dialog.bounds.top && node.bounds.bottom <= dialog.bounds.bottom &&
-          node.bounds.left >= dialog.bounds.left && node.bounds.right <= dialog.bounds.right
-        }.find { node ->
-          val text = node.text ?: ""
-          !text.contains("Selected", ignoreCase = true) &&
-          text.contains(Regex("20\\d{2}")) && 
-          (1..12).any { m -> text.contains(sample.app.getMonthName(m), ignoreCase = true) }
-        } ?: currentTree.find { it.text?.contains("20") == true && it.text?.contains("selecting a year") == true }
-        if (currentHeader == null) {
-             tries++; continue
-        }
-        
-        val currentHeaderText = currentHeader.text!!
-        val (m, y) = sample.app.parseMonthYear(currentHeaderText.split(",").firstOrNull() ?: "") 
-            ?: run {
-                val yCandidate = Regex("20\\d{2}").find(currentHeaderText)?.value?.toIntOrNull()
-                val mCandidate = (1..12).firstOrNull { currentHeaderText.contains(sample.app.getMonthName(it), ignoreCase = true) }
-                if (yCandidate != null && mCandidate != null) mCandidate to yCandidate else null
-            } ?: break
-        if (m == month && y == year) break
-        
-        val nextSelector = if ((year * 12 + month) > (y * 12 + m)) Selector.Text("Change to next month") else Selector.Text("Change to previous month")
-        click(nextSelector)
-        
-        // Wait for change
-        var changed = false
-        for (i in 0 until 15) {
-            delay(400)
-            val updatedText = getTree().filter { node ->
+    if (!isTargetCurrent) {
+        var tries = 0
+        while (tries < 24) {
+            val currentTree = getTree()
+            val currentHeader = currentTree.filter { node ->
               node.visible &&
-              node.bounds.top >= dialog.bounds.top && node.bounds.bottom <= dialog.bounds.bottom &&
-              node.bounds.left >= dialog.bounds.left && node.bounds.right <= dialog.bounds.right
+              node.bounds.top >= dialog.bounds.top - 20 && node.bounds.bottom <= dialog.bounds.bottom + 20 &&
+              node.bounds.left >= dialog.bounds.left - 20 && node.bounds.right <= dialog.bounds.right + 20
             }.find { node ->
               val text = node.text ?: ""
               !text.contains("Selected", ignoreCase = true) &&
               text.contains(Regex("20\\d{2}")) && 
-              (1..12).any { mSub -> text.contains(sample.app.getMonthName(mSub), ignoreCase = true) }
-            }?.text ?: ""
-            if (updatedText != currentHeaderText && updatedText.isNotEmpty()) {
-                changed = true
-                break
+              (1..12).any { m -> text.contains(sample.app.getMonthName(m), ignoreCase = true) }
             }
+            if (currentHeader == null) {
+                 tries++; continue
+            }
+            
+            val currentHeaderText = currentHeader.text!!
+            val (m, y) = sample.app.parseMonthYear(currentHeaderText.split(",").firstOrNull() ?: "") 
+                ?: run {
+                    val yCandidate = Regex("20\\d{2}").find(currentHeaderText)?.value?.toIntOrNull()
+                    val mCandidate = (1..12).firstOrNull { currentHeaderText.contains(sample.app.getMonthName(it), ignoreCase = true) }
+                    if (yCandidate != null && mCandidate != null) mCandidate to yCandidate else null
+                } ?: break
+            if (m == month && y == year) break
+            
+            val nextSelector = if ((year * 12 + month) > (y * 12 + m)) Selector.Text("Change to next month") else Selector.Text("Change to previous month")
+            click(nextSelector)
+            
+            // Wait for change
+            var changed = false
+            for (i in 0 until 15) {
+                delay(400)
+                val updatedText = getTree().filter { node ->
+                  node.visible &&
+                  node.bounds.top >= dialog.bounds.top - 20 && node.bounds.bottom <= dialog.bounds.bottom + 20 &&
+                  node.bounds.left >= dialog.bounds.left - 20 && node.bounds.right <= dialog.bounds.right + 20
+                }.find { node ->
+                  val text = node.text ?: ""
+                  !text.contains("Selected", ignoreCase = true) &&
+                  text.contains(Regex("20\\d{2}")) && 
+                  (1..12).any { mSub -> text.contains(sample.app.getMonthName(mSub), ignoreCase = true) }
+                }?.text ?: ""
+                if (updatedText != currentHeaderText && updatedText.isNotEmpty()) {
+                    changed = true
+                    break
+                }
+            }
+            if (!changed) break
+            tries++
         }
-        if (!changed) break
-        tries++
     }
 
     // 4. Final Day Selection
@@ -500,8 +510,8 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
     val monthName = sample.app.getMonthName(month)
     val dayNode = finalTree.filter { node ->
       node.visible &&
-      node.bounds.top >= dialog.bounds.top && node.bounds.bottom <= dialog.bounds.bottom &&
-      node.bounds.left >= dialog.bounds.left && node.bounds.right <= dialog.bounds.right
+      node.bounds.top >= dialog.bounds.top - 20 && node.bounds.bottom <= dialog.bounds.bottom + 20 &&
+      node.bounds.left >= dialog.bounds.left - 20 && node.bounds.right <= dialog.bounds.right + 20
     }.find { 
         val text = it.text ?: ""
         !text.contains("\n") &&
@@ -532,8 +542,8 @@ private suspend fun E2ETestScope.selectDateFromCalendarWasm(day: Int, month: Int
     for (i in 0 until 15) {
         val tree = getTree().filter { node ->
           node.visible &&
-          node.bounds.top >= dialog.bounds.top && node.bounds.bottom <= dialog.bounds.bottom &&
-          node.bounds.left >= dialog.bounds.left && node.bounds.right <= dialog.bounds.right
+          node.bounds.top >= dialog.bounds.top - 20 && node.bounds.bottom <= dialog.bounds.bottom + 20 &&
+          node.bounds.left >= dialog.bounds.left - 20 && node.bounds.right <= dialog.bounds.right + 20
         }
         val headlineSelected = tree.any { node ->
             val t = node.text ?: ""

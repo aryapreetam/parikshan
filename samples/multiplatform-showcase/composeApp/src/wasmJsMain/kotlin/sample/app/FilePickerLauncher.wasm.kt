@@ -47,18 +47,23 @@ private fun openFilePickerJs(multiple: Boolean, directory: Boolean): Unit = js(
     input.onchange = function() {
       if (input.files && input.files.length > 0) {
         var names = [];
-        if (directory) {
-          var firstFile = input.files[0];
-          var dirName = (firstFile.webkitRelativePath && firstFile.webkitRelativePath.indexOf('/') !== -1)
-            ? firstFile.webkitRelativePath.split('/')[0]
-            : firstFile.name;
+        window.__sample_picked_files = window.__sample_picked_files || {};
+        var promises = [];
+        for (var i = 0; i < input.files.length; i++) {
+          var f = input.files[i];
+          var dirName = (directory && f.webkitRelativePath && f.webkitRelativePath.indexOf('/') !== -1)
+            ? f.webkitRelativePath.split('/')[0]
+            : f.name;
           names.push(dirName);
-        } else {
-          for (var i = 0; i < input.files.length; i++) {
-            names.push(input.files[i].name);
-          }
+          (function(file) {
+            promises.push(file.arrayBuffer().then(function(buf) {
+              window.__sample_picked_files[file.name] = new Uint8Array(buf);
+            }));
+          })(f);
         }
-        globalThis.__sample_file_picker_result(names.join(','));
+        Promise.all(promises).then(function() {
+          globalThis.__sample_file_picker_result(names.join(','));
+        });
       } else {
         globalThis.__sample_file_picker_result(null);
       }

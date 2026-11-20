@@ -1,14 +1,12 @@
 package sample.app.playgrounds
 
-import kotlin.time.TimeSource
-
 actual object ChatTransport {
   private val inMemoryMessages = mutableListOf<ChatMessage>()
 
   actual fun getCurrentInstanceId(): String = "IosUser"
 
-  actual fun broadcastMessage(text: String) {
-    inMemoryMessages.add(ChatMessage("IosUser", text, 0L))
+  actual fun broadcastMessage(text: String, attachment: ChatFileAttachment?) {
+    inMemoryMessages.add(ChatMessage("IosUser", text, 0L, attachment))
   }
 
   actual fun getMessages(): List<ChatMessage> = inMemoryMessages.toList()

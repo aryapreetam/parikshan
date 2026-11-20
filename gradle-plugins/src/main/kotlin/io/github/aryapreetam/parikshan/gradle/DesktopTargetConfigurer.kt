@@ -112,7 +112,7 @@ internal object DesktopTargetConfigurer {
           val launched = DesktopProcessManager.launchInstances(
             jarFile = jar,
             instances = instancesList,
-            baseOutputDir = File(buildDirVal, "parikshan"),
+            baseOutputDir = File(buildDirVal, "parikshan/desktop"),
             preferredWindowWidth = size?.first ?: 800,
             preferredWindowHeight = size?.second ?: 700,
             appArgs = appArgsVal,
@@ -133,7 +133,7 @@ internal object DesktopTargetConfigurer {
               jar = jar,
               appMainClass = mainClass,
               token = primary.token,
-              logFile = File(buildDirVal, "parikshan/logs/desktop-${primary.instanceId}.log"),
+              logFile = File(buildDirVal, "parikshan/desktop/logs/desktop-${primary.instanceId}.log"),
               appArgs = appArgsVal,
               host = hostVal,
               port = primary.port,
@@ -162,7 +162,7 @@ internal object DesktopTargetConfigurer {
     project.tasks.register(stopTaskName) {
       group = "verification"
       doLast {
-        DesktopProcessManager.stopAll(baseOutputDir = File(buildDirVal, "parikshan"), host = hostVal)
+        DesktopProcessManager.stopAll(baseOutputDir = File(buildDirVal, "parikshan/desktop"), host = hostVal)
         DesktopProcess.stop(
           host = hostVal,
           port = portVal,

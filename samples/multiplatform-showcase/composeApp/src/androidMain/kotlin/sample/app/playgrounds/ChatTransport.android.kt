@@ -5,8 +5,8 @@ actual object ChatTransport {
 
   actual fun getCurrentInstanceId(): String = "AndroidUser"
 
-  actual fun broadcastMessage(text: String) {
-    inMemoryMessages.add(ChatMessage("AndroidUser", text, System.currentTimeMillis()))
+  actual fun broadcastMessage(text: String, attachment: ChatFileAttachment?) {
+    inMemoryMessages.add(ChatMessage("AndroidUser", text, System.currentTimeMillis(), attachment))
   }
 
   actual fun getMessages(): List<ChatMessage> = inMemoryMessages.toList()

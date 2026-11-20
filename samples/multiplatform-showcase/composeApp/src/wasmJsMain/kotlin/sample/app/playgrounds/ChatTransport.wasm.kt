@@ -2,12 +2,15 @@ package sample.app.playgrounds
 
 import kotlinx.browser.window
 import org.w3c.xhr.XMLHttpRequest
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 @JsName("Date")
 private external object JsDate {
   fun now(): Double
 }
 
+@OptIn(ExperimentalEncodingApi::class)
 actual object ChatTransport {
   actual fun getCurrentInstanceId(): String {
     val search = runCatching { window.location.search }.getOrNull().orEmpty()
@@ -15,10 +18,15 @@ actual object ChatTransport {
     return match?.groupValues?.get(1)?.takeIf { it.isNotBlank() } ?: "WasmUser"
   }
 
-  actual fun broadcastMessage(text: String) {
+  actual fun broadcastMessage(text: String, attachment: ChatFileAttachment?) {
     val sender = getCurrentInstanceId()
     val timestamp = runCatching { JsDate.now().toLong() }.getOrDefault(0L)
-    val body = "$sender\t$timestamp\t$text\n"
+    val body = if (attachment != null) {
+      val b64 = Base64.encode(attachment.fileBytes)
+      "$sender\t$timestamp\t$text\t${attachment.fileName}\t$b64\n"
+    } else {
+      "$sender\t$timestamp\t$text\n"
+    }
     runCatching {
       val xhr = XMLHttpRequest()
       xhr.open("POST", "/parikshan-chat", false)
@@ -37,12 +45,17 @@ actual object ChatTransport {
       response.lines()
         .filter { it.isNotBlank() }
         .mapNotNull { line ->
-          val parts = line.split("\t", limit = 3)
+          val parts = line.split("\t")
           if (parts.size >= 3) {
+            val attachment = if (parts.size >= 5 && parts[3].isNotBlank() && parts[4].isNotBlank()) {
+              val bytes = runCatching { Base64.decode(parts[4]) }.getOrNull()
+              if (bytes != null) ChatFileAttachment(fileName = parts[3], fileBytes = bytes) else null
+            } else null
             ChatMessage(
               sender = parts[0],
               timestamp = parts[1].toLongOrNull() ?: 0L,
-              text = parts[2]
+              text = parts[2],
+              attachment = attachment
             )
           } else null
         }

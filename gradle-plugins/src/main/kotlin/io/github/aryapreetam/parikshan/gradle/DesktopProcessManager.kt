@@ -100,6 +100,11 @@ internal object DesktopProcessManager {
     val isWindows = System.getProperty("os.name").lowercase().contains("win")
     val javaExecutable = System.getProperty("java.home") + "/bin/java" + (if (isWindows) ".exe" else "")
     val mainClass = java.util.jar.JarFile(jarFile).manifest?.mainAttributes?.getValue("Main-Class")
+    val hasPremain = runCatching {
+      java.util.jar.JarFile(jarFile).use { jf ->
+        jf.manifest?.mainAttributes?.getValue("Premain-Class") != null
+      }
+    }.getOrDefault(false)
     val sessionsDir = File(baseOutputDir, "sessions").apply { mkdirs() }
     val logsDir = File(baseOutputDir, "logs").apply { mkdirs() }
     val sharedDataDir = File(baseOutputDir, "data").apply { mkdirs() }
@@ -124,6 +129,9 @@ internal object DesktopProcessManager {
 
       val command = buildList {
         add(javaExecutable)
+        if (hasPremain) {
+          add("-javaagent:${jarFile.absolutePath}")
+        }
         add("-Dparikshan.host=$host")
         add("-Dparikshan.port=$port")
         add("-Dparikshan.token=$token")

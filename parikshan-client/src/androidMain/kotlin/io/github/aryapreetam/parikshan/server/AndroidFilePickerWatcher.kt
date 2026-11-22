@@ -111,9 +111,11 @@ internal object AndroidFilePickerWatcher {
 
         is PickerAction.Select -> {
           selectedPaths = action.paths
+          val context = InstrumentationRegistry.getInstrumentation().targetContext
           val resultIntent = Intent()
           val uris = action.paths.map { path ->
             val isDir = isDirectoryIntent || File(path).isDirectory
+            ParikshanFileProvider.stageToAppSandbox(context, path, isDirectory = isDir)
             ParikshanFileProvider.buildUri(authority, path, isDirectory = isDir)
           }
 
@@ -121,11 +123,14 @@ internal object AndroidFilePickerWatcher {
             val firstUri = uris.first()
             resultIntent.data = firstUri
             resultIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            if (isDirectoryIntent) {
-              resultIntent.addFlags(Intent.FLAG_GRANT_PREFIX_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+            if (isDirectoryIntent || intent.action == Intent.ACTION_CREATE_DOCUMENT) {
+              resultIntent.addFlags(
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                  Intent.FLAG_GRANT_PREFIX_URI_PERMISSION or
+                  Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+              )
             }
 
-            val context = InstrumentationRegistry.getInstrumentation().targetContext
             val clipData = ClipData.newUri(context.contentResolver, "file", firstUri)
             for (i in 1 until uris.size) {
               clipData.addItem(ClipData.Item(uris[i]))

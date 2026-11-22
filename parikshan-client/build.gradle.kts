@@ -76,6 +76,17 @@ kotlin {
       it.get().dependsOn(iosMain)
     }
 
+    val iosTest by creating {
+      dependsOn(commonTest.get())
+    }
+    listOfNotNull(
+      if (cmpProfile == "1.10") iosX64Test else null,
+      iosArm64Test,
+      iosSimulatorArm64Test
+    ).forEach {
+      it.get().dependsOn(iosTest)
+    }
+
     commonMain.dependencies {
       api(project(":parikshan-core"))
       implementation(compose.runtime)

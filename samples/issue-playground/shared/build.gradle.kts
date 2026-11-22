@@ -15,6 +15,8 @@ kotlin {
     listOf(
         iosArm64(),
         iosSimulatorArm64()
+    ).plus(
+        if (profile == "1.10") listOf(iosX64()) else emptyList()
     ).forEach { iosTarget ->
         iosTarget.binaries.framework {
             baseName = "Shared"
@@ -98,6 +100,33 @@ abstract class CreateEmptyFixtureDirTask : DefaultTask() {
 val createEmptyFixtureDirTask = tasks.register<CreateEmptyFixtureDirTask>("createEmptyFixtureDir") {
     outputDir.set(layout.projectDirectory.dir("src/commonTest/resources/fixtures/issue29_dir/empty_dir"))
 }
+
+abstract class PrepareIssue32FixturesTask : DefaultTask() {
+    @get:OutputDirectory
+    abstract val fixturesRootDir: DirectoryProperty
+
+    @TaskAction
+    fun execute() {
+        val root = fixturesRootDir.get().asFile
+        val sourceDir = File(root, "picker-write-source")
+        val destDir = File(root, "picker-write-destination")
+
+        if (destDir.exists()) {
+            destDir.deleteRecursively()
+        }
+        destDir.mkdirs()
+
+        sourceDir.mkdirs()
+        File(sourceDir, "ready.txt").writeText("Android matrix readiness\n", Charsets.UTF_8)
+    }
+}
+
+val prepareIssue32FixturesTask = tasks.register<PrepareIssue32FixturesTask>("prepareIssue32Fixtures") {
+    fixturesRootDir.set(layout.buildDirectory.dir("parikshan-fixtures/issue32"))
+    outputs.upToDateWhen { false }
+}
+
 tasks.matching { it.name.startsWith("e2e") || it.name.contains("Test") }.configureEach {
     dependsOn(createEmptyFixtureDirTask)
+    dependsOn(prepareIssue32FixturesTask)
 }

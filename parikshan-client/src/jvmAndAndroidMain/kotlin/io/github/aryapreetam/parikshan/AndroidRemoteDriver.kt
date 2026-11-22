@@ -56,6 +56,17 @@ internal class AndroidRemoteDriver private constructor(
           ProcessBuilder(adbPrefix + listOf("push", hostFile.absolutePath, "/sdcard/Download/parikshan_fixtures/${hostFile.name}")).start().waitFor()
           ProcessBuilder(adbPrefix + listOf("shell", "chmod", "666", "/data/local/tmp/parikshan_fixtures/${hostFile.name}")).start().waitFor()
         } else if (hostFile.isDirectory) {
+          // Clean prior staged directory so empty destination fixtures do not inherit stale files
+          ProcessBuilder(
+            adbPrefix + listOf(
+              "shell",
+              "rm",
+              "-rf",
+              "/data/local/tmp/parikshan_fixtures/${hostFile.name}",
+              "/sdcard/Download/parikshan_fixtures/${hostFile.name}"
+            )
+          ).start().waitFor()
+
           val parentDir = hostFile.parentFile ?: java.io.File(".")
           val subDirs = hostFile.walkTopDown().filter { it.isDirectory }.map { dir ->
             dir.relativeTo(parentDir).path.replace('\\', '/')
@@ -66,8 +77,10 @@ internal class AndroidRemoteDriver private constructor(
             ProcessBuilder(adbPrefix + listOf("shell", "mkdir", "-p") + tmpArgs).start().waitFor()
             ProcessBuilder(adbPrefix + listOf("shell", "mkdir", "-p") + downloadArgs).start().waitFor()
           }
-          ProcessBuilder(adbPrefix + listOf("push", "${hostFile.absolutePath}/.", "/data/local/tmp/parikshan_fixtures/${hostFile.name}/")).start().waitFor()
-          ProcessBuilder(adbPrefix + listOf("push", "${hostFile.absolutePath}/.", "/sdcard/Download/parikshan_fixtures/${hostFile.name}/")).start().waitFor()
+          if (hostFile.listFiles()?.isNotEmpty() == true) {
+            ProcessBuilder(adbPrefix + listOf("push", "${hostFile.absolutePath}/.", "/data/local/tmp/parikshan_fixtures/${hostFile.name}/")).start().waitFor()
+            ProcessBuilder(adbPrefix + listOf("push", "${hostFile.absolutePath}/.", "/sdcard/Download/parikshan_fixtures/${hostFile.name}/")).start().waitFor()
+          }
         }
       }
       ProcessBuilder(adbPrefix + listOf("shell", "chmod", "-R", "777", "/data/local/tmp/parikshan_fixtures")).start().waitFor()

@@ -15,7 +15,8 @@ Pods/
 *.gpg
 *yarn.lock
 /.github/copilot-instructions.md
-/docs-to-ignore/
+docs-to-ignore
+docs-to-ignore/**
 # Template configuration (each user should run setup-template.sh)
 .template-config.json
 .junie/

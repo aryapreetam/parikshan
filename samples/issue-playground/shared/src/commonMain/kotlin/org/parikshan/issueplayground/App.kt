@@ -37,6 +37,16 @@ val issueList = listOf(
         id = "29",
         title = "Issue #29",
         description = "Android directory picker: invalid tree metadata and missing recursive fixture staging"
+    ),
+    IssueItem(
+        id = "32",
+        title = "Issue #32",
+        description = "Android directory picker: destination file creation and write via ParikshanFileProvider"
+    ),
+    IssueItem(
+        id = "33",
+        title = "Issue #33",
+        description = "iOS: clearing a populated untagged input hangs driver deletion loop"
     )
 )
 
@@ -96,6 +106,28 @@ fun App() {
                         org.parikshan.issueplayground.issue29.Issue29Screen()
                     }
                 }
+                "32" -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        TextButton(
+                            onClick = { selectedIssueId = null },
+                            modifier = Modifier.testTag("back_to_issue_index").padding(8.dp)
+                        ) {
+                            Text("← Back to Issue Index")
+                        }
+                        org.parikshan.issueplayground.issue32.Issue32Screen()
+                    }
+                }
+                "33" -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        TextButton(
+                            onClick = { selectedIssueId = null },
+                            modifier = Modifier.testTag("back_to_issue_index").padding(8.dp)
+                        ) {
+                            Text("← Back to Issue Index")
+                        }
+                        org.parikshan.issueplayground.issue33.Issue33Screen()
+                    }
+                }
                 else -> {
                     IssueIndexLauncher(onSelectIssue = { selectedIssueId = it })
                 }
@@ -124,6 +156,7 @@ fun IssueIndexLauncher(onSelectIssue: (String) -> Unit) {
         Spacer(modifier = Modifier.height(16.dp))
         
         LazyColumn(
+            modifier = Modifier.testTag("issue_index_list"),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(issueList) { issue ->

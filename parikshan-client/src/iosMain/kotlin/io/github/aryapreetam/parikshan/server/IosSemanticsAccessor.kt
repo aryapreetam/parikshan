@@ -878,52 +878,191 @@ internal object IosSemanticsAccessor {
     }
   }
 
-  private fun findSemanticsNode(tag: String, matchText: String?): SemanticsNode? {
-    val activeOwners = io.github.aryapreetam.parikshan.IosSemanticsRegistry.getActiveOwners()
-    logDebug("findSemanticsNode: tag='$tag', text='$matchText', activeOwners=${activeOwners.size}")
-    if (activeOwners.isEmpty()) return null
+  private fun semanticsTextCandidatesOf(node: SemanticsNode): List<String> = buildList {
+    node.config.getOrNull(SemanticsProperties.EditableText)?.text
+      ?.takeIf { it.isNotBlank() }
+      ?.let { add(it) }
+    node.config.getOrNull(SemanticsProperties.Text)
+      ?.joinToString(" ") { it.text }
+      ?.takeIf { it.isNotBlank() }
+      ?.let { add(it) }
+    node.config.getOrNull(SemanticsProperties.ContentDescription)
+      ?.joinToString(" ")
+      ?.takeIf { it.isNotBlank() }
+      ?.let { add(it) }
+  }
 
-    for (owner in activeOwners) {
-      @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
-      var allNodes = owner.getAllSemanticsNodes(mergingEnabled = false)
-      var found = if (tag.isNotBlank()) {
-        allNodes.find {
-          it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag) == tag
-        }
-      } else null
+  private fun semanticsMatchScore(node: SemanticsNode, matchText: String): Int? {
+    val candidates = semanticsTextCandidatesOf(node)
+    if (candidates.any { it.equals(matchText, ignoreCase = true) }) return 0
+    if (candidates.any { it.contains(matchText, ignoreCase = true) }) return 1
+    return null
+  }
 
-      if (found == null && !matchText.isNullOrBlank()) {
-        found = allNodes.find { n ->
-          val nodeTexts = n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)
-          val nodeTextStr = nodeTexts?.joinToString(" ") { it.text }
-          val nodeLabel = n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.ContentDescription)?.joinToString(" ")
-          (nodeTextStr != null && nodeTextStr.contains(matchText, ignoreCase = true)) ||
-              (nodeLabel != null && matchText != null && nodeLabel.contains(matchText, ignoreCase = true))
-        }
+  private fun resolveSetTextTarget(node: SemanticsNode): SemanticsNode? {
+    var current: SemanticsNode? = node
+    while (current != null) {
+      if (current.config.getOrNull(SemanticsActions.SetText) != null) {
+        return current
       }
-      if (found != null) return found
+      current = current.parent
+    }
 
-      @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
-      allNodes = owner.getAllSemanticsNodes(mergingEnabled = true)
-      found = if (tag.isNotBlank()) {
-        allNodes.find {
-          it.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.TestTag) == tag
-        }
-      } else null
-
-      if (found == null && !matchText.isNullOrBlank()) {
-        found = allNodes.find { n ->
-          val nodeTexts = n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.Text)
-          val nodeTextStr = nodeTexts?.joinToString(" ") { it.text }
-          val nodeLabel = n.config.getOrNull(androidx.compose.ui.semantics.SemanticsProperties.ContentDescription)?.joinToString(" ")
-          (nodeTextStr != null && nodeTextStr.contains(matchText, ignoreCase = true)) ||
-              (nodeLabel != null && matchText != null && nodeLabel.contains(matchText, ignoreCase = true))
-        }
+    val queue = ArrayDeque<SemanticsNode>()
+    queue.addAll(node.children)
+    while (queue.isNotEmpty()) {
+      val child = queue.removeFirst()
+      if (child.config.getOrNull(SemanticsActions.SetText) != null) {
+        return child
       }
-      if (found != null) return found
+      queue.addAll(child.children)
     }
     return null
   }
+
+  private fun collectAllSemanticsNodes(): List<SemanticsNode> {
+    val activeOwners = io.github.aryapreetam.parikshan.IosSemanticsRegistry.getActiveOwners()
+    if (activeOwners.isEmpty()) return emptyList()
+
+    val collected = mutableListOf<SemanticsNode>()
+    val seenIds = mutableSetOf<Int>()
+    for (owner in activeOwners) {
+      @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+      val unmerged = try { owner.getAllSemanticsNodes(mergingEnabled = false) } catch (_: Throwable) { emptyList() }
+      for (n in unmerged) {
+        if (seenIds.add(n.id)) collected.add(n)
+      }
+      @Suppress("INVISIBLE_MEMBER", "INVISIBLE_REFERENCE")
+      val merged = try { owner.getAllSemanticsNodes(mergingEnabled = true) } catch (_: Throwable) { emptyList() }
+      for (n in merged) {
+        if (seenIds.add(n.id)) collected.add(n)
+      }
+    }
+    return collected
+  }
+
+  private fun findSemanticsNode(tag: String, matchText: String?): SemanticsNode? {
+    val allNodes = collectAllSemanticsNodes()
+    logDebug("findSemanticsNode: tag='$tag', text='$matchText', totalNodes=${allNodes.size}")
+    if (allNodes.isEmpty()) return null
+
+    if (tag.isNotBlank()) {
+      allNodes.find {
+        it.config.getOrNull(SemanticsProperties.TestTag) == tag
+      }?.let { return it }
+    }
+
+    if (!matchText.isNullOrBlank()) {
+      var bestNode: SemanticsNode? = null
+      var bestScore = Int.MAX_VALUE
+      for (n in allNodes) {
+        val score = semanticsMatchScore(n, matchText) ?: continue
+        if (score < bestScore) {
+          bestScore = score
+          bestNode = n
+          if (score == 0) break
+        }
+      }
+      if (bestNode != null) return bestNode
+    }
+
+    return null
+  }
+
+  private fun findInputSemanticsNode(
+    tag: String,
+    selector: Selector?,
+    snapshot: NodeSnapshot
+  ): SemanticsNode? {
+    val allNodes = collectAllSemanticsNodes()
+    if (allNodes.isEmpty()) return null
+
+    val effectiveTag = tag.ifBlank { snapshot.tag }
+    val matchText = snapshot.text?.takeIf { it.isNotBlank() }
+      ?: (selector as? Selector.Text)?.raw?.takeIf { it.isNotBlank() }
+      ?: (selector as? Selector.Auto)?.raw?.takeIf { it.isNotBlank() }
+
+    data class InputCandidate(
+      val target: SemanticsNode,
+      val matchScore: Int,
+      val boundsDistanceSq: Double
+    )
+
+    val seenTargets = mutableSetOf<Int>()
+    val candidates = mutableListOf<InputCandidate>()
+
+    fun boundsDistanceSq(node: SemanticsNode): Double {
+      val b = node.boundsInWindow
+      val cx = (b.left + b.right) / 2.0
+      val cy = (b.top + b.bottom) / 2.0
+      val dx = cx - snapshot.bounds.centerX
+      val dy = cy - snapshot.bounds.centerY
+      return (dx * dx) + (dy * dy)
+    }
+
+    for (n in allNodes) {
+      val score = when {
+        effectiveTag.isNotBlank() && n.config.getOrNull(SemanticsProperties.TestTag) == effectiveTag -> 0
+        !matchText.isNullOrBlank() -> semanticsMatchScore(n, matchText)?.plus(1)
+        else -> null
+      } ?: continue
+
+      val setTextTarget = resolveSetTextTarget(n) ?: continue
+      if (seenTargets.add(setTextTarget.id)) {
+        candidates.add(
+          InputCandidate(
+            target = setTextTarget,
+            matchScore = score,
+            boundsDistanceSq = boundsDistanceSq(setTextTarget)
+          )
+        )
+      }
+    }
+
+    if (candidates.isEmpty()) return null
+
+    candidates.sortWith(
+      compareBy<InputCandidate> { it.matchScore }
+        .thenBy { it.boundsDistanceSq }
+    )
+    return candidates.first().target
+  }
+
+  private fun readLiveEditableText(textInput: UITextInputProtocol?, node: Any): String? {
+    if (textInput != null) {
+      try {
+        val range = textInput.textRangeFromPosition(
+          textInput.beginningOfDocument,
+          toPosition = textInput.endOfDocument
+        )
+        if (range != null) {
+          return textInput.textInRange(range) ?: ""
+        }
+      } catch (_: Throwable) {}
+    }
+
+    return try {
+      when (node) {
+        is UIView -> node.accessibilityValue
+        is UIAccessibilityElement -> node.accessibilityValue
+        else -> null
+      }
+    } catch (_: Throwable) {
+      null
+    }
+  }
+
+  private fun moveCursorToEnd(textInput: UITextInputProtocol) {
+    try {
+      val endPos = textInput.endOfDocument
+      val endRange = textInput.textRangeFromPosition(endPos, toPosition = endPos)
+      if (endRange != null) {
+        textInput.selectedTextRange = endRange
+      }
+    } catch (_: Throwable) {}
+  }
+
+  private fun nowWallClockMs(): Long = (NSDate().timeIntervalSince1970 * 1000.0).toLong()
 
   private fun findScrollAction(node: SemanticsNode): ((Float, Float) -> Boolean)? {
     var currentNode: SemanticsNode? = node
@@ -950,33 +1089,19 @@ internal object IosSemanticsAccessor {
     val node = findNode(tag, selector) ?: return "Node not found for input: $activeSelector"
     val snapshot = snapshotNode(node)
 
-    logDebug("Kotlin class info: ${node::class.simpleName}, ${node::class.qualifiedName}")
+    // Tier 1: Direct Compose Semantics SetText (cursor-position independent, matches Android/Desktop/Wasm)
     try {
-      logDebug("Searching for target node via IosSemanticsRegistry active owners.")
-      var targetSemanticsNode: SemanticsNode? = findSemanticsNode(tag, snapshot.text)
-      logDebug("Found target SemanticsNode via registry: $targetSemanticsNode")
-      
-      if (targetSemanticsNode != null) {
-        var current: SemanticsNode? = targetSemanticsNode
-        var setTextAction = current?.config?.getOrNull(androidx.compose.ui.semantics.SemanticsActions.SetText)
-        var depth = 0
-        while (setTextAction == null && current?.parent != null && depth < 3) {
-          current = current?.parent
-          setTextAction = current?.config?.getOrNull(androidx.compose.ui.semantics.SemanticsActions.SetText)
-          depth++
-        }
-        if (current != null && setTextAction != null) {
-          targetSemanticsNode = current
-        }
+      val targetSemanticsNode = findInputSemanticsNode(tag, selector, snapshot)
+      logDebug("findInputSemanticsNode resolved target: $targetSemanticsNode")
 
-        // Request focus via semantics if available
-        val requestFocusAction = targetSemanticsNode?.config?.getOrNull(androidx.compose.ui.semantics.SemanticsActions.RequestFocus)
+      if (targetSemanticsNode != null) {
+        val requestFocusAction = targetSemanticsNode.config.getOrNull(SemanticsActions.RequestFocus)
         if (requestFocusAction != null) {
           logDebug("Requesting focus via semantics action.")
           requestFocusAction.action?.invoke()
         }
-        
-        // Set text via semantics
+
+        val setTextAction = targetSemanticsNode.config.getOrNull(SemanticsActions.SetText)
         if (setTextAction != null) {
           logDebug("Invoking SetText semantics action with '$text'")
           val success = setTextAction.action?.invoke(androidx.compose.ui.text.AnnotatedString(text))
@@ -985,59 +1110,13 @@ internal object IosSemanticsAccessor {
             pumpRunLoop(iterations = 2, intervalSeconds = 0.005)
             return "OK"
           }
-        } else {
-          logDebug("SetText semantics action not found on node or its parents.")
         }
       }
     } catch (e: Throwable) {
       logDebug("Failed to execute text input via semantics action: ${e.message}")
     }
 
-    val nodeClass = object_getClass(node)
-    if (nodeClass != null) {
-      val className = class_getName(nodeClass)?.toKString() ?: ""
-      logDebug("=== Inspecting Node class name: $className ===")
-      
-      // Inspect Ivars
-      val ivarCountRef = nativeHeap.alloc<UIntVar>()
-      try {
-        val ivars = class_copyIvarList(nodeClass, ivarCountRef.ptr)
-        if (ivars != null) {
-          val count = ivarCountRef.value.toInt()
-          logDebug("Found $count ivars in Node class $className")
-          for (i in 0 until count) {
-            val ivar = ivars[i]
-            val ivarName = ivar_getName(ivar)?.toKString() ?: ""
-            val ivarType = ivar_getTypeEncoding(ivar)?.toKString() ?: ""
-            logDebug("  Ivar: name=$ivarName, type=$ivarType")
-          }
-          platform.posix.free(ivars)
-        }
-      } finally {
-        nativeHeap.free(ivarCountRef)
-      }
-
-      // Inspect Methods
-      val methodCountRef = nativeHeap.alloc<UIntVar>()
-      try {
-        val methods = class_copyMethodList(nodeClass, methodCountRef.ptr)
-        if (methods != null) {
-          val count = methodCountRef.value.toInt()
-          logDebug("Found $count methods implemented by Node class $className")
-          for (i in 0 until count) {
-            val method = methods[i]
-            val sel = method_getName(method)
-            val methodName = sel_getName(sel)?.toKString() ?: ""
-            logDebug("  Method: $methodName")
-          }
-          platform.posix.free(methods)
-        }
-      } finally {
-        nativeHeap.free(methodCountRef)
-      }
-    }
-
-    // Focus the text field via accessibilityActivate (Compose's native accessibility handler)
+    // Focus the text field via accessibilityActivate or coordinate click for UIKit fallbacks
     var focusedViaAccessibility = false
     if (node is NSObject) {
       logDebug("Attempting accessibilityActivate on text field node...")
@@ -1045,8 +1124,6 @@ internal object IosSemanticsAccessor {
         if (node.accessibilityActivate()) {
           logDebug("accessibilityActivate succeeded for focusing text field node.")
           focusedViaAccessibility = true
-        } else {
-          logDebug("accessibilityActivate returned false for focusing text field node.")
         }
       } catch (e: Throwable) {
         logDebug("accessibilityActivate threw error for focusing text field node: ${e.message}")
@@ -1059,7 +1136,7 @@ internal object IosSemanticsAccessor {
       if (clickRes != "OK") return "Click to focus failed: $clickRes"
     }
 
-    // Allow focus/keyboard state to update by actively polling for first responder
+    // Poll briefly for active first responder
     var firstResponder = findFirstResponder()
     if (firstResponder == null) {
       for (i in 0 until 10) {
@@ -1070,56 +1147,39 @@ internal object IosSemanticsAccessor {
     }
     logDebug("findFirstResponder returned: $firstResponder, className=${firstResponder?.let { it::class.simpleName }}, implements UIKeyInput=${firstResponder is UIKeyInputProtocol}")
 
-    if (firstResponder != null) {
-      val objcClass = object_getClass(firstResponder)
-      if (objcClass != null) {
-        val className = class_getName(objcClass)?.toKString() ?: ""
-        logDebug("=== Inspecting first responder class name: $className ===")
-        
-        // Inspect Ivars
-        val ivarCountRef = nativeHeap.alloc<UIntVar>()
-        try {
-          val ivars = class_copyIvarList(objcClass, ivarCountRef.ptr)
-          if (ivars != null) {
-            val count = ivarCountRef.value.toInt()
-            logDebug("Found $count ivars in $className")
-            for (i in 0 until count) {
-              val ivar = ivars[i]
-              val ivarName = ivar_getName(ivar)?.toKString() ?: ""
-              val ivarType = ivar_getTypeEncoding(ivar)?.toKString() ?: ""
-              logDebug("  Ivar: name=$ivarName, type=$ivarType")
-            }
-            platform.posix.free(ivars)
-          }
-        } finally {
-          nativeHeap.free(ivarCountRef)
-        }
-
-        // Inspect Methods
-        val methodCountRef = nativeHeap.alloc<UIntVar>()
-        try {
-          val methods = class_copyMethodList(objcClass, methodCountRef.ptr)
-          if (methods != null) {
-            val count = methodCountRef.value.toInt()
-            logDebug("Found $count methods implemented by $className")
-            for (i in 0 until count) {
-              val method = methods[i]
-              val sel = method_getName(method)
-              val methodName = sel_getName(sel)?.toKString() ?: ""
-              logDebug("  Method: $methodName")
-            }
-            platform.posix.free(methods)
-          }
-        } finally {
-          nativeHeap.free(methodCountRef)
-        }
-      }
-    }
-
     if (firstResponder == null) {
       return "Active text responder not found"
     }
 
+    val textInput = firstResponder as? UITextInputProtocol
+
+    // Tier 2: Cursor-independent UITextInput full-range replacement
+    if (textInput != null) {
+      try {
+        val fullRange = textInput.textRangeFromPosition(
+          textInput.beginningOfDocument,
+          toPosition = textInput.endOfDocument
+        )
+        if (fullRange != null) {
+          logDebug("Replacing full UITextInput document range with '$text'")
+          textInput.replaceRange(fullRange, withText = text)
+          pumpRunLoop(iterations = 5, intervalSeconds = 0.01)
+          val updated = readLiveEditableText(textInput, node)
+          if (updated == text) {
+            return "OK"
+          }
+          logDebug("UITextInput replaceRange post-check mismatch: expected='$text', actual='$updated'")
+        }
+      } catch (e: Throwable) {
+        logDebug("UITextInput replaceRange fallback error: ${e.message}")
+      }
+
+      // Position cursor at end before any backward-deletion fallback
+      moveCursorToEnd(textInput)
+      pumpRunLoop(iterations = 2, intervalSeconds = 0.005)
+    }
+
+    // Tier 3a: Compose responder KVC batch mutation (verified post-condition)
     val responderObj = firstResponder as? NSObject
     if (responderObj != null) {
       val input = if (responderObj.respondsToSelector(platform.Foundation.NSSelectorFromString("input"))) {
@@ -1132,11 +1192,10 @@ internal object IosSemanticsAccessor {
         val endSel = NSSelectorFromString("endEditBatch")
 
         if (input.respondsToSelector(beginSel) && input.respondsToSelector(endSel)) {
-          logDebug("Found Compose text input responder via KVC. Mutating input directly.")
-          
-          val currentTextLength = snapshot.text?.length ?: 0
-          logDebug("Direct clearing existing text of length $currentTextLength.")
-          
+          val liveBefore = readLiveEditableText(textInput, node) ?: snapshot.text ?: ""
+          val currentTextLength = liveBefore.length
+          logDebug("Mutating Compose text input responder via KVC (clearing $currentTextLength chars).")
+
           input.performSelector(beginSel)
           try {
             repeat(currentTextLength) {
@@ -1144,8 +1203,7 @@ internal object IosSemanticsAccessor {
                 input.performSelector(deleteSel)
               }
             }
-            logDebug("Direct inserting text: '$text'")
-            if (input.respondsToSelector(insertSel)) {
+            if (text.isNotEmpty() && input.respondsToSelector(insertSel)) {
               input.performSelector(insertSel, withObject = NSString.create(string = text))
             }
           } finally {
@@ -1153,34 +1211,43 @@ internal object IosSemanticsAccessor {
           }
 
           pumpRunLoop(iterations = 10, intervalSeconds = 0.01)
-          return "OK"
+          val liveAfter = readLiveEditableText(textInput, node)
+          if (liveAfter == null || liveAfter == text) {
+            return "OK"
+          }
+          logDebug("KVC edit batch post-check mismatch: expected='$text', actual='$liveAfter'")
         }
       }
     }
 
+    // Tier 3b: Bounded, progress-checked UIKeyInput fallback (cannot hang main thread)
     if (firstResponder is UIKeyInputProtocol) {
       val keyInput = firstResponder as UIKeyInputProtocol
-      
-      // Clear existing text by sending backspaces based on current snapshot text length
-      val currentTextLength = snapshot.text?.length ?: 0
-      logDebug("Clearing existing text of length $currentTextLength.")
-      repeat(currentTextLength) {
-        keyInput.deleteBackward()
-        pumpRunLoop(iterations = 2, intervalSeconds = 0.01)
+      val liveBefore = readLiveEditableText(textInput, node) ?: snapshot.text ?: ""
+
+      val stallReason = clearBoundedUiKeyInput(
+        initialLength = liveBefore.length,
+        hasText = { keyInput.hasText() },
+        currentLength = { readLiveEditableText(textInput, node)?.length },
+        deleteBackward = { keyInput.deleteBackward() },
+        afterDeleteStep = { pumpRunLoop(iterations = 2, intervalSeconds = 0.01) },
+        nowMs = { nowWallClockMs() }
+      )
+      if (stallReason != null) {
+        logDebug("Bounded UIKeyInput clear aborted: $stallReason")
+        return stallReason
       }
-      // Also fallback to hasText() loop if it returns true
-      while (keyInput.hasText()) {
-        keyInput.deleteBackward()
-        pumpRunLoop(iterations = 2, intervalSeconds = 0.01)
-      }
+
       pumpRunLoop(iterations = 5, intervalSeconds = 0.01)
 
-      logDebug("Inserting text character-by-character: '$text'")
-      for (char in text) {
-        keyInput.insertText(char.toString())
-        pumpRunLoop(iterations = 3, intervalSeconds = 0.01)
+      if (text.isNotEmpty()) {
+        logDebug("Inserting text character-by-character: '$text'")
+        for (char in text) {
+          keyInput.insertText(char.toString())
+          pumpRunLoop(iterations = 3, intervalSeconds = 0.01)
+        }
+        pumpRunLoop(iterations = 10, intervalSeconds = 0.01)
       }
-      pumpRunLoop(iterations = 10, intervalSeconds = 0.01)
 
       return "OK"
     }
@@ -1333,6 +1400,63 @@ internal object IosSemanticsAccessor {
     }
 
     return "OK"
+  }
+
+  internal fun clearBoundedUiKeyInput(
+    initialLength: Int,
+    hasText: () -> Boolean,
+    currentLength: () -> Int?,
+    deleteBackward: () -> Unit,
+    afterDeleteStep: () -> Unit = {},
+    nowMs: () -> Long,
+    maxIterations: Int = maxOf(initialLength + 32, 128),
+    deadlineMs: Long = 2_000L,
+    maxConsecutiveStalls: Int = 5
+  ): String? {
+    var lastObservedLength = currentLength()?.coerceAtLeast(0)
+    if (lastObservedLength == 0 || (lastObservedLength == null && !hasText())) {
+      return null
+    }
+
+    val effectiveMaxIterations = maxIterations.coerceAtLeast(1)
+    val effectiveMaxStalls = maxConsecutiveStalls.coerceAtLeast(1)
+    val deadline = nowMs() + deadlineMs.coerceAtLeast(1L)
+    var consecutiveStalls = 0
+
+    for (iteration in 1..effectiveMaxIterations) {
+      if (nowMs() >= deadline) {
+        return "UIKeyInput deletion exceeded ${deadlineMs}ms deadline after ${iteration - 1} steps " +
+          "(remaining length=${lastObservedLength ?: "unknown"})"
+      }
+
+      deleteBackward()
+      afterDeleteStep()
+
+      val observed = currentLength()?.coerceAtLeast(0)
+      if (observed == 0 || (observed == null && !hasText())) {
+        return null
+      }
+
+      if (observed != null && lastObservedLength != null) {
+        if (observed < lastObservedLength) {
+          consecutiveStalls = 0
+        } else {
+          consecutiveStalls += 1
+          if (consecutiveStalls >= effectiveMaxStalls) {
+            return "UIKeyInput deletion made no progress after $consecutiveStalls consecutive steps " +
+              "(remaining length=$observed)"
+          }
+        }
+      }
+      lastObservedLength = observed
+    }
+
+    val finalLength = currentLength()?.coerceAtLeast(0)
+    if (finalLength == 0 || (finalLength == null && !hasText())) {
+      return null
+    }
+    return "UIKeyInput deletion reached max iterations ($effectiveMaxIterations) without emptying field " +
+      "(remaining length=${finalLength ?: "unknown"})"
   }
 
   private fun dumpView(view: UIView, indent: String, sb: StringBuilder) {

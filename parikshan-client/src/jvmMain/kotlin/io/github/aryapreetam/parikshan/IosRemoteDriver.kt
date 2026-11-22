@@ -242,6 +242,10 @@ internal class IosRemoteDriver private constructor(
             hostFile.copyTo(destFile, overwrite = true)
             destFile.canonicalPath
           } else if (hostFile.isDirectory) {
+            if (destFile.exists()) {
+              destFile.deleteRecursively()
+            }
+            destFile.mkdirs()
             hostFile.copyRecursively(destFile, overwrite = true)
             destFile.canonicalPath
           } else {

@@ -1,28 +1,52 @@
-name: CI (push)
+name: CI
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
-      - '**'
-      - '!draft/**'
-      - '!sandbox/**'
-      - '!debug/**'
-    tags-ignore:
-      - 'v*'
+      - main
+  schedule:
+    # Weekly full compatibility matrix (Sunday 03:00 UTC)
+    - cron: '0 3 * * 0'
   workflow_dispatch:
     inputs:
       target_job:
-        description: 'Target CI job(s) to run, comma-separated (e.g. desktop, wasm, windows, android, all)'
+        description: 'Target CI job(s) to run, comma-separated (e.g. desktop, wasm, windows, android, ios-showcase, all)'
         required: true
         default: 'all'
+        type: string
+      tier:
+        description: 'Matrix tier: fast (CMP 1.12 only) or full (CMP 1.10/1.11/1.12 + all samples)'
+        required: false
+        default: 'fast'
+        type: choice
+        options:
+          - fast
+          - full
+      cmp_profile:
+        description: 'Override CMP profile for matrix E2E jobs (auto = use tier default)'
+        required: false
+        default: 'auto'
+        type: choice
+        options:
+          - auto
+          - '1.10'
+          - '1.11'
+          - '1.12'
+      test_filter:
+        description: 'Optional Gradle --tests filter for targeted E2E debugging (e.g. sample.app.FormIntegrationTest)'
+        required: false
+        default: ''
         type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}-${{ inputs.target_job || 'all' }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.target_job || 'auto' }}-${{ inputs.cmp_profile || 'auto' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   check-template-setup:
@@ -31,6 +55,9 @@ jobs:
     outputs:
       is_configured: ${{ steps.check.outputs.is_configured }}
       target_job: ${{ steps.check-changes.outputs.target_job }}
+      tier: ${{ steps.check-changes.outputs.tier }}
+      cmp_profile: ${{ steps.check-changes.outputs.cmp_profile }}
+      test_filter: ${{ steps.check-changes.outputs.test_filter }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -40,64 +67,122 @@ jobs:
       - name: Check if template has been configured
         id: check
         run: |
-          # Extract the repository name from GitHub context
           REPO_NAME="${{ github.event.repository.name }}"
           echo "GitHub repository name: $REPO_NAME"
-          
-          # Extract rootProject.name from settings.gradle.kts
+
           ROOT_PROJECT_NAME=$(grep -oP 'rootProject\.name = "\K[^"]+' settings.gradle.kts || echo "")
           echo "settings.gradle.kts rootProject.name: $ROOT_PROJECT_NAME"
-          
-          # Check if we're in the template repo itself
+
           if [ "$REPO_NAME" = "cmp-lib-template" ] && [ "$ROOT_PROJECT_NAME" = "cmp-lib-template" ]; then
             echo "is_configured=true" >> $GITHUB_OUTPUT
-            echo "✅ Running CI on template repository itself"
-          # Check if repo name doesn't match settings.gradle.kts (template not configured)
           elif [ "$ROOT_PROJECT_NAME" = "cmp-lib-template" ] && [ "$REPO_NAME" != "cmp-lib-template" ]; then
             echo "is_configured=false" >> $GITHUB_OUTPUT
-            echo "⚠️ Template created but not yet configured"
-            echo "Repository name: $REPO_NAME"
-            echo "settings.gradle.kts still has: cmp-lib-template"
-            echo "Please run setup-template.sh (Linux/Mac) or setup-template.bat (Windows) to configure this template."
           else
             echo "is_configured=true" >> $GITHUB_OUTPUT
-            echo "✅ Template is configured, proceeding with CI"
           fi
 
-      - name: Detect code changes
+      - name: Classify changes and select CI tier
         id: check-changes
         run: |
-          # If target_job was explicitly provided via workflow_dispatch, honor it
-          if [ -n "${{ inputs.target_job }}" ]; then
+          set -euo pipefail
+
+          # 1. Explicit manual workflow_dispatch
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "target_job=${{ inputs.target_job }}" >> $GITHUB_OUTPUT
+            echo "tier=${{ inputs.tier || 'fast' }}" >> $GITHUB_OUTPUT
+            echo "cmp_profile=${{ inputs.cmp_profile || 'auto' }}" >> $GITHUB_OUTPUT
+            echo "test_filter=${{ inputs.test_filter }}" >> $GITHUB_OUTPUT
+            echo "Manual dispatch: target_job=${{ inputs.target_job }}, tier=${{ inputs.tier || 'fast' }}, cmp_profile=${{ inputs.cmp_profile || 'auto' }}, test_filter=${{ inputs.test_filter }}"
             exit 0
           fi
 
-          # Compare against main branch to detect non-doc file changes
-          if [ "${{ github.ref_name }}" = "main" ]; then
-            BASE_REF="HEAD~1"
-          else
-            git fetch origin main --depth=1 || true
-            BASE_REF="origin/main"
-          fi
+          echo "cmp_profile=auto" >> $GITHUB_OUTPUT
+          echo "test_filter=" >> $GITHUB_OUTPUT
 
-          CHANGED_CODE=$(git diff --name-only "$BASE_REF"...HEAD 2>/dev/null | grep -v -E '^docs/|README\.md$|\.md$|^\.github/workflows/deploy-docs\.yml$|^\.github/workflows/push-ci\.yml$' || true)
-
-          if [ -z "$CHANGED_CODE" ]; then
-            echo "ℹ️ Only documentation and markdown files changed. Skipping heavy test matrix."
-            echo "target_job=none" >> $GITHUB_OUTPUT
-          else
-            echo "✅ Code changes detected: proceeding with full test suite."
+          # 2. Scheduled weekly run executes full matrix
+          if [ "${{ github.event_name }}" = "schedule" ]; then
             echo "target_job=all" >> $GITHUB_OUTPUT
+            echo "tier=full" >> $GITHUB_OUTPUT
+            echo "Scheduled run: full compatibility matrix."
+            exit 0
           fi
+
+          # Determine base ref and tier
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_REF="${{ github.event.pull_request.base.sha }}"
+            SELECTED_TIER="fast"
+          else
+            BASE_REF="${{ github.event.before }}"
+            if [ -z "$BASE_REF" ] || [ "$BASE_REF" = "0000000000000000000000000000000000000000" ]; then
+              BASE_REF="HEAD~1"
+            fi
+            SELECTED_TIER="full"
+          fi
+
+          echo "tier=$SELECTED_TIER" >> $GITHUB_OUTPUT
+
+          CHANGED_FILES=$(git diff --name-only "$BASE_REF"...HEAD 2>/dev/null || true)
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "target_job=all" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 3. Docs-only fast path (skip all builds and E2E)
+          NON_DOC_FILES=$(echo "$CHANGED_FILES" | grep -v -E '^docs/|^README\.md$|\.md$|^\.github/workflows/deploy-docs\.yml$|^\.github/ISSUE_TEMPLATE/' || true)
+          if [ -z "$NON_DOC_FILES" ]; then
+            echo "Only documentation/markdown/issue-template files changed. Skipping heavy CI."
+            echo "target_job=none" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # 4. Version-bump / release-metadata-only fast path
+          # Qualifies ONLY if every non-doc file is gradle.properties (libVersion= only)
+          # or samples/**/build.gradle.kts (parikshan plugin version line only).
+          OTHER_FILES=$(echo "$NON_DOC_FILES" | grep -v -E '^gradle\.properties$|^samples/.+/build\.gradle\.kts$' || true)
+          if [ -z "$OTHER_FILES" ]; then
+            IS_VERSION_ONLY=true
+
+            if echo "$NON_DOC_FILES" | grep -qx "gradle.properties"; then
+              BAD_PROP_DIFF=$(git diff -U0 "$BASE_REF"...HEAD -- gradle.properties | grep -E '^[+-]' | grep -v -E '^(\+\+\+|---) ' | grep -v -E '^[+-]libVersion=[0-9A-Za-z._-]+$' || true)
+              if [ -n "$BAD_PROP_DIFF" ]; then
+                IS_VERSION_ONLY=false
+              fi
+            fi
+
+            if [ "$IS_VERSION_ONLY" = "true" ]; then
+              while IFS= read -r sample_build; do
+                [ -z "$sample_build" ] && continue
+                BAD_SAMPLE_DIFF=$(git diff -U0 "$BASE_REF"...HEAD -- "$sample_build" | grep -E '^[+-]' | grep -v -E '^(\+\+\+|---) ' | grep -v -E '^[+-][[:space:]]*id\("io\.github\.aryapreetam\.parikshan"\)[[:space:]]+version[[:space:]]+"[0-9A-Za-z._-]+"[[:space:]]*$' || true)
+                if [ -n "$BAD_SAMPLE_DIFF" ]; then
+                  IS_VERSION_ONLY=false
+                  break
+                fi
+              done <<< "$(echo "$NON_DOC_FILES" | grep -E '^samples/.+/build\.gradle\.kts$' || true)"
+            fi
+
+            if [ "$IS_VERSION_ONLY" = "true" ]; then
+              echo "Version-bump / release-metadata-only change detected. Running fast sanity gate (lint + dex-pollution-audit)."
+              echo "target_job=lint,dex-pollution-audit" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+          fi
+
+          echo "Code or workflow changes detected. Running CI (tier=$SELECTED_TIER)."
+          echo "target_job=all" >> $GITHUB_OUTPUT
 
   ci:
-    name: Reuse CI (lint, build+tests, multiplatform e2e)
+    name: CI
     needs: check-template-setup
     if: needs.check-template-setup.outputs.is_configured == 'true'
     uses: ./.github/workflows/ci.yml
     with:
       target_job: ${{ needs.check-template-setup.outputs.target_job }}
+      tier: ${{ needs.check-template-setup.outputs.tier }}
+      cmp_profile: ${{ needs.check-template-setup.outputs.cmp_profile }}
+      test_filter: ${{ needs.check-template-setup.outputs.test_filter }}
 
   skip-ci:
     name: Template not configured - CI skipped
@@ -107,19 +192,5 @@ jobs:
     steps:
       - name: Show setup instructions
         run: |
-          echo "================================================"
-          echo "⚠️  CI SKIPPED: Template Not Configured"
-          echo "================================================"
-          echo ""
-          echo "This repository was created from the template but"
-          echo "has not been configured yet."
-          echo ""
-          echo "Repository name: ${{ github.event.repository.name }}"
-          echo "settings.gradle.kts still shows: cmp-lib-template"
-          echo ""
-          echo "To configure this template, run:"
-          echo "  • Linux/Mac: ./setup-template.sh"
-          echo "  • Windows:   setup-template.bat"
-          echo ""
-          echo "After configuration, CI will run automatically."
-          echo "================================================"
+          echo "CI SKIPPED: Template Not Configured"
+          echo "Run ./setup-template.sh (Linux/Mac) or setup-template.bat (Windows)."

@@ -68,14 +68,70 @@ class ParikshanPlugin : Plugin<Project> {
       group = "verification"
     }
 
+    val playwrightVersion = "1.58.0"
+    val envBrowsersPath = project.providers.environmentVariable("PLAYWRIGHT_BROWSERS_PATH")
+    val envSkipDownload = project.providers.environmentVariable("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD")
+    val envXdgCache = project.providers.environmentVariable("XDG_CACHE_HOME")
+    val envLocalAppData = project.providers.environmentVariable("LOCALAPPDATA")
+    val sysOsName = project.providers.systemProperty("os.name")
+    val sysUserHome = project.providers.systemProperty("user.home")
+
     val installPlaywrightTask = project.tasks.register<JavaExec>("installPlaywrightBrowsers") {
         group = "verification"
         mainClass.set("com.microsoft.playwright.CLI")
         args = listOf("install", "chromium")
         val playwrightConfig = project.configurations.detachedConfiguration(
-            project.dependencies.create("com.microsoft.playwright:playwright:1.58.0")
+            project.dependencies.create("com.microsoft.playwright:playwright:$playwrightVersion")
         )
         classpath = playwrightConfig
+
+        fun resolvePlaywrightCacheDir(): File {
+            val override = envBrowsersPath.orNull?.trim()
+            if (!override.isNullOrEmpty() && override != "0") {
+                return File(override)
+            }
+            val osName = sysOsName.orNull?.lowercase() ?: ""
+            val userHome = sysUserHome.orNull ?: ""
+            return when {
+                osName.contains("win") -> {
+                    val localAppData = envLocalAppData.orNull?.takeIf { it.isNotBlank() }
+                        ?: File(userHome, "AppData/Local").absolutePath
+                    File(localAppData, "ms-playwright")
+                }
+                osName.contains("mac") -> File(userHome, "Library/Caches/ms-playwright")
+                else -> {
+                    val xdg = envXdgCache.orNull?.takeIf { it.isNotBlank() }
+                        ?: File(userHome, ".cache").absolutePath
+                    File(xdg, "ms-playwright")
+                }
+            }
+        }
+
+        onlyIf {
+            val skipEnv = envSkipDownload.orNull?.trim()?.lowercase()
+            if (skipEnv == "1" || skipEnv == "true") {
+                logger.lifecycle("Parikshan: Skipping Playwright browser download (PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=$skipEnv).")
+                return@onlyIf false
+            }
+            val cacheDir = resolvePlaywrightCacheDir()
+            val marker = File(cacheDir, ".parikshan-chromium-installed-$playwrightVersion")
+            val hasBrowserDir = cacheDir.isDirectory && (cacheDir.listFiles()?.any {
+                it.isDirectory && (it.name.startsWith("chromium-") || it.name.startsWith("chromium_headless_shell-"))
+            } == true)
+            if (marker.isFile && hasBrowserDir) {
+                logger.info("Parikshan: Playwright Chromium $playwrightVersion already installed in ${cacheDir.absolutePath}; skipping download.")
+                false
+            } else {
+                true
+            }
+        }
+
+        doLast {
+            val cacheDir = resolvePlaywrightCacheDir()
+            if (cacheDir.isDirectory) {
+                File(cacheDir, ".parikshan-chromium-installed-$playwrightVersion").writeText(playwrightVersion)
+            }
+        }
     }
 
 

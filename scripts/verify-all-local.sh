@@ -16,6 +16,8 @@ PUBLISH_MAVEN=false
 ENABLE_VIDEO=false
 RUN_MATRIX=false
 RUN_LINUX=false
+RUN_FAST=false
+AUDIT_DEX=false
 for arg in "$@"; do
   if [ "${arg}" == "--publish" ]; then
     PUBLISH_MAVEN=true
@@ -25,6 +27,10 @@ for arg in "$@"; do
     RUN_MATRIX=true
   elif [ "${arg}" == "--linux" ]; then
     RUN_LINUX=true
+  elif [ "${arg}" == "--fast" ]; then
+    RUN_FAST=true
+  elif [ "${arg}" == "--audit-dex" ]; then
+    AUDIT_DEX=true
   fi
 done
 
@@ -109,10 +115,43 @@ if [ "${RUN_LINUX}" = true ]; then
 fi
 
 # -------------------------------------------------------------
-# 1. Framework Library Unit Tests
+# 1. Framework Library Unit Tests & Static / ABI Checks
 # -------------------------------------------------------------
-echo "==> Step 1: Running unit tests across library modules..."
-run_gradle :parikshan-core:jvmTest :parikshan-server:test :parikshan-client:jvmTest :gradle-plugins:test --parallel   
+echo "==> Step 1: Running lint, ABI compatibility, and unit tests across library modules..."
+run_gradle lintRelease apiCheck :parikshan-core:jvmTest :parikshan-server:test :parikshan-client:jvmTest :gradle-plugins:test --parallel
+
+if [ "${AUDIT_DEX}" = true ]; then
+  echo "==> Step 1b: Auditing Release APK DEX for zero Parikshan class leaks..."
+  run_gradle :samples:multiplatform-showcase:androidApp:assembleRelease
+  APK_FILE=$(find "${PARIKSHAN_ROOT}/samples/multiplatform-showcase/androidApp/build/outputs/apk/release" -name "*.apk" | head -n 1)
+  if [ -z "${APK_FILE}" ]; then
+    echo "ERROR: Release APK not found!"
+    exit 1
+  fi
+  APKANALYZER_BIN="${ANDROID_HOME:-${HOME}/Library/Android/sdk}/cmdline-tools/latest/bin/apkanalyzer"
+  if [ ! -x "${APKANALYZER_BIN}" ]; then
+    echo "ERROR: apkanalyzer not found at '${APKANALYZER_BIN}'. Set ANDROID_HOME."
+    exit 1
+  fi
+  if "${APKANALYZER_BIN}" dex packages "${APK_FILE}" | grep -q "io.github.aryapreetam.parikshan"; then
+    echo "ERROR: Parikshan classes leaked into production release APK!"
+    exit 1
+  fi
+  echo "✅ Zero-pollution DEX audit passed (${APK_FILE})."
+fi
+
+if [ "${RUN_FAST}" = true ]; then
+  echo "==> [--fast] Verifying Gradle Configuration Cache compatibility..."
+  run_gradle :samples:multiplatform-showcase:composeApp:e2eJvmTest --configuration-cache --dry-run
+  echo "==> [--fast] Running Showcase JVM & Wasm smoke tests..."
+  run_gradle :samples:multiplatform-showcase:composeApp:e2eJvmTest --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"
+  run_gradle :samples:multiplatform-showcase:composeApp:e2eWasmTest --tests="sample.app.AccessibilityIntegrationTest.testSubtextMatching"
+  echo "============================================================="
+  echo " SUCCESS: Fast local verification PASSED!"
+  echo " Total Execution Time: $(format_duration)"
+  echo "============================================================="
+  exit 0
+fi
 
 # -------------------------------------------------------------
 # 2. Sample E2E Suites (Composite Builds - no publishToMavenLocal needed)

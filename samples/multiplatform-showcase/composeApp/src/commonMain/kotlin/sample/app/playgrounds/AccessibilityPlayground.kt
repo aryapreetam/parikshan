@@ -13,8 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
+import sample.app.ui.ShowcaseIcons
 
 @Composable
 fun AccessibilityPlayground() {
@@ -53,7 +52,7 @@ fun AccessibilityPlayground() {
               .testTag("a11y_icon_button")
           ) {
             Icon(
-              imageVector = Icons.Default.Settings,
+              imageVector = ShowcaseIcons.Settings,
               contentDescription = null
             )
           }

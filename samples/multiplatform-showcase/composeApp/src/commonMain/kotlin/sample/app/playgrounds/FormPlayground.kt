@@ -18,12 +18,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import sample.app.composeapp.generated.resources.*
+import sample.app.ui.ShowcaseIcons
 import org.jetbrains.compose.resources.Font
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -132,7 +130,7 @@ fun FormPlayground(
           modifier = Modifier.testTag("password_toggle_button")
         ) {
           Icon(
-            imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+            imageVector = if (passwordVisible) ShowcaseIcons.VisibilityOff else ShowcaseIcons.Visibility,
             contentDescription = if (passwordVisible) "Hide password" else "Show password"
           )
         }

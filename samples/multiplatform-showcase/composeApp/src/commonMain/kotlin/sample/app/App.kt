@@ -5,8 +5,6 @@ package sample.app
 // Import playgrounds
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -19,6 +17,7 @@ import sample.app.navigation.SidebarNavigation
 import sample.app.playgrounds.*
 import sample.app.screens.HomeScreen
 import sample.app.screens.SimpleGreetDemo
+import sample.app.ui.ShowcaseIcons
 
 val isDemo = false // this will be manually changed by the developer when recording demo
 
@@ -82,7 +81,7 @@ fun MultiplatformShowcaseApp(
                   modifier = Modifier.testTag("hamburger_button")
                 ) {
                   Icon(
-                    imageVector = Icons.Default.Menu,
+                    imageVector = ShowcaseIcons.Menu,
                     contentDescription = "Menu"
                   )
                 }

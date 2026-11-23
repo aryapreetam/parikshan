@@ -58,9 +58,6 @@ kotlin {
       implementation(compose.foundation)
       implementation(compose.material3)
       implementation(compose.components.resources)
-      @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
-      implementation(compose.materialIconsExtended)
-      implementation(compose.components.resources)
     }
 
     commonTest.dependencies {

@@ -51,22 +51,20 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
       - name: Check code style (lint)
-        run: ./gradlew lintRelease
+        run: ./gradlew --build-cache lintRelease
       - name: Check ABI Compatibility
-        run: ./gradlew apiCheck
+        run: ./gradlew --build-cache apiCheck
 
   unit-tests:
     name: Unit Tests (${{ matrix.target }})
     needs: [ lint ]
-    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'unit-tests'))"
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || (contains(inputs.target_job, 'unit-tests') && inputs.target_job != 'unit-tests-ios'))"
     strategy:
       fail-fast: true
       matrix:
         include:
           - target: jvm
             os: ubuntu-24.04
-          - target: ios
-            os: macos-26
           - target: wasm
             os: ubuntu-24.04
           - target: android
@@ -75,30 +73,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Log Xcode Version
-        if: matrix.target == 'ios'
-        run: |
-          xcode-select -p
-          xcodebuild -version
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: ${{ env.JAVA_VERSION }}
-      - name: Cache Kotlin/Native (~/.konan) [Write on main]
-        if: matrix.target == 'ios' && github.ref == 'refs/heads/main'
-        uses: actions/cache@v4
-        with:
-          path: ~/.konan
-          key: konan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts') }}
-          restore-keys: konan-${{ runner.os }}-${{ runner.arch }}-
-      - name: Restore Kotlin/Native (~/.konan) [Read-only on PR]
-        if: matrix.target == 'ios' && github.ref != 'refs/heads/main'
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/.konan
-          key: konan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts') }}
-          restore-keys: konan-${{ runner.os }}-${{ runner.arch }}-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -109,21 +88,15 @@ jobs:
           set -e
           case "${{ matrix.target }}" in
             jvm)
-              ./gradlew :gradle-plugins:test :parikshan-server:test :parikshan-core:jvmTest :parikshan-client:jvmTest :samples:multiplatform-showcase:composeApp:jvmTest :parikshan-core:koverHtmlReport :parikshan-core:koverXmlReport
-              ;;
-            ios)
-              ./gradlew :parikshan-core:iosSimulatorArm64Test :parikshan-client:iosSimulatorArm64Test :samples:multiplatform-showcase:composeApp:iosSimulatorArm64Test
+              ./gradlew --build-cache :gradle-plugins:test :parikshan-server:test :parikshan-core:jvmTest :parikshan-client:jvmTest :samples:multiplatform-showcase:composeApp:jvmTest :parikshan-core:koverHtmlReport :parikshan-core:koverXmlReport
               ;;
             wasm)
-              ./gradlew :parikshan-core:wasmJsBrowserTest :parikshan-client:wasmJsBrowserTest :samples:multiplatform-showcase:composeApp:wasmJsBrowserTest
+              ./gradlew --build-cache :parikshan-core:wasmJsBrowserTest :parikshan-client:wasmJsBrowserTest :samples:multiplatform-showcase:composeApp:wasmJsBrowserTest
               ;;
             android)
-              ./gradlew :parikshan-client:testAndroid :samples:multiplatform-showcase:androidApp:testDebugUnitTest
+              ./gradlew --build-cache :parikshan-client:testAndroid :samples:multiplatform-showcase:androidApp:testDebugUnitTest
               ;;
           esac
-      - name: Verify Library Publication (Dry-Run)
-        if: matrix.target == 'ios'
-        run: ./gradlew publishToMavenLocal --no-configuration-cache
       - name: Upload Kover Coverage Artifacts
         if: matrix.target == 'jvm'
         uses: actions/upload-artifact@v4
@@ -131,6 +104,47 @@ jobs:
           name: parikshan-kover-coverage-reports
           path: parikshan-core/build/reports/kover/
           if-no-files-found: ignore
+
+  unit-tests-ios:
+    name: Unit Tests (ios)
+    needs: [ lint ]
+    if: "!failure() && !cancelled() && (inputs.target_job == 'all' || inputs.target_job == '' || contains(inputs.target_job, 'unit-tests'))"
+    runs-on: macos-26
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Log Xcode Version
+        run: |
+          xcode-select -p
+          xcodebuild -version
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Cache Kotlin/Native (~/.konan k2.3.21) [Write on main]
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ runner.arch }}-k2.3.21-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts') }}
+          restore-keys: konan-${{ runner.os }}-${{ runner.arch }}-k2.3.21-
+      - name: Restore Kotlin/Native (~/.konan k2.3.21) [Read-only on PR]
+        if: github.ref != 'refs/heads/main'
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ runner.arch }}-k2.3.21-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts') }}
+          restore-keys: konan-${{ runner.os }}-${{ runner.arch }}-k2.3.21-
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+      - name: Run iOS unit tests
+        run: ./gradlew --build-cache :parikshan-core:iosSimulatorArm64Test :parikshan-client:iosSimulatorArm64Test :samples:multiplatform-showcase:composeApp:iosSimulatorArm64Test
+      - name: Verify Library Publication (Dry-Run)
+        if: inputs.tier == 'full' || github.ref == 'refs/heads/main'
+        run: ./gradlew --build-cache publishToMavenLocal --no-configuration-cache
 
   e2e-android:
     name: E2E Android (CMP ${{ matrix.profile }})
@@ -169,7 +183,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: ./gradlew :samples:multiplatform-showcase:composeApp:e2eAndroidTest -PcmpProfile=${{ matrix.profile }} -Dparikshan.video.enabled=true --no-configuration-cache --tests="${TEST_FILTER:-sample.app.AccessibilityIntegrationTest.testSubtextMatching}"
+          script: ./gradlew --build-cache :samples:multiplatform-showcase:composeApp:e2eAndroidTest -PcmpProfile=${{ matrix.profile }} -Dparikshan.video.enabled=true --no-configuration-cache --tests="${TEST_FILTER:-sample.app.AccessibilityIntegrationTest.testSubtextMatching}"
       - name: Upload Android Videos
         if: always()
         uses: actions/upload-artifact@v4
@@ -204,7 +218,7 @@ jobs:
         env:
           TEST_FILTER: ${{ inputs.test_filter }}
         with:
-          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eJvmTest -PcmpProfile=${{ matrix.profile }} -Dparikshan.video.enabled=true --no-configuration-cache ${TEST_FILTER:+--tests="$TEST_FILTER"}'
+          command: './gradlew --build-cache :samples:multiplatform-showcase:composeApp:e2eJvmTest -PcmpProfile=${{ matrix.profile }} -Dparikshan.video.enabled=true --no-configuration-cache ${TEST_FILTER:+--tests="$TEST_FILTER"}'
       - name: Upload Desktop Videos
         if: always()
         uses: actions/upload-artifact@v4
@@ -251,7 +265,7 @@ jobs:
         env:
           TEST_FILTER: ${{ inputs.test_filter }}
         with:
-          command: './gradlew :samples:multiplatform-showcase:composeApp:e2eWasmTest -PcmpProfile=${{ matrix.profile }} -Dparikshan.video.enabled=true --no-configuration-cache ${TEST_FILTER:+--tests="$TEST_FILTER"}'
+          command: './gradlew --build-cache :samples:multiplatform-showcase:composeApp:e2eWasmTest -PcmpProfile=${{ matrix.profile }} -Dparikshan.video.enabled=true --no-configuration-cache ${TEST_FILTER:+--tests="$TEST_FILTER"}'
       - name: Upload Wasm Videos
         if: always()
         uses: actions/upload-artifact@v4
@@ -299,7 +313,7 @@ jobs:
           if [ -n "$TEST_FILTER" ]; then
             TEST_ARG=(--tests="$TEST_FILTER")
           fi
-          ./gradlew :samples:multiplatform-showcase:composeApp:e2eTest --targets=jvm,wasm -PcmpProfile="$CMP_PROFILE" --no-configuration-cache "${TEST_ARG[@]}"
+          ./gradlew --build-cache :samples:multiplatform-showcase:composeApp:e2eTest --targets=jvm,wasm -PcmpProfile="$CMP_PROFILE" --no-configuration-cache "${TEST_ARG[@]}"
       - name: Upload Windows E2E Reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -342,7 +356,7 @@ jobs:
           command: 'echo "WASM environment setup complete."'
       - name: Run Parikshan Synchronized E2E tests
         run: |
-          xvfb-run ./gradlew :samples:multiplatform-showcase:composeApp:e2eTest --targets=jvm,wasm --tests="sample.app.FormIntegrationTest.testSliderDrag" --sync --window-size=360x720 --layout=side-by-side --no-configuration-cache
+          xvfb-run ./gradlew --build-cache :samples:multiplatform-showcase:composeApp:e2eTest --targets=jvm,wasm --tests="sample.app.FormIntegrationTest.testSliderDrag" --sync --window-size=360x720 --layout=side-by-side --no-configuration-cache
 
   e2e-watch-script:
     name: E2E Watch Verification Script
@@ -376,7 +390,7 @@ jobs:
           command: 'echo "WASM setup complete."'
       - name: Pre-warm Watch Dependencies
         run: |
-          ./gradlew :samples:multiplatform-showcase:composeApp:packageUberJarForCurrentOS \
+          ./gradlew --build-cache :samples:multiplatform-showcase:composeApp:packageUberJarForCurrentOS \
                     :samples:multiplatform-showcase:composeApp:wasmJsBrowserDevelopmentWebpack \
                     :samples:multiplatform-showcase:composeApp:installPlaywrightBrowsers
       - name: Run Watch Mode Verification Script
@@ -411,12 +425,20 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: ${{ env.JAVA_VERSION }}
-      - name: Restore Kotlin/Native (~/.konan)
+      - name: Cache Kotlin/Native (~/.konan k2.4.0) [Write on main CMP 1.12]
+        if: github.ref == 'refs/heads/main' && matrix.profile == '1.12'
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ runner.arch }}-k2.4.0-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts') }}
+          restore-keys: konan-${{ runner.os }}-${{ runner.arch }}-k2.4.0-
+      - name: Restore Kotlin/Native (~/.konan) [Read-only]
+        if: github.ref != 'refs/heads/main' || matrix.profile != '1.12'
         uses: actions/cache/restore@v4
         with:
           path: ~/.konan
-          key: konan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts') }}
-          restore-keys: konan-${{ runner.os }}-${{ runner.arch }}-
+          key: konan-${{ runner.os }}-${{ runner.arch }}-${{ matrix.profile == '1.10' && 'k2.3.21' || 'k2.4.0' }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts') }}
+          restore-keys: konan-${{ runner.os }}-${{ runner.arch }}-${{ matrix.profile == '1.10' && 'k2.3.21' || 'k2.4.0' }}-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -426,7 +448,7 @@ jobs:
           xcrun simctl list devices available
       - name: Pre-compile Kotlin Native Framework
         run: |
-          ./gradlew :samples:multiplatform-showcase:composeApp:linkDebugFrameworkIosSimulatorArm64 -PcmpProfile=${{ matrix.profile }} -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
+          ./gradlew --build-cache :samples:multiplatform-showcase:composeApp:linkDebugFrameworkIosSimulatorArm64 -PcmpProfile=${{ matrix.profile }} -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
       - name: Run Showcase iOS E2E tests
         env:
           TEST_FILTER: ${{ inputs.test_filter }}
@@ -435,7 +457,7 @@ jobs:
           if [ -n "$TEST_FILTER" ]; then
             TEST_ARG=(--tests="$TEST_FILTER")
           fi
-          ./gradlew :samples:multiplatform-showcase:composeApp:e2eIosTest \
+          ./gradlew --build-cache :samples:multiplatform-showcase:composeApp:e2eIosTest \
             -PcmpProfile=${{ matrix.profile }} \
             -Dparikshan.video.enabled=true \
             --no-configuration-cache \
@@ -476,8 +498,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.konan
-          key: konan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts') }}
-          restore-keys: konan-${{ runner.os }}-${{ runner.arch }}-
+          key: konan-${{ runner.os }}-${{ runner.arch }}-k2.4.0-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts') }}
+          restore-keys: |
+            konan-${{ runner.os }}-${{ runner.arch }}-k2.4.0-
+            konan-${{ runner.os }}-${{ runner.arch }}-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -488,13 +512,13 @@ jobs:
       - name: Pre-compile Kotlin Native Framework
         working-directory: samples/cmp-latest
         run: |
-          ./gradlew :app:shared:linkDebugFrameworkIosSimulatorArm64 -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
+          ./gradlew --build-cache :app:shared:linkDebugFrameworkIosSimulatorArm64 -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
       - name: Run cmp-latest iOS E2E tests
         working-directory: samples/cmp-latest
         env:
           TEST_FILTER: ${{ inputs.test_filter }}
         run: |
-          ./gradlew :app:shared:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="${TEST_FILTER:-org.example.project.StorefrontFlowTest}" -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Dparikshan.xcodebuild.timeout=1800
+          ./gradlew --build-cache :app:shared:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="${TEST_FILTER:-org.example.project.StorefrontFlowTest}" -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Dparikshan.xcodebuild.timeout=1800
       - name: Upload iOS E2E Results
         if: always()
         uses: actions/upload-artifact@v4
@@ -529,8 +553,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.konan
-          key: konan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts') }}
-          restore-keys: konan-${{ runner.os }}-${{ runner.arch }}-
+          key: konan-${{ runner.os }}-${{ runner.arch }}-k2.4.0-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts') }}
+          restore-keys: |
+            konan-${{ runner.os }}-${{ runner.arch }}-k2.4.0-
+            konan-${{ runner.os }}-${{ runner.arch }}-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -541,7 +567,7 @@ jobs:
       - name: Pre-compile Kotlin Native Framework
         working-directory: samples/issue-playground
         run: |
-          ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 -PcmpProfile=1.12 -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
+          ./gradlew --build-cache :shared:linkDebugFrameworkIosSimulatorArm64 -PcmpProfile=1.12 -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
       - name: Run issue-playground iOS E2E tests
         working-directory: samples/issue-playground
         env:
@@ -551,7 +577,7 @@ jobs:
           if [ -n "$TEST_FILTER" ]; then
             TEST_ARG=(--tests="$TEST_FILTER")
           fi
-          ./gradlew :shared:e2eIosTest -PcmpProfile=1.12 -Dparikshan.video.enabled=true --no-configuration-cache "${TEST_ARG[@]}" -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Dparikshan.xcodebuild.timeout=1800
+          ./gradlew --build-cache :shared:e2eIosTest -PcmpProfile=1.12 -Dparikshan.video.enabled=true --no-configuration-cache "${TEST_ARG[@]}" -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Dparikshan.xcodebuild.timeout=1800
       - name: Upload iOS E2E Results
         if: always()
         uses: actions/upload-artifact@v4
@@ -586,8 +612,10 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/.konan
-          key: konan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts') }}
-          restore-keys: konan-${{ runner.os }}-${{ runner.arch }}-
+          key: konan-${{ runner.os }}-${{ runner.arch }}-k2.4.0-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts') }}
+          restore-keys: |
+            konan-${{ runner.os }}-${{ runner.arch }}-k2.4.0-
+            konan-${{ runner.os }}-${{ runner.arch }}-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -598,13 +626,13 @@ jobs:
       - name: Pre-compile Kotlin Native Framework
         working-directory: samples/composables-sample
         run: |
-          ./gradlew :shared:linkDebugFrameworkIosSimulatorArm64 -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
+          ./gradlew --build-cache :shared:linkDebugFrameworkIosSimulatorArm64 -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Pparikshan.e2e.active=true
       - name: Run composables-sample iOS E2E tests
         working-directory: samples/composables-sample
         env:
           TEST_FILTER: ${{ inputs.test_filter }}
         run: |
-          ./gradlew :shared:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="${TEST_FILTER:-com.example.app.SampleE2ETest}" -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Dparikshan.xcodebuild.timeout=1800
+          ./gradlew --build-cache :shared:e2eIosTest -Dparikshan.video.enabled=true --no-configuration-cache --tests="${TEST_FILTER:-com.example.app.SampleE2ETest}" -Dorg.gradle.jvmargs="-Xmx6g -XX:+UseParallelGC" -Dparikshan.xcodebuild.timeout=1800
       - name: Upload iOS E2E Results
         if: always()
         uses: actions/upload-artifact@v4
@@ -636,7 +664,7 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
       - name: Build Release APK
-        run: ./gradlew :samples:multiplatform-showcase:androidApp:assembleRelease
+        run: ./gradlew --build-cache :samples:multiplatform-showcase:androidApp:assembleRelease
       - name: Audit Release APK DEX for Parikshan leaks
         run: |
           APK_FILE=$(find samples/multiplatform-showcase/androidApp/build/outputs/apk/release -name "*.apk" | head -n 1)
@@ -660,6 +688,7 @@ jobs:
     needs:
       - lint
       - unit-tests
+      - unit-tests-ios
       - e2e-android
       - e2e-desktop
       - e2e-wasm

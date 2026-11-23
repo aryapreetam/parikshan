@@ -5,12 +5,19 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      run_full_ci:
+        description: 'Run full CI matrix before publishing (default: verify this commit already passed CI on main)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
   packages: write
   id-token: write
   pages: write
+  checks: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -20,16 +27,30 @@ env:
   JAVA_VERSION: '21'
 
 jobs:
-  # Reuse CI (lint + tests + e2e)
-  ci:
-    name: CI (lint, build+tests, e2e)
-    uses: ./.github/workflows/ci.yml
-
-  publish-library:
-    name: Publish Library & Plugin
-    runs-on: macos-latest
-    needs: [ ci ]
+  verify-release-gate:
+    name: Verify Commit CI & Release Purity
+    runs-on: ubuntu-24.04
+    if: ${{ inputs.run_full_ci != true }}
     steps:
+      - name: Verify main CI passed on tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          REQUIRED_CHECK="CI / CI Success"
+          echo "Checking required status check '$REQUIRED_CHECK' on commit $GITHUB_SHA..."
+          CONCLUSION=$(gh api -X GET "repos/${{ github.repository }}/commits/${{ github.sha }}/check-runs" \
+            -f check_name="$REQUIRED_CHECK" \
+            -f status="completed" \
+            -F per_page=100 \
+            --jq '[.check_runs[] | select(.name == "'"$REQUIRED_CHECK"'")] | sort_by(.completed_at) | reverse | .[0].conclusion // ""')
+          echo "Check conclusion: '${CONCLUSION}'"
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "::error::Commit $GITHUB_SHA has not passed '$REQUIRED_CHECK' yet (conclusion='$CONCLUSION'). Wait for main CI to finish or trigger Release manually with run_full_ci=true."
+            exit 1
+          fi
+          echo "✅ Verified '$REQUIRED_CHECK' passed on commit $GITHUB_SHA."
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -40,7 +61,60 @@ jobs:
           distribution: 'zulu'
           java-version: ${{ env.JAVA_VERSION }}
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
+      - name: Verify ABI Compatibility & Release Purity
+        run: |
+          ./gradlew apiCheck :samples:multiplatform-showcase:androidApp:assembleRelease
+          APK_FILE=$(find samples/multiplatform-showcase/androidApp/build/outputs/apk/release -name "*.apk" | head -n 1)
+          if [ -z "$APK_FILE" ]; then
+            echo "Error: Release APK not found!"
+            exit 1
+          fi
+          if $ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer dex packages "$APK_FILE" | grep "io.github.aryapreetam.parikshan"; then
+            echo "Error: Parikshan classes leaked into production release APK!"
+            exit 1
+          fi
+          echo "✅ ABI check and zero-pollution DEX audit passed."
+
+  ci:
+    name: CI
+    if: ${{ inputs.run_full_ci == true }}
+    uses: ./.github/workflows/ci.yml
+    with:
+      target_job: 'all'
+      tier: 'full'
+
+  publish-library:
+    name: Publish Library & Plugin
+    runs-on: macos-26
+    needs: [ verify-release-gate, ci ]
+    if: ${{ always() && !cancelled() && (needs.verify-release-gate.result == 'success' || needs.ci.result == 'success') && needs.verify-release-gate.result != 'failure' && needs.verify-release-gate.result != 'cancelled' && needs.ci.result != 'failure' && needs.ci.result != 'cancelled' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Log Xcode Version
+        run: |
+          xcode-select -p
+          xcodebuild -version
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: ${{ env.JAVA_VERSION }}
+      - name: Restore Kotlin/Native (~/.konan)
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('gradle/libs.versions.toml', 'settings.gradle.kts') }}
+          restore-keys: konan-${{ runner.os }}-${{ runner.arch }}-
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
       - name: Publish to MavenCentral
         run: ./gradlew publishAndReleaseToMavenCentral --no-configuration-cache
         env:
@@ -57,7 +131,7 @@ jobs:
 
   build-site:
     name: Build Site (Landing, API, Demo)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [ publish-library ]
     steps:
       - name: Checkout Sources
@@ -68,7 +142,9 @@ jobs:
           distribution: 'zulu'
           java-version: ${{ env.JAVA_VERSION }}
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
 
       # 1. Build Site Root (MkDocs Material)
       - name: Set up Python
@@ -111,7 +187,7 @@ jobs:
   deploy-pages:
     name: Deploy to GitHub Pages
     needs: [ build-site ]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       pages: write
       id-token: write

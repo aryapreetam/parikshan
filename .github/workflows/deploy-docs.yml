@@ -38,12 +38,41 @@ concurrency:
 jobs:
   build-and-verify:
     name: Build & Verify MkDocs Site
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    outputs:
+      should_deploy: ${{ steps.check-release-state.outputs.should_deploy }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Determine deployment eligibility
+        id: check-release-state
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "Pull request build: validating MkDocs only."
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual dispatch: deploying Pages unconditionally."
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          LIB_VERSION=$(grep -E '^libVersion=' gradle.properties | cut -d'=' -f2 | tr -d '[:space:]')
+          EXPECTED_TAG="v${LIB_VERSION}"
+          if git rev-parse -q --verify "refs/tags/${EXPECTED_TAG}" >/dev/null; then
+            echo "Tag ${EXPECTED_TAG} exists; proceeding with docs + latest release API/Demo deployment."
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Tag ${EXPECTED_TAG} does not exist yet (release-prep commit awaiting tag push)."
+            echo "Skipping GitHub Pages deploy so release.yml deploys ${EXPECTED_TAG} Landing + API + Demo atomically on this SHA."
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -62,19 +91,21 @@ jobs:
         run: touch site/.nojekyll
 
       - name: Set up JDK for Gradle
-        if: github.event_name != 'pull_request'
+        if: steps.check-release-state.outputs.should_deploy == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '21'
 
       - name: Setup Gradle
-        if: github.event_name != 'pull_request'
-        uses: gradle/actions/setup-gradle@v3
+        if: steps.check-release-state.outputs.should_deploy == 'true'
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: true
 
       # Build API Docs (From main if flag is set, otherwise from latest release tag)
       - name: Build & Prepare API Docs
-        if: github.event_name != 'pull_request'
+        if: steps.check-release-state.outputs.should_deploy == 'true'
         run: |
           if [ "${{ github.event_name == 'workflow_dispatch' && inputs.include_api }}" = "true" ]; then
             echo "==> Building Dokka API Docs from current branch..."
@@ -82,7 +113,7 @@ jobs:
           else
             echo "==> Building Dokka API Docs from latest release tag..."
             INITIAL_REF=$(git rev-parse HEAD)
-            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n 1 || echo "")
             if [ -n "$LATEST_TAG" ]; then
               echo "Found release tag: $LATEST_TAG"
               git checkout -q "$LATEST_TAG"
@@ -99,7 +130,7 @@ jobs:
 
       # Build Wasm Demo (From main if flag is set, otherwise from latest release tag)
       - name: Build & Prepare Wasm Demo
-        if: github.event_name != 'pull_request'
+        if: steps.check-release-state.outputs.should_deploy == 'true'
         run: |
           if [ "${{ github.event_name == 'workflow_dispatch' && inputs.include_demo }}" = "true" ]; then
             echo "==> Building Wasm Demo from current branch..."
@@ -107,7 +138,7 @@ jobs:
           else
             echo "==> Building Wasm Demo from latest release tag..."
             INITIAL_REF=$(git rev-parse HEAD)
-            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+            LATEST_TAG=$(git tag --list 'v*' --sort=-v:refname | head -n 1 || echo "")
             if [ -n "$LATEST_TAG" ]; then
               echo "Found release tag: $LATEST_TAG"
               git checkout -q "$LATEST_TAG"
@@ -123,7 +154,7 @@ jobs:
           cp -r samples/multiplatform-showcase/composeApp/build/dist/wasmJs/productionExecutable/* site/demo/
 
       - name: Upload Pages Artifact
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+        if: steps.check-release-state.outputs.should_deploy == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
@@ -131,8 +162,8 @@ jobs:
   deploy-pages:
     name: Deploy to GitHub Pages
     needs: [ build-and-verify ]
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    if: needs.build-and-verify.outputs.should_deploy == 'true'
+    runs-on: ubuntu-24.04
     environment:
       name: github-pages
       url: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}

@@ -12,14 +12,17 @@ import kotlinx.coroutines.delay
 @OptIn(InternalParikshanApi::class)
 suspend fun E2ETestScope.openAppNavigation() {
     executeParallel {
-        if (hasVisibleNode("navigation_drawer")) {
+        val initialTree = getTree()
+        if (initialTree.any { it.tag == "navigation_drawer" && it.visible }) {
             return@executeParallel
         }
-        if (hasVisibleNode("nav_rail") && !hasVisibleNode("hamburger_button")) {
+        val hasRail = initialTree.any { it.tag == "nav_rail" && it.visible }
+        val hasHamburger = initialTree.any { it.tag == "hamburger_button" && it.visible }
+        if (hasRail && !hasHamburger) {
             return@executeParallel
         }
         hideKeyboard()
-        if (!hasVisibleNode("hamburger_button")) {
+        if (!hasHamburger) {
             waitFor("hamburger_button")
         }
         click("hamburger_button")
@@ -38,13 +41,14 @@ suspend fun E2ETestScope.navigateToSection(navTag: String) {
 
     executeParallel {
         val tree = getTree()
+        val visibleTags = tree.asSequence().filter { it.visible }.mapNotNull { it.tag }.toHashSet()
         val navContainer = when {
-            tree.any { it.tag == "navigation_drawer" && it.visible } -> "navigation_drawer"
-            tree.any { it.tag == "nav_rail" && it.visible } -> "nav_rail"
+            "navigation_drawer" in visibleTags -> "navigation_drawer"
+            "nav_rail" in visibleTags -> "nav_rail"
             else -> null
         }
 
-        if (navContainer != null) {
+        if (navContainer != null && navTag !in visibleTags) {
             val sectionOrder = listOf(
                 "nav_home_screen",
                 "nav_form_playground",
@@ -59,7 +63,7 @@ suspend fun E2ETestScope.navigateToSection(navTag: String) {
             )
 
             val targetIndex = sectionOrder.indexOf(navTag)
-            val currentIndex = sectionOrder.indexOfFirst { hasVisibleNode(it) }
+            val currentIndex = sectionOrder.indexOfFirst { it in visibleTags }
 
             val scrollDirection = if (currentIndex != -1 && targetIndex < currentIndex) {
                 ScrollDirection.Up
@@ -67,7 +71,7 @@ suspend fun E2ETestScope.navigateToSection(navTag: String) {
                 ScrollDirection.Down
             }
 
-            val scrollTargetContainer = if (hasVisibleNode("nav_rail")) "nav_rail" else navContainer
+            val scrollTargetContainer = if ("nav_rail" in visibleTags) "nav_rail" else navContainer
             scrollUntilVisible(
                 containerSelector = Selector.Tag(scrollTargetContainer),
                 targetSelector = Selector.Tag(navTag),

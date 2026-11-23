@@ -1469,7 +1469,7 @@ class E2ETestScope @InternalParikshanApi constructor(
 
 /**
  * Thrown when a native file or directory picker was expected to appear within a
- * [withFilePicker] or [withFilePickerCancel] scope, but no picker dialog was triggered
+ * [E2ETestScope.withFilePicker] or [E2ETestScope.withFilePickerCancel] scope, but no picker dialog was triggered
  * before the timeout elapsed.
  */
 class PickerNotOpenedException(message: String) : AssertionError(message)

@@ -27,6 +27,31 @@ val rootProps = Properties().apply {
 group = rootProps.getProperty("libGroup") ?: "io.github.aryapreetam.parikshan"
 version = rootProps.getProperty("libVersion") ?: "0.0.1"
 
+val generatedVersionDir = layout.buildDirectory.dir("generated/parikshan-version/kotlin")
+val generateParikshanVersion by tasks.registering {
+  val versionStr = project.version.toString()
+  val outDir = generatedVersionDir
+  inputs.property("version", versionStr)
+  outputs.dir(outDir)
+  doLast {
+    val file = outDir.get().file("io/github/aryapreetam/parikshan/gradle/ParikshanBuildVersion.kt").asFile
+    file.parentFile.mkdirs()
+    file.writeText(
+      """
+      package io.github.aryapreetam.parikshan.gradle
+
+      internal object ParikshanBuildVersion {
+        const val VERSION: String = "$versionStr"
+      }
+      """.trimIndent() + "\n"
+    )
+  }
+}
+
+sourceSets.named("main") {
+  java.srcDir(generateParikshanVersion)
+}
+
 dependencies {
   compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin:${libs.versions.kotlin.get()}")
   compileOnly("com.android.tools.build:gradle:${libs.versions.agp.get()}")

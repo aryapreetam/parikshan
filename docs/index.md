@@ -43,7 +43,7 @@ In your shared library module (e.g. `:composeApp`) `build.gradle.kts`:
 
 ```kotlin
 plugins {
-  id("io.github.aryapreetam.parikshan") version "0.0.12"
+  id("io.github.aryapreetam.parikshan") version "0.0.13"
 }
 ```
 

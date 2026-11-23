@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.0.13] - 2026-11-23
+
+### Fixed & Resolved Issues
+- **Android SAF Destination Writes ([#32](https://github.com/aryapreetam/parikshan/issues/32))**: Added Storage Access Framework create, write, rename, and delete support with app-sandbox staging in `ParikshanFileProvider` and `ParikshanDocumentStore` so destination-picker flows (e.g. file export/copy) work under `withFilePicker`.
+- **iOS Pre-Populated Text Input Clearing ([#33](https://github.com/aryapreetam/parikshan/issues/33))**: Fixed `input()` on iOS to resolve pre-populated text fields via `EditableText` matching and bounded deletion so existing text is cleared without stalling on the main thread.
+
+### Plugin & Tooling
+- **Playwright Browser Cache Skip**: Added an up-to-date marker check (and `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` support) to `installPlaywrightBrowsers` so Chromium is not re-downloaded when already present locally.
+- **Dynamic Plugin Version Fallback**: Generated the Gradle plugin fallback version directly from `gradle.properties` instead of hardcoding a version string.
+- **KDoc Link Fixes**: Qualified `E2ETestScope.withFilePicker` and `E2ETestScope.withFilePickerCancel` references in `PickerNotOpenedException` to resolve Dokka link warnings.
+
 ## [0.0.12] - 2026-11-18
 
 ### Fixed & Resolved Issues

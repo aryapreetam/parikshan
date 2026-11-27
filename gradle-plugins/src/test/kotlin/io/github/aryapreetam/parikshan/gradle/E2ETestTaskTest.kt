@@ -577,5 +577,14 @@ class E2ETestTaskTest {
         assertTrue(iosOutputDir.endsWith("parikshan/videos/ios"))
         assertTrue(wasmOutputDir.endsWith("parikshan/videos/wasm"))
     }
+
+    @Test
+    fun testInstancesCliOptionIsNotExposed() {
+        val optionNames = E2ETestTask::class.java.declaredMethods
+            .mapNotNull { it.getAnnotation(org.gradle.api.tasks.options.Option::class.java)?.option }
+            .toSet()
+        assertFalse("instances" in optionNames, "--instances CLI option must not be exposed; actor lists are declared in Kotlin")
+        assertTrue("step-delay-ms" in optionNames, "--step-delay-ms CLI option must be present")
+    }
 }
 

@@ -1,8 +1,7 @@
 package org.example.project.storefront
 
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,20 +12,20 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.LocalShipping
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToLong
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -80,12 +79,14 @@ fun StorefrontAppScreen(
           )
         }
 
-        if (uiState.isBottomSheetOpen && uiState.selectedProduct != null) {
+        val selected = uiState.selectedProduct
+        if (uiState.isBottomSheetOpen && selected != null) {
+          val liveProduct = uiState.products.find { it.id == selected.id } ?: selected
           ProductDetailsBottomSheet(
-            product = uiState.selectedProduct!!,
+            product = liveProduct,
             isGiftWrapped = uiState.isGiftWrapped,
             onToggleGiftWrap = { viewModel.onAction(StorefrontUserAction.ToggleGiftWrap(it)) },
-            onAddToCart = { viewModel.onAction(StorefrontUserAction.AddToCart(uiState.selectedProduct!!)) },
+            onAddToCart = { viewModel.onAction(StorefrontUserAction.AddToCart(liveProduct)) },
             onDismiss = { viewModel.onAction(StorefrontUserAction.CloseBottomSheet) }
           )
         }
@@ -172,6 +173,9 @@ private fun ProductFeedScreen(
   uiState: StorefrontUiState,
   onAction: (StorefrontUserAction) -> Unit
 ) {
+  val itemCount = uiState.cart.sumOf { it.quantity }
+  val cartSubtotal = uiState.cart.sumOf { (it.product.price + if (it.giftWrap) 5.0 else 0.0) * it.quantity }
+
   Column(
     modifier = Modifier
       .fillMaxSize()
@@ -183,25 +187,41 @@ private fun ProductFeedScreen(
       horizontalArrangement = Arrangement.SpaceBetween,
       verticalAlignment = Alignment.CenterVertically
     ) {
-      Column {
-        Text("Storefront Catalog", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("Logged in as ${uiState.userEmail ?: "Guest"}", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+      Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+        Text(
+          text = "Storefront Catalog",
+          style = MaterialTheme.typography.headlineSmall,
+          fontWeight = FontWeight.Bold,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis
+        )
+        Text(
+          text = "Logged in as ${uiState.userEmail ?: "Guest"}",
+          style = MaterialTheme.typography.labelMedium,
+          color = Color.Gray,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis
+        )
       }
 
-      val itemCount = uiState.cart.sumOf { it.quantity }
-      if (itemCount > 0) {
-        Button(
-          onClick = { onAction(StorefrontUserAction.ProceedToCheckout) },
-          modifier = Modifier.testTag("checkout_button")
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(
+          onClick = { onAction(StorefrontUserAction.RefreshCatalog) },
+          modifier = Modifier.testTag("refresh_catalog_button")
         ) {
-          Icon(Icons.Default.ShoppingCart, contentDescription = "Cart", modifier = Modifier.size(18.dp))
-          Spacer(modifier = Modifier.width(6.dp))
-          Text("Checkout ($itemCount)", fontWeight = FontWeight.Bold)
+          Icon(Icons.Default.Refresh, contentDescription = "Refresh Catalog")
+        }
+
+        TextButton(
+          onClick = { onAction(StorefrontUserAction.SignOut) },
+          modifier = Modifier.testTag("storefront_sign_out_button")
+        ) {
+          Text("Sign Out", maxLines = 1, softWrap = false)
         }
       }
     }
 
-    Spacer(modifier = Modifier.height(16.dp))
+    Spacer(modifier = Modifier.height(14.dp))
 
     LazyColumn(
       verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -213,6 +233,52 @@ private fun ProductFeedScreen(
           onViewDetails = { onAction(StorefrontUserAction.SelectProduct(product)) },
           onAddToCart = { onAction(StorefrontUserAction.AddToCart(product)) }
         )
+      }
+    }
+
+    if (itemCount > 0) {
+      Spacer(modifier = Modifier.height(12.dp))
+      Surface(
+        tonalElevation = 4.dp,
+        shadowElevation = 4.dp,
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth().testTag("checkout_summary_bar")
+      ) {
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+          horizontalArrangement = Arrangement.SpaceBetween,
+          verticalAlignment = Alignment.CenterVertically
+        ) {
+          Column(modifier = Modifier.weight(1f)) {
+            Text(
+              text = if (itemCount == 1) "1 item in cart" else "$itemCount items in cart",
+              style = MaterialTheme.typography.labelMedium,
+              color = Color.Gray,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis
+            )
+            Text(
+              text = formatUsd(cartSubtotal),
+              style = MaterialTheme.typography.titleMedium,
+              fontWeight = FontWeight.Bold,
+              color = MaterialTheme.colorScheme.onSurface,
+              maxLines = 1
+            )
+          }
+          Spacer(modifier = Modifier.width(12.dp))
+          Button(
+            onClick = { onAction(StorefrontUserAction.ProceedToCheckout) },
+            modifier = Modifier.testTag("checkout_button")
+          ) {
+            Icon(Icons.Default.ShoppingCart, contentDescription = "Cart", modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Checkout ($itemCount)", fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false)
+          }
+        }
       }
     }
   }
@@ -235,12 +301,26 @@ private fun ProductCard(
         verticalAlignment = Alignment.CenterVertically
       ) {
         Text(text = product.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.width(8.dp))
         Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primaryContainer) {
           Text(text = product.category, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
         }
       }
 
-      Text(text = "$${product.price}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+      Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        Text(text = formatUsd(product.price), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+        if (product.stock <= 0) {
+          Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.errorContainer) {
+            Text(text = "Out of Stock", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onErrorContainer, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp).testTag("out_of_stock_badge_${product.id}"))
+          }
+        } else {
+          Text(text = "Stock: ${product.stock}", style = MaterialTheme.typography.labelMedium, color = Color.Gray, modifier = Modifier.testTag("stock_text_${product.id}"))
+        }
+      }
 
       Row(
         modifier = Modifier.fillMaxWidth(),
@@ -250,14 +330,15 @@ private fun ProductCard(
           onClick = onViewDetails,
           modifier = Modifier.weight(1f).testTag("view_details_button_${product.id}")
         ) {
-          Text("View Details")
+          Text("View Details", maxLines = 1, softWrap = false)
         }
 
         Button(
           onClick = onAddToCart,
+          enabled = product.stock > 0,
           modifier = Modifier.weight(1f).testTag("add_to_cart_button_${product.id}")
         ) {
-          Text("Add to Cart")
+          Text(if (product.stock > 0) "Add to Cart" else "Out of Stock", maxLines = 1, softWrap = false)
         }
       }
     }
@@ -319,9 +400,10 @@ private fun ProductDetailsBottomSheet(
 
       Button(
         onClick = onAddToCart,
+        enabled = product.stock > 0,
         modifier = Modifier.fillMaxWidth().height(44.dp).testTag("details_add_to_cart_button")
       ) {
-        Text("Add to Cart", fontWeight = FontWeight.Bold)
+        Text(if (product.stock > 0) "Add to Cart" else "Out of Stock", fontWeight = FontWeight.Bold)
       }
     }
   }
@@ -333,89 +415,139 @@ private fun CheckoutScreen(
   onAction: (StorefrontUserAction) -> Unit
 ) {
   val scrollState = rememberScrollState()
+  val subtotal = uiState.cart.sumOf { (it.product.price + if (it.giftWrap) 5.0 else 0.0) * it.quantity }
+  val total = subtotal + uiState.shippingMethod.fee
+
   Column(
     modifier = Modifier
       .fillMaxSize()
       .padding(16.dp)
       .verticalScroll(scrollState)
       .testTag("storefront_checkout_screen"),
-    verticalArrangement = Arrangement.spacedBy(16.dp)
+    verticalArrangement = Arrangement.spacedBy(12.dp)
   ) {
     Text("Checkout & Delivery", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
 
     Card(modifier = Modifier.fillMaxWidth()) {
-      Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("Order Summary", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         uiState.cart.forEach { item ->
           Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("${item.product.title} (x${item.quantity})", style = MaterialTheme.typography.bodyMedium)
-            Text("$${item.product.price * item.quantity}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+            Text("${item.product.title} (x${item.quantity})", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Text(formatUsd(item.product.price * item.quantity), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
           }
           if (item.giftWrap) {
             Text("  + Gift Wrapped ($5.00)", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
           }
         }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+          Text(uiState.shippingMethod.label, style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+          Text(
+            text = if (uiState.shippingMethod.fee == 0.0) "Free" else formatUsd(uiState.shippingMethod.fee),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.testTag("checkout_shipping_fee")
+          )
+        }
         HorizontalDivider()
-        val total = uiState.cart.sumOf { (it.product.price + if (it.giftWrap) 5.0 else 0.0) * it.quantity }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
           Text("Total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-          Text("$${total}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+          Text(
+            text = formatUsd(total),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.testTag("checkout_total_amount")
+          )
         }
       }
     }
 
-    Text("Draw Delivery Signature Below", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(Icons.Default.LocalShipping, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+        Text("Delivery Method", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+      }
 
-    Box(
-      modifier = Modifier
-        .fillMaxWidth()
-        .height(130.dp)
-        .background(Color(0xFFF0F0F0), shape = RoundedCornerShape(8.dp))
-        .testTag("storefront_signature_canvas")
-        .pointerInput(Unit) {
-          detectDragGestures { change, dragAmount ->
-            change.consume()
-            onAction(StorefrontUserAction.AddSignaturePoint(change.position))
-          }
-        }
-    ) {
-      Canvas(modifier = Modifier.fillMaxSize()) {
-        if (uiState.signaturePoints.size > 1) {
-          val path = Path().apply {
-            moveTo(uiState.signaturePoints.first().x, uiState.signaturePoints.first().y)
-            for (i in 1 until uiState.signaturePoints.size) {
-              lineTo(uiState.signaturePoints[i].x, uiState.signaturePoints[i].y)
+      ShippingMethod.entries.forEach { method ->
+        val selected = uiState.shippingMethod == method
+        val optionTag = if (method == ShippingMethod.STANDARD) "shipping_option_standard" else "shipping_option_express"
+        Surface(
+          shape = RoundedCornerShape(12.dp),
+          color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f) else MaterialTheme.colorScheme.surface,
+          border = BorderStroke(
+            width = if (selected) 1.5.dp else 1.dp,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+          ),
+          modifier = Modifier
+            .fillMaxWidth()
+            .testTag(optionTag)
+            .clickable { onAction(StorefrontUserAction.SelectShippingMethod(method)) }
+        ) {
+          Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+          ) {
+            RadioButton(
+              selected = selected,
+              onClick = { onAction(StorefrontUserAction.SelectShippingMethod(method)) }
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+              Text(method.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+              Text(method.eta, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
             }
+            Text(
+              text = if (method.fee == 0.0) "Free" else "+${formatUsd(method.fee)}",
+              style = MaterialTheme.typography.bodyMedium,
+              fontWeight = FontWeight.Bold,
+              color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+            )
           }
-          drawPath(path = path, color = Color.Black, style = Stroke(width = 4f))
         }
-      }
-      if (uiState.signaturePoints.isEmpty()) {
-        Text(
-          "Sign here with touch or mouse...",
-          color = Color.Gray,
-          style = MaterialTheme.typography.bodySmall,
-          modifier = Modifier.align(Alignment.Center)
-        )
       }
     }
 
-    Row(
-      modifier = Modifier.fillMaxWidth(),
-      horizontalArrangement = Arrangement.SpaceBetween
+    Card(
+      colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
+      modifier = Modifier.fillMaxWidth().testTag("storefront_payment_card")
     ) {
-      TextButton(onClick = { onAction(StorefrontUserAction.ClearSignature) }) {
-        Text("Clear Signature")
-      }
-
-      Button(
-        onClick = { onAction(StorefrontUserAction.ConfirmCheckout) },
-        modifier = Modifier.testTag("complete_order_button")
+      Row(
+        modifier = Modifier.fillMaxWidth().padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
       ) {
-        Text("Complete Order", fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+          Icon(Icons.Default.CreditCard, contentDescription = "Payment Card", tint = MaterialTheme.colorScheme.primary)
+          Column {
+            Text("Payment Method", style = MaterialTheme.typography.labelMedium, color = Color.Gray)
+            Text("Visa ending in 4242", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+          }
+        }
+        Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+          Text(
+            text = "Default",
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+          )
+        }
       }
+    }
+
+    Button(
+      onClick = { onAction(StorefrontUserAction.ConfirmCheckout) },
+      modifier = Modifier.fillMaxWidth().height(48.dp).testTag("complete_order_button")
+    ) {
+      Text("Place Order • ${formatUsd(total)}", fontWeight = FontWeight.Bold)
     }
   }
+}
+
+private fun formatUsd(amount: Double): String {
+  val totalCents = (amount * 100.0).roundToLong()
+  val dollars = totalCents / 100
+  val cents = kotlin.math.abs(totalCents % 100).toString().padStart(2, '0')
+  return "$$dollars.$cents"
 }
 
 @Composable

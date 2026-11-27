@@ -25,7 +25,7 @@ Parikshan supports execution configuration through Gradle command-line flags on 
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `--targets` | String | Configured targets | Comma-separated list of targets (`desktop`, `wasm`, `android`, `ios`) | `--targets=desktop,wasm` | N/A |
 | `--tests` | String | All tests | Class or method filter pattern | `--tests="sample.app.LoginTest"` | `--tests="..."` |
-| `--video` | Flag | `false` | Enables MP4 video recording per test execution (not supported with `--sync` or `--watch`) | `--video` | `-Dparikshan.video.enabled=true` |
+| `--video` | Flag | `false` | Enables MP4 video recording per test execution (skipped in `--sync`, `--watch`, and multi-instance/multi-target runs in `0.1.0`) | `--video` | `-Dparikshan.video.enabled=true` |
 | `--granularity` | String | `class` | Video recording granularity (`session`, `run`, `class`, `test`) | `--granularity=session` | `-Dparikshan.video.granularity=...` |
 | `--post-roll-ms` | String | `1000` | Post-roll pause duration in milliseconds before stopping recording | `--post-roll-ms=2000` | `-Dparikshan.video.postRollMs=...` |
 | `--step-delay-ms` | String | `0` | Delay in milliseconds inserted after each UI command during test execution | `--step-delay-ms=250` | `-Dparikshan.stepDelayMs=...` |
@@ -53,7 +53,7 @@ Parikshan supports execution configuration through Gradle command-line flags on 
 Parikshan allows configuring window geometry and desktop placements for Desktop and Web (Wasm) targets.
 
 ### Side-by-Side Layout
-`--layout=side-by-side` positions Desktop and Wasm windows adjacent to each other on your screen:
+`--layout=side-by-side` positions Desktop and Wasm windows adjacent to each other on your screen (works for single-actor multi-target, `--sync`, and cross-target multi-actor `e2eTest(mapOf(...))` runs):
 
 === "Side-by-Side with Sync"
     ```bash

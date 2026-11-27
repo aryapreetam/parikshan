@@ -4,6 +4,25 @@ public abstract interface annotation class io/github/aryapreetam/parikshan/After
 public abstract interface annotation class io/github/aryapreetam/parikshan/BeforeAll : java/lang/annotation/Annotation {
 }
 
+public final class io/github/aryapreetam/parikshan/E2EMultiInstanceScope {
+	public fun <init> (Ljava/util/Map;)V
+	public final fun component1 ()Lio/github/aryapreetam/parikshan/E2ETestScope;
+	public final fun component2 ()Lio/github/aryapreetam/parikshan/E2ETestScope;
+	public final fun component3 ()Lio/github/aryapreetam/parikshan/E2ETestScope;
+	public final fun component4 ()Lio/github/aryapreetam/parikshan/E2ETestScope;
+	public final fun component5 ()Lio/github/aryapreetam/parikshan/E2ETestScope;
+	public final fun get (Ljava/lang/String;)Lio/github/aryapreetam/parikshan/E2ETestScope;
+	public final fun getInstanceNames ()Ljava/util/Set;
+	public final fun getSize ()I
+	public final fun inParallel (Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun inParallel ([Lkotlin/Pair;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun instance (Ljava/lang/String;)Lio/github/aryapreetam/parikshan/E2ETestScope;
+}
+
+public final class io/github/aryapreetam/parikshan/E2EMultiInstanceScopeKt {
+	public static final fun validateActorIdentifier (Ljava/lang/String;)V
+}
+
 public final class io/github/aryapreetam/parikshan/E2ETestConfig {
 	public fun <init> ()V
 	public fun <init> (JJLjava/lang/String;Z)V
@@ -40,7 +59,9 @@ public final class io/github/aryapreetam/parikshan/E2ETestDslKt {
 	public static final fun e2eConfig (Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function1;)Lio/github/aryapreetam/parikshan/E2ETestConfig;
 	public static synthetic fun e2eConfig$default (Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/E2ETestConfig;
 	public static final fun e2eTest (Lio/github/aryapreetam/parikshan/TestDriver;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static final fun e2eTest (Ljava/util/Map;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static synthetic fun e2eTest$default (Lio/github/aryapreetam/parikshan/TestDriver;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static synthetic fun e2eTest$default (Ljava/util/Map;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public static final fun isAndroid (Lio/github/aryapreetam/parikshan/E2ETestScope;)Z
 	public static final fun isDesktop (Lio/github/aryapreetam/parikshan/E2ETestScope;)Z
 	public static final fun isIos (Lio/github/aryapreetam/parikshan/E2ETestScope;)Z
@@ -135,8 +156,64 @@ public abstract interface annotation class io/github/aryapreetam/parikshan/Parik
 	public abstract fun testName ()Ljava/lang/String;
 }
 
+public final class io/github/aryapreetam/parikshan/ParikshanTestContext {
+	public static final field Companion Lio/github/aryapreetam/parikshan/ParikshanTestContext$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Lkotlin/Pair;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Lkotlin/Pair;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()I
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun component6 ()Lkotlin/Pair;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Lkotlin/Pair;)Lio/github/aryapreetam/parikshan/ParikshanTestContext;
+	public static synthetic fun copy$default (Lio/github/aryapreetam/parikshan/ParikshanTestContext;Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/lang/String;Lkotlin/Pair;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/ParikshanTestContext;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDataDir ()Ljava/lang/String;
+	public final fun getHost ()Ljava/lang/String;
+	public final fun getInstanceId ()Ljava/lang/String;
+	public final fun getPort ()I
+	public final fun getSessionToken ()Ljava/lang/String;
+	public final fun getWindowPosition ()Lkotlin/Pair;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class io/github/aryapreetam/parikshan/ParikshanTestContext$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/ParikshanTestContext$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lio/github/aryapreetam/parikshan/ParikshanTestContext;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lio/github/aryapreetam/parikshan/ParikshanTestContext;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/ParikshanTestContext$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class io/github/aryapreetam/parikshan/ParikshanTestContextJvmKt {
+	public static final fun ParikshanTestContext (Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/io/File;Lkotlin/Pair;)Lio/github/aryapreetam/parikshan/ParikshanTestContext;
+	public static synthetic fun ParikshanTestContext$default (Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;Ljava/io/File;Lkotlin/Pair;ILjava/lang/Object;)Lio/github/aryapreetam/parikshan/ParikshanTestContext;
+	public static final fun getDataDirFile (Lio/github/aryapreetam/parikshan/ParikshanTestContext;)Ljava/io/File;
+}
+
 public final class io/github/aryapreetam/parikshan/PickerNotOpenedException : java/lang/AssertionError {
 	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class io/github/aryapreetam/parikshan/PortAllocator {
+	public static final field INSTANCE Lio/github/aryapreetam/parikshan/PortAllocator;
+	public final fun allocate (Ljava/lang/Integer;Lkotlin/ranges/IntRange;Ljava/util/Set;)I
+	public static synthetic fun allocate$default (Lio/github/aryapreetam/parikshan/PortAllocator;Ljava/lang/Integer;Lkotlin/ranges/IntRange;Ljava/util/Set;ILjava/lang/Object;)I
+	public final fun allocateEphemeralPort ()I
+	public final fun allocateUnique (ILjava/util/List;Lkotlin/ranges/IntRange;)Ljava/util/List;
+	public static synthetic fun allocateUnique$default (Lio/github/aryapreetam/parikshan/PortAllocator;ILjava/util/List;Lkotlin/ranges/IntRange;ILjava/lang/Object;)Ljava/util/List;
+	public final fun getDEFAULT_PORT_RANGE ()Lkotlin/ranges/IntRange;
+	public final fun isPortFree (ILjava/lang/String;)Z
+	public static synthetic fun isPortFree$default (Lio/github/aryapreetam/parikshan/PortAllocator;ILjava/lang/String;ILjava/lang/Object;)Z
 }
 
 public final class io/github/aryapreetam/parikshan/ResolvedSelector {

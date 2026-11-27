@@ -29,8 +29,8 @@
 ### Features
 
 - Write tests in Kotlin, execute and visually watch them run across Android, iOS, Desktop, and Web (Wasm).
-- Built-in [file picker automation](features/file-picker.md), [video recording](features/test-reports.md), screenshot capture, and unified [test reports](features/test-reports.md).
-- [Window layout and positioning](features/window-layout.md), [synchronized execution](features/synchronized-execution.md), and continuous [watch mode](features/watch-mode.md).
+- [Multi-instance](features/multi-instance.md) and [multi-target](features/multi-target.md) orchestration for collaborative multi-user testing.
+- Built-in [file picker automation](features/file-picker.md), [synchronized execution](features/synchronized-execution.md), [window layout & sizing](features/window-layout.md), [continuous watch mode](features/watch-mode.md), screenshot capture, and [video reports](features/test-reports.md).
 
 [**API Reference**](https://aryapreetam.github.io/parikshan/api/) | [**Quickstart Guide**](getting-started/quickstart.md) | [**Features Hub**](features/index.md) | [**Examples**](examples.md)
 
@@ -47,42 +47,193 @@ plugins {
 }
 ```
 
-### 2. Write your first test
-Create a test in `src/commonTest/kotlin`:
+### 2. Write your test
+Create your test in `src/commonTest/kotlin`:
 
-```kotlin
-package sample.app
+=== "Standard"
 
-import io.github.aryapreetam.parikshan.e2eTest
-import kotlin.test.Test
+    <div class="code-preview-grid" markdown="1">
 
-class SimpleGreetTest {
-  @Test
-  fun testSimpleGreeting() = e2eTest {
-    // enter in the input component tagged name_input
-    input("name_input", "परिक्षण")
+    <div class="code-column" markdown="1">
 
-    // click button with text 'Greet!'
-    click("Greet!")
+    ```kotlin
+    package sample.app
 
-    // check if greeting is displayed
-    assertVisible("Hello, परिक्षण!")
-  }
-}
-```
+    import io.github.aryapreetam.parikshan.e2eTest
+    import kotlin.test.Test
 
-### 3. Run on any platform
-```bash
-./gradlew e2eAndroidTest
-./gradlew e2eIosTest
-./gradlew e2eDesktopTest # or ./gradlew e2eJvmTest
-./gradlew e2eWasmTest
+    class SimpleGreetTest {
+      @Test
+      fun testSimpleGreeting() = e2eTest {
+        // enter text in component tagged name_input
+        input("name_input", "परिक्षण")
 
-# Run across multiple targets simultaneously
-./gradlew e2eTest --targets=desktop,wasm,android,ios
-```
+        // click button with text 'Greet!'
+        click("Greet!")
 
-> **Note:** The standalone desktop test task name depends on your target configuration in `build.gradle.kts` (`jvm("desktop")` registers `e2eDesktopTest`; `jvm()` registers `e2eJvmTest`). The unified `e2eTest` task accepts both `--targets=desktop` and `--targets=jvm`.
+        // verify greeting is displayed
+        assertVisible("Hello, परिक्षण!")
+      }
+    }
+    ```
+
+    **Run on any platform:**
+    ```bash
+    ./gradlew e2eAndroidTest
+    ./gradlew e2eIosTest
+    ./gradlew e2eDesktopTest # or ./gradlew e2eJvmTest
+    ./gradlew e2eWasmTest
+
+    # Or run across multiple targets simultaneously
+    ./gradlew e2eTest --targets=desktop,wasm,android,ios
+    ```
+
+    </div>
+
+    <div class="preview-column" markdown="1">
+
+    ![Standard Desktop Execution](assets/jvm-only-run.png)
+
+    </div>
+
+    </div>
+
+=== "Multi-Instance"
+
+    <div class="code-preview-grid" markdown="1">
+
+    <div class="code-column" markdown="1">
+
+    ```kotlin
+    package sample.app
+
+    import io.github.aryapreetam.parikshan.e2eTest
+    import kotlin.test.Test
+
+    class MultiInstanceCollaborationTest {
+      @Test
+      fun testTwoPartyChatCollaboration() = e2eTest(listOf("alice", "bob")) { (alice, bob) ->
+        // Alice sends a message
+        alice.input("chat_input", "Hello Bob!")
+        alice.click("chat_send_button")
+
+        // Bob verifies receipt and replies
+        bob.assertVisible("alice: Hello Bob!")
+        bob.input("chat_input", "Hey Alice, message received!")
+        bob.click("chat_send_button")
+
+        // Alice verifies receipt
+        alice.assertVisible("bob: Hey Alice, message received!")
+      }
+    }
+    ```
+
+    **Run multiple instances (Desktop or Web):**
+    ```bash
+    ./gradlew e2eDesktopTest --tests="sample.app.MultiInstanceCollaborationTest"
+    ./gradlew e2eWasmTest --tests="sample.app.MultiInstanceCollaborationTest"
+    ```
+
+    </div>
+
+    <div class="preview-column" markdown="1">
+
+    ![Multi-Instance Execution](assets/jvm-wasm-mobile-layout.png)
+
+    </div>
+
+    </div>
+
+=== "Multi-Target"
+
+    <div class="code-preview-grid" markdown="1">
+
+    <div class="code-column" markdown="1">
+
+    ```kotlin
+    package sample.app
+
+    import io.github.aryapreetam.parikshan.Target
+    import io.github.aryapreetam.parikshan.e2eTest
+    import kotlin.test.Test
+
+    class MultiTargetCollaborationTest {
+      @Test
+      fun testDesktopToWebChat() = e2eTest(
+        instances = mapOf("alice" to Target.Desktop, "bob" to Target.Wasm)
+      ) { (alice, bob) ->
+        // Alice on Desktop sends a message
+        alice.input("chat_input", "Hello from Desktop!")
+        alice.click("chat_send_button")
+
+        // Bob on Web verifies receipt and replies
+        bob.assertVisible("alice: Hello from Desktop!")
+        bob.input("chat_input", "Hey Alice, received on Web!")
+        bob.click("chat_send_button")
+
+        // Alice on Desktop verifies receipt
+        alice.assertVisible("bob: Hey Alice, received on Web!")
+      }
+    }
+    ```
+
+    **Run cross-target test (Desktop + Web):**
+    ```bash
+    ./gradlew e2eTest --targets=jvm,wasm --tests="sample.app.MultiTargetCollaborationTest"
+    ```
+
+    </div>
+
+    <div class="preview-column" markdown="1">
+
+    ![Multi-Target Execution](assets/jvm-wasm-mobile-layout.png)
+
+    </div>
+
+    </div>
+
+=== "File Picker"
+
+    <div class="code-preview-grid" markdown="1">
+
+    <div class="code-column" markdown="1">
+
+    ```kotlin
+    package sample.app
+
+    import io.github.aryapreetam.parikshan.e2eTest
+    import kotlin.test.Test
+
+    class FileUploadTest {
+      @Test
+      fun testDocumentUpload() = e2eTest {
+        withFilePicker("report.pdf") {
+          click("upload_button")
+        }
+        assertVisible("report.pdf uploaded")
+      }
+    }
+    ```
+
+    **Run on any platform:**
+    ```bash
+    ./gradlew e2eDesktopTest
+    ./gradlew e2eWasmTest
+    ./gradlew e2eAndroidTest
+    ./gradlew e2eIosTest
+    ```
+
+    </div>
+
+    <div class="preview-column" markdown="1">
+
+    ![File Picker Automation](assets/jvm-only-run.png)
+
+    </div>
+
+    </div>
+
+> **Note:** For projects configuring `jvm()` or `jvm("desktop")`, both `e2eDesktopTest` and `e2eJvmTest` are registered as full Gradle `Test` tasks supporting `--tests`. Custom JVM target names (such as `jvm("custom")`) register `e2eCustomTest`. The unified `e2eTest` task accepts both `--targets=desktop` and `--targets=jvm`.
 
 ---
 

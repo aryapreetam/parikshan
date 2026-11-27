@@ -26,6 +26,9 @@ internal object WasmTargetConfigurer {
     val wasmOutputDirVal = wasmOutputDir
     val wasmPortFileVal = wasmPortFile
     val tokenVal = sessionToken
+    val autoDiscoveredInstances = project.discoverE2eTestInstances()
+    val autoInstStr = if (autoDiscoveredInstances.size > 1) autoDiscoveredInstances.joinToString(",") else ""
+    val rootDirVal = project.rootDir.absolutePath
 
     val startWasmTask = project.tasks.register("startParikshanWasmApp") {
       group = "verification"
@@ -39,6 +42,25 @@ internal object WasmTargetConfigurer {
         val boundPort = WasmServer.start(resolvedPort, wasmOutputDirVal)
         wasmPortFileVal.parentFile.mkdirs()
         wasmPortFileVal.writeText(boundPort.toString())
+
+        val instancesList = autoDiscoveredInstances
+        if (instancesList.isNotEmpty()) {
+          val baseDir = wasmOutputDirVal.parentFile
+          val sessionsDir = File(baseDir, "sessions").apply { mkdirs() }
+          instancesList.forEach { instanceId ->
+            val dataDir = File(baseDir, "data/$instanceId").apply { mkdirs() }
+            val targetSession = TargetSession(
+              token = tokenVal,
+              port = boundPort,
+              timestamp = System.currentTimeMillis(),
+              instanceId = instanceId,
+              target = "wasm",
+              pid = null,
+              dataDir = dataDir.absolutePath
+            )
+            SessionStore.writeInstanceSession(sessionsDir, targetSession)
+          }
+        }
       }
     }
 
@@ -46,6 +68,13 @@ internal object WasmTargetConfigurer {
       group = "verification"
       doLast {
         WasmServer.stop()
+        val instancesList = autoDiscoveredInstances
+        if (instancesList.isNotEmpty()) {
+          val sessionsDir = File(wasmOutputDirVal.parentFile, "sessions")
+          instancesList.forEach { instanceId ->
+            SessionStore.clearInstanceSession(sessionsDir, instanceId)
+          }
+        }
       }
     }
 
@@ -70,6 +99,11 @@ internal object WasmTargetConfigurer {
       )
       systemProperty("parikshan.target", "wasm")
       systemProperty("parikshan.token", tokenVal)
+      systemProperty("parikshan.projectRootDir", rootDirVal)
+      if (autoInstStr.isNotBlank()) {
+        systemProperty("parikshan.instances", autoInstStr)
+        systemProperty("parikshan.sessionsDir", File(wasmOutputDirVal.parentFile, "sessions").absolutePath)
+      }
       environment("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1")
       doFirst {
         val portFile = wasmPortFileVal

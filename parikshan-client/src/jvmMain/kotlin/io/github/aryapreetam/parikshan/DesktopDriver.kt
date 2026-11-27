@@ -1,3 +1,5 @@
+@file:OptIn(InternalParikshanApi::class)
+
 package io.github.aryapreetam.parikshan
 
 import io.github.aryapreetam.parikshan.protocol.Command
@@ -15,23 +17,39 @@ import java.util.concurrent.TimeUnit
 internal class DesktopDriver(
   private val host: String = "127.0.0.1",
   @Volatile private var port: Int = 9877,
-  private val sessionToken: String = System.getProperty("parikshan.token") ?: ""
+  private val sessionToken: String = System.getProperty("parikshan.token") ?: "",
+  val context: ParikshanTestContext? = null
 ) : TestDriver {
+
+  constructor(context: ParikshanTestContext) : this(
+    host = context.host,
+    port = context.port,
+    sessionToken = context.sessionToken,
+    context = context
+  )
+
   override val targetPlatform: String = "desktop"
   val activePort: Int get() = port
 
   init {
-    runCatching {
-      val manifestPath = System.getProperty(DESKTOP_LAUNCH_MANIFEST_PROPERTY)
-      if (!manifestPath.isNullOrBlank()) {
-        val file = File(manifestPath)
-        if (file.exists()) {
-          val props = Properties().apply {
-            file.inputStream().use(::load)
-          }
-          val activePort = props.getProperty("port")?.toIntOrNull()
-          if (activePort != null) {
-            port = activePort
+    if (context == null) {
+      val explicitPortProp = System.getProperty("parikshan.port")?.toIntOrNull()
+      if (explicitPortProp != null) {
+        port = explicitPortProp
+      } else {
+        runCatching {
+          val manifestPath = System.getProperty(DESKTOP_LAUNCH_MANIFEST_PROPERTY)
+          if (!manifestPath.isNullOrBlank()) {
+            val file = File(manifestPath)
+            if (file.exists()) {
+              val props = Properties().apply {
+                file.inputStream().use(::load)
+              }
+              val activePort = props.getProperty("port")?.toIntOrNull()
+              if (activePort != null) {
+                port = activePort
+              }
+            }
           }
         }
       }
@@ -77,6 +95,13 @@ internal class DesktopDriver(
   }
 
   override suspend fun relaunchApp() {
+    if (context != null) {
+      throw UnsupportedOperationException(
+        "relaunchApp() on multi-instance Desktop actor '${context.instanceId}' is not supported in Parikshan 0.1.0. " +
+          "Reset application state via UI/API, or use Web (Wasm) for per-actor relaunch."
+      )
+    }
+
     // 1. Coordinate pause
     io.github.aryapreetam.parikshan.client.ParikshanVideoSessionManager.pauseRecording()
 
@@ -87,7 +112,7 @@ internal class DesktopDriver(
       val oldPid = properties.getProperty("pid")?.toLongOrNull()
 
       // 2. Resolve a dynamic available port for the new server
-      val newPort = findAvailablePort()
+      val newPort = PortAllocator.allocate()
 
       // 3. Kill the old process first to ensure only one window is visible at a time.
       //    Dynamic port allocation prevents port collisions regardless of kill order.
@@ -134,7 +159,7 @@ internal class DesktopDriver(
   }
 
   private fun findAvailablePort(): Int {
-    return java.net.ServerSocket(0).use { it.localPort }
+    return PortAllocator.allocate()
   }
 
   private fun pingServer(host: String, port: Int): Boolean {
@@ -162,16 +187,26 @@ internal class DesktopDriver(
 
   private fun destroyProcessByPid(pid: Long) {
     val handle = ProcessHandle.of(pid).orElse(null) ?: return
+    terminateProcessTree(handle, timeoutSeconds = 5L)
+  }
+
+  private fun terminateProcessTree(handle: ProcessHandle, timeoutSeconds: Long) {
     if (!handle.isAlive) {
       return
     }
-    handle.destroy()
+    val descendants = runCatching { handle.descendants().toList() }.getOrDefault(emptyList())
+    descendants.forEach { runCatching { it.destroy() } }
+    runCatching { handle.destroy() }
     runCatching {
-      handle.onExit().get(5, java.util.concurrent.TimeUnit.SECONDS)
+      handle.onExit().get(timeoutSeconds, TimeUnit.SECONDS)
     }.onFailure {
-      if (handle.isAlive) {
-        handle.destroyForcibly()
+      descendants.forEach { child ->
+        runCatching { if (child.isAlive) child.destroyForcibly() }
       }
+      runCatching { if (handle.isAlive) handle.destroyForcibly() }
+    }
+    descendants.forEach { child ->
+      runCatching { if (child.isAlive) child.destroyForcibly() }
     }
   }
 
@@ -224,18 +259,7 @@ internal class DesktopDriver(
   private fun destroyProcessFromManifest(properties: Properties) {
     val pid = properties.getProperty("pid")?.toLongOrNull() ?: return
     val handle = ProcessHandle.of(pid).orElse(null) ?: return
-    if (!handle.isAlive) {
-      return
-    }
-
-    handle.destroy()
-    runCatching {
-      handle.onExit().get(10, TimeUnit.SECONDS)
-    }.onFailure {
-      if (handle.isAlive) {
-        handle.destroyForcibly()
-      }
-    }
+    terminateProcessTree(handle, timeoutSeconds = 10L)
   }
 
   private fun launchDesktopProcess(
@@ -275,8 +299,12 @@ internal class DesktopDriver(
         if (background == "true") {
             add("-Dparikshan.background=true")
         }
-        val wX = System.getProperty("parikshan.desktop.windowX")
-        val wY = System.getProperty("parikshan.desktop.windowY")
+        val dataDir = context?.dataDir ?: System.getProperty("parikshan.data.dir")
+        if (!dataDir.isNullOrBlank()) {
+          add("-Dparikshan.data.dir=$dataDir")
+        }
+        val wX = context?.windowPosition?.first?.toString() ?: System.getProperty("parikshan.desktop.windowX")
+        val wY = context?.windowPosition?.second?.toString() ?: System.getProperty("parikshan.desktop.windowY")
         val wW = System.getProperty("parikshan.desktop.windowWidth")
         val wH = System.getProperty("parikshan.desktop.windowHeight")
         if (!wX.isNullOrEmpty()) add("-Dparikshan.desktop.windowX=$wX")

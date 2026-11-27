@@ -1,7 +1,5 @@
 package org.example.project.storefront
 
-import androidx.compose.ui.geometry.Offset
-
 data class Product(
   val id: String,
   val title: String,
@@ -9,7 +7,8 @@ data class Product(
   val price: Double,
   val description: String,
   val tags: List<String>,
-  val rating: Double
+  val rating: Double,
+  val stock: Int = 10
 )
 
 data class CartItem(
@@ -17,6 +16,15 @@ data class CartItem(
   val quantity: Int = 1,
   val giftWrap: Boolean = false
 )
+
+enum class ShippingMethod(
+  val label: String,
+  val eta: String,
+  val fee: Double
+) {
+  STANDARD("Standard Shipping", "3-5 business days", 0.0),
+  EXPRESS("Express Delivery", "Tomorrow by 6 PM", 9.99)
+}
 
 enum class StorefrontStep {
   AUTH,
@@ -38,7 +46,7 @@ data class StorefrontUiState(
   val isBottomSheetOpen: Boolean = false,
   val isGiftWrapped: Boolean = false,
   val cart: List<CartItem> = emptyList(),
-  val signaturePoints: List<Offset> = emptyList(),
+  val shippingMethod: ShippingMethod = ShippingMethod.STANDARD,
   val orderId: String? = null
 )
 
@@ -52,9 +60,10 @@ sealed interface StorefrontUserAction {
   data class ToggleGiftWrap(val giftWrap: Boolean) : StorefrontUserAction
   data class AddToCart(val product: Product) : StorefrontUserAction
   data object ProceedToCheckout : StorefrontUserAction
+  data object RefreshCatalog : StorefrontUserAction
 
-  data class AddSignaturePoint(val point: Offset) : StorefrontUserAction
-  data object ClearSignature : StorefrontUserAction
+  data class SelectShippingMethod(val method: ShippingMethod) : StorefrontUserAction
   data object ConfirmCheckout : StorefrontUserAction
   data object ResetFlow : StorefrontUserAction
+  data object SignOut : StorefrontUserAction
 }

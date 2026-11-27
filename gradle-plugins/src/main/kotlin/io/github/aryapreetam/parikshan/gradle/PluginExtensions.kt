@@ -354,9 +354,386 @@ private fun discoverE2eTestClassesInFile(file: File): List<String> {
     .toList()
 }
 
+private fun Project.resolveE2eTestSourceDirs(): List<File> {
+  val dirsToCheck = mutableListOf<File>()
+  val hasKmp = pluginManager.hasPlugin("org.jetbrains.kotlin.multiplatform")
+  if (hasKmp) {
+    dirsToCheck.add(layout.projectDirectory.dir("src/commonTest/kotlin").asFile)
+    dirsToCheck.add(layout.projectDirectory.dir("src/jvmTest/kotlin").asFile)
+  } else {
+    dirsToCheck.add(layout.projectDirectory.dir("src/test/java").asFile)
+    dirsToCheck.add(layout.projectDirectory.dir("src/test/kotlin").asFile)
+  }
+  return dirsToCheck
+}
+
+internal fun Project.discoverE2eTestInstances(): List<String> {
+  return resolveE2eTestSourceDirs()
+    .filter { it.exists() }
+    .flatMap { dir ->
+      dir.walkTopDown()
+        .filter { it.isFile && (it.extension == "kt" || it.extension == "java") }
+        .flatMap { file -> discoverE2eTestInstancesInFile(file).asSequence() }
+        .toList()
+    }
+    .distinct()
+    .sorted()
+}
+
+internal fun Project.discoverE2eTestInstancesByClass(): Map<String, List<String>> {
+  val result = linkedMapOf<String, MutableList<String>>()
+  resolveE2eTestSourceDirs().filter { it.exists() }.forEach { dir ->
+    dir.walkTopDown()
+      .filter { it.isFile && (it.extension == "kt" || it.extension == "java") }
+      .forEach { file ->
+        discoverE2eTestInstancesByClassInFile(file).forEach { (clazz, actors) ->
+          val list = result.getOrPut(clazz) { mutableListOf() }
+          actors.forEach { if (it !in list) list.add(it) }
+        }
+      }
+  }
+  return result.mapValues { it.value.toList() }
+}
+
+internal fun discoverE2eTestInstancesByClassInFile(file: File): Map<String, List<String>> {
+  val source = file.readText().stripKotlinComments()
+  val pkg = PACKAGE_REGEX.find(source)?.groupValues?.get(1)
+  val result = linkedMapOf<String, List<String>>()
+
+  val classMatches = CLASS_OR_OBJECT_REGEX.findAll(source).toList()
+  classMatches.forEach { classMatch ->
+    val className = classMatch.groupValues[1]
+    val fullClassName = if (pkg != null) "$pkg.$className" else className
+    val classStartIndex = classMatch.range.first
+    val classOpenBrace = source.indexOf('{', classStartIndex)
+    if (classOpenBrace == -1) return@forEach
+    val classEndIndex = source.findMatchingBrace(classOpenBrace)
+    val classSource = if (classEndIndex > classOpenBrace) {
+      source.substring(classOpenBrace, classEndIndex)
+    } else {
+      source.substring(classOpenBrace)
+    }
+    val actors = extractInstancesFromSource(classSource)
+    if (actors.isNotEmpty()) {
+      result[fullClassName] = actors
+    }
+  }
+  return result
+}
+
+private fun extractInstancesFromSource(
+  source: String,
+  includeMultiTargetMaps: Boolean = false
+): List<String> {
+  val instances = mutableListOf<String>()
+
+  // 1. Matches e2eTest(listOf("alice", "bob")) or e2eTest(instances = listOf("alice", "bob"))
+  val listOfRegex = Regex("""(?<!\w)e2eTest\s*\(\s*(?:instances\s*=\s*)?listOf\s*\(([^)]+)\)""", RegexOption.DOT_MATCHES_ALL)
+  listOfRegex.findAll(source).forEach { match ->
+    val inner = match.groupValues[1]
+    STRING_LITERAL_REGEX.findAll(inner).forEach { strMatch ->
+      val actor = strMatch.groupValues[1].trim()
+      if (actor.isNotEmpty()) instances.add(actor)
+    }
+  }
+
+  // 2. Matches e2eTest("alice", "bob") or e2eTest("alice")
+  val varargRegex = Regex("""(?<!\w)e2eTest\s*\(\s*("[\w-]+"(?:\s*,\s*[\r\n\s]*"[\w-]+")*)""", RegexOption.DOT_MATCHES_ALL)
+  varargRegex.findAll(source).forEach { match ->
+    val inner = match.groupValues[1]
+    STRING_LITERAL_REGEX.findAll(inner).forEach { strMatch ->
+      val actor = strMatch.groupValues[1].trim()
+      if (actor.isNotEmpty()) instances.add(actor)
+    }
+  }
+
+  // 3. Optionally matches e2eTest(mapOf("alice" to Target.Desktop, ...))
+  if (includeMultiTargetMaps) {
+    val mapOfRegex = Regex("""(?<!\w)e2eTest\s*\(\s*(?:instances\s*=\s*)?mapOf\s*\(([^)]+)\)""", RegexOption.DOT_MATCHES_ALL)
+    mapOfRegex.findAll(source).forEach { match ->
+      val inner = match.groupValues[1]
+      STRING_LITERAL_REGEX.findAll(inner).forEach { strMatch ->
+        val actor = strMatch.groupValues[1].trim()
+        if (actor.isNotEmpty()) instances.add(actor)
+      }
+    }
+  }
+
+  return instances.distinct()
+}
+
+internal fun discoverE2eTestInstancesInFile(file: File): List<String> {
+  return extractInstancesFromSource(file.readText().stripKotlinComments())
+}
+
+private fun extractActorTargetMapFromSource(source: String): Map<String, String> {
+  val map = linkedMapOf<String, String>()
+  val mapOfRegex = Regex("""(?<!\w)e2eTest\s*\(\s*(?:instances\s*=\s*)?mapOf\s*\(([^)]+)\)""", RegexOption.DOT_MATCHES_ALL)
+  val mapEntryRegex = Regex(""""([\w-]+)"\s+to\s+Target\.(\w+)""")
+
+  val mapBlocks = mapOfRegex.findAll(source).map { it.groupValues[1] }.toList()
+  val searchTexts = if (mapBlocks.isNotEmpty()) mapBlocks else listOf(source)
+  searchTexts.forEach { block ->
+    mapEntryRegex.findAll(block).forEach { match ->
+      val actor = match.groupValues[1].trim()
+      val target = match.groupValues[2].trim().lowercase()
+      if (actor.isNotEmpty() && target.isNotEmpty()) {
+        map[actor] = when (target) {
+          "jvm" -> "desktop"
+          "web" -> "wasm"
+          else -> target
+        }
+      }
+    }
+  }
+  return map
+}
+
+internal fun discoverE2eTestInstanceTargetsInFile(file: File): Map<String, String> {
+  return extractActorTargetMapFromSource(file.readText().stripKotlinComments())
+}
+
+internal fun discoverMultiTargetActorMapsByMethodInFile(file: File): Map<String, Map<String, String>> {
+  val source = file.readText().stripKotlinComments()
+  val pkg = PACKAGE_REGEX.find(source)?.groupValues?.get(1)
+  val result = linkedMapOf<String, Map<String, String>>()
+
+  val testAnnotationRegex = Regex("""@(?:[a-zA-Z0-9_.]+\.)?Test\b""")
+  val classMatches = CLASS_OR_OBJECT_REGEX.findAll(source).toList()
+
+  classMatches.forEach { classMatch ->
+    val className = classMatch.groupValues[1]
+    val fullClassName = if (pkg != null) "$pkg.$className" else className
+    val classStartIndex = classMatch.range.first
+    val classOpenBrace = source.indexOf('{', classStartIndex)
+    if (classOpenBrace == -1) return@forEach
+    val classEndIndex = source.findMatchingBrace(classOpenBrace)
+
+    val classSource = if (classEndIndex > classOpenBrace) {
+      source.substring(classOpenBrace, classEndIndex)
+    } else {
+      source.substring(classOpenBrace)
+    }
+
+    val classTestMatches = testAnnotationRegex.findAll(classSource).toList()
+    classTestMatches.forEachIndexed { i, match ->
+      val start = match.range.first
+      val end = if (i + 1 < classTestMatches.size) {
+        classTestMatches[i + 1].range.first
+      } else {
+        classSource.length
+      }
+      val methodChunk = classSource.substring(start, end)
+      val funNameMatch = Regex("""\bfun\s+([a-zA-Z0-9_]+)""").find(methodChunk)
+      if (funNameMatch != null) {
+        val methodName = funNameMatch.groupValues[1]
+        val methodTargets = extractActorTargetMapFromSource(methodChunk)
+        if (methodTargets.values.distinct().size > 1) {
+          result["$fullClassName#$methodName"] = methodTargets
+        }
+      }
+    }
+  }
+
+  return result
+}
+
+internal fun discoverMultiTargetTestMethodsInFile(file: File): List<String> {
+  return discoverMultiTargetActorMapsByMethodInFile(file).keys.toList()
+}
+
+internal fun discoverMultiTargetTestClassesInFile(file: File): List<String> {
+  return discoverMultiTargetTestMethodsInFile(file).map { it.substringBefore('#') }.distinct()
+}
+
+internal fun Project.discoverMultiTargetActorMapsByMethod(): Map<String, Map<String, String>> {
+  val result = linkedMapOf<String, Map<String, String>>()
+  resolveE2eTestSourceDirs().filter { it.exists() }.forEach { dir ->
+    dir.walkTopDown()
+      .filter { it.isFile && (it.extension == "kt" || it.extension == "java") }
+      .forEach { file ->
+        result.putAll(discoverMultiTargetActorMapsByMethodInFile(file))
+      }
+  }
+  return result
+}
+
+internal fun Project.discoverMultiTargetTestClasses(): List<String> {
+  return discoverMultiTargetActorMapsByMethod().keys.map { it.substringBefore('#') }.distinct()
+}
+
+internal fun Project.discoverMultiTargetTestMethods(): List<String> {
+  return discoverMultiTargetActorMapsByMethod().keys.distinct()
+}
+
+internal fun discoverMultiInstanceTestClassesInFile(file: File): List<String> {
+  val source = file.readText().stripKotlinComments()
+  val pkg = PACKAGE_REGEX.find(source)?.groupValues?.get(1)
+  val result = mutableListOf<String>()
+
+  val classMatches = CLASS_OR_OBJECT_REGEX.findAll(source).toList()
+  classMatches.forEach { classMatch ->
+    val className = classMatch.groupValues[1]
+    val fullClassName = if (pkg != null) "$pkg.$className" else className
+    val classStartIndex = classMatch.range.first
+    val classOpenBrace = source.indexOf('{', classStartIndex)
+    if (classOpenBrace == -1) return@forEach
+    val classEndIndex = source.findMatchingBrace(classOpenBrace)
+    val classSource = if (classEndIndex > classOpenBrace) {
+      source.substring(classOpenBrace, classEndIndex)
+    } else {
+      source.substring(classOpenBrace)
+    }
+
+    val listOfRegex = Regex("""(?<!\w)e2eTest\s*\(\s*(?:instances\s*=\s*)?listOf\s*\(([^)]+)\)""", RegexOption.DOT_MATCHES_ALL)
+    val varargRegex = Regex("""(?<!\w)e2eTest\s*\(\s*("[\w-]+"(?:\s*,\s*[\r\n\s]*"[\w-]+")+)""", RegexOption.DOT_MATCHES_ALL)
+
+    var hasMulti = false
+    listOfRegex.findAll(classSource).forEach { match ->
+      val inner = match.groupValues[1]
+      val count = STRING_LITERAL_REGEX.findAll(inner).count()
+      if (count > 1) hasMulti = true
+    }
+    varargRegex.findAll(classSource).forEach { match ->
+      val inner = match.groupValues[1]
+      val count = STRING_LITERAL_REGEX.findAll(inner).count()
+      if (count > 1) hasMulti = true
+    }
+
+    if (hasMulti) {
+      result.add(fullClassName)
+    }
+  }
+
+  return result.distinct()
+}
+
+internal fun Project.discoverMultiInstanceTestClasses(): List<String> {
+  val result = mutableListOf<String>()
+  resolveE2eTestSourceDirs().filter { it.exists() }.forEach { dir ->
+    dir.walkTopDown()
+      .filter { it.isFile && (it.extension == "kt" || it.extension == "java") }
+      .forEach { file ->
+        result.addAll(discoverMultiInstanceTestClassesInFile(file))
+      }
+  }
+  return result.distinct().sorted()
+}
+
+internal fun Project.discoverE2eTestInstanceTargets(): Map<String, String> {
+  val result = linkedMapOf<String, String>()
+  resolveE2eTestSourceDirs().filter { it.exists() }.forEach { dir ->
+    dir.walkTopDown()
+      .filter { it.isFile && (it.extension == "kt" || it.extension == "java") }
+      .forEach { file ->
+        result.putAll(discoverE2eTestInstanceTargetsInFile(file))
+      }
+  }
+  return result
+}
+
+private fun String.stripKotlinComments(): String {
+  val output = StringBuilder(length)
+  var index = 0
+
+  fun startsWithAt(value: String, startIndex: Int): Boolean =
+    startIndex + value.length <= length && regionMatches(startIndex, value, 0, value.length)
+
+  while (index < length) {
+    when {
+      startsWithAt("//", index) -> {
+        output.append("  ")
+        index += 2
+        while (index < length && this[index] != '\n') {
+          output.append(if (this[index] == '\r') '\r' else ' ')
+          index += 1
+        }
+      }
+      startsWithAt("/*", index) -> {
+        output.append("  ")
+        index += 2
+        var depth = 1
+        while (index < length && depth > 0) {
+          when {
+            startsWithAt("/*", index) -> {
+              output.append("  ")
+              index += 2
+              depth += 1
+            }
+            startsWithAt("*/", index) -> {
+              output.append("  ")
+              index += 2
+              depth -= 1
+            }
+            else -> {
+              val ch = this[index]
+              output.append(if (ch == '\n' || ch == '\r') ch else ' ')
+              index += 1
+            }
+          }
+        }
+      }
+      startsWithAt("\"\"\"", index) -> {
+        output.append("\"\"\"")
+        index += 3
+        while (index < length) {
+          if (startsWithAt("\"\"\"", index)) {
+            output.append("\"\"\"")
+            index += 3
+            break
+          }
+          output.append(this[index])
+          index += 1
+        }
+      }
+      this[index] == '"' -> {
+        output.append('"')
+        index += 1
+        var escaped = false
+        while (index < length) {
+          val ch = this[index]
+          output.append(ch)
+          index += 1
+          if (escaped) {
+            escaped = false
+          } else if (ch == '\\') {
+            escaped = true
+          } else if (ch == '"') {
+            break
+          }
+        }
+      }
+      this[index] == '\'' -> {
+        output.append('\'')
+        index += 1
+        var escaped = false
+        while (index < length) {
+          val ch = this[index]
+          output.append(ch)
+          index += 1
+          if (escaped) {
+            escaped = false
+          } else if (ch == '\\') {
+            escaped = true
+          } else if (ch == '\'') {
+            break
+          }
+        }
+      }
+      else -> {
+        output.append(this[index])
+        index += 1
+      }
+    }
+  }
+
+  return output.toString()
+}
+
 private val PACKAGE_REGEX = Regex("""\bpackage\s+([a-zA-Z_][a-zA-Z0-9_.]*)""")
 private val CLASS_OR_OBJECT_REGEX = Regex("""\b(?:class|object)\s+([a-zA-Z_][a-zA-Z0-9_]*)""")
 private val E2E_TEST_INVOCATION_REGEX = Regex("""(?<!\w)e2eTest\s*(?:\(|\{)""")
+private val STRING_LITERAL_REGEX = Regex(""""([^"\r\n]+)"""")
 
 private fun String.findMatchingBrace(openIndex: Int): Int {
   var depth = 0

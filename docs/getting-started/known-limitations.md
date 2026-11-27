@@ -130,3 +130,26 @@ Parikshan is a host-driven automation framework. The test runner (`e2eTest`, `e2
 
 When a project is configured exclusively for Wasm and/or iOS without a JVM target, Kotlin Multiplatform produces only `.wasm` and iOS native Mach-O binaries—no Java `.class` bytecode is generated for `commonTest`.
 
+---
+
+## Multi-Instance & Multi-Target Testing (0.1.0)
+
+### Platform Scope
+Multi-instance (`e2eTest(listOf(...))`) and multi-target (`e2eTest(mapOf(...))`) orchestration support **Desktop (JVM)** and **Web (Wasm)** in `0.1.0`. Android and iOS multi-actor orchestration is planned for `0.2.0`.
+
+* `e2eTest(listOf(...))` methods in `commonTest` are skipped cleanly (`TestAbortedException`) when running `e2eAndroidTest`, `e2eIosTest`, or `--sync`.
+* Declaring `Target.Android` or `Target.Ios` explicitly in `e2eTest(instances = mapOf(...))` fails fast with `UnsupportedOperationException` / `GradleException`.
+
+### Literal Actor Declarations Required
+Gradle discovers multi-instance and multi-target actors by scanning `commonTest` and `jvmTest` source files at build time. Pass actor names as string literals directly inside `e2eTest(listOf("alice", "bob"))`, `e2eTest("alice", "bob")`, or `e2eTest(instances = mapOf("alice" to Target.Desktop, "bob" to Target.Wasm))`. Variables or dynamically computed lists are not discovered in `0.1.0`.
+
+### Video Recording Skipped
+Video recording (`--video` / `-Dparikshan.video.enabled=true`) is skipped during multi-instance and multi-target scenarios in `0.1.0`. Single-instance video recording continues to work across all targets.
+
+### Desktop State Reuse, `relaunchApp()`, and `e2eDesktopTest` Scope
+* **State reuse vs. Wasm clean context:** Desktop actor processes stay running between test methods in a class, while Wasm actors open a fresh Playwright `BrowserContext` per test method. Reset shared backend fixtures and Desktop UI state explicitly between scenarios.
+* **`relaunchApp()` on Desktop multi-instance:** Calling `relaunchApp()` on a multi-instance Desktop actor throws `UnsupportedOperationException` in `0.1.0`.
+* **`E2ETestLifecycle`:** `beforeEach()` / `afterEach()` applies only to single-instance `e2eTest { ... }`. Keep multi-actor tests in dedicated test classes and use `@BeforeTest` / `@AfterTest` plus `suspend` helpers.
+* **Standalone `e2eDesktopTest` vs. `e2eTest --targets=desktop`:** `e2eDesktopTest` launches all discovered Desktop actors in the module before applying `--tests`. Use `e2eTest --targets=desktop --tests="..."` when you want Just-In-Time (JIT) secondary window scoping per class.
+
+

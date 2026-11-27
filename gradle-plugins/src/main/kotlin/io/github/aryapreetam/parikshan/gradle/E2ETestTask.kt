@@ -8,6 +8,7 @@ import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.MapProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.ProviderFactory
 import javax.inject.Inject
@@ -188,6 +189,27 @@ abstract class E2ETestTask : DefaultTask() {
 
   @get:Input
   abstract val e2eTestClasses: ListProperty<String>
+
+  @get:Input
+  abstract val autoDiscoveredInstances: ListProperty<String>
+
+  @get:Input
+  abstract val autoDiscoveredInstancesByClass: MapProperty<String, String>
+
+  @get:Input
+  abstract val autoDiscoveredInstanceTargets: MapProperty<String, String>
+
+  @get:Input
+  abstract val multiTargetActorMapsByMethod: MapProperty<String, String>
+
+  @get:Input
+  abstract val multiTargetClasses: ListProperty<String>
+
+  @get:Input
+  abstract val multiTargetMethods: ListProperty<String>
+
+  @get:Input
+  abstract val multiInstanceClasses: ListProperty<String>
 
   @get:Input
   abstract val host: Property<String>
@@ -419,6 +441,17 @@ abstract class E2ETestTask : DefaultTask() {
         }
       }
       try {
+        val buildRoot = buildDir.orNull?.asFile
+        val resolvedShutdownHost = host.getOrElse("127.0.0.1")
+        if (buildRoot != null) {
+          DesktopProcessManager.stopAll(baseOutputDir = File(buildRoot, "parikshan/desktop"), host = resolvedShutdownHost)
+          DesktopProcessManager.stopAll(baseOutputDir = File(buildRoot, "parikshan/jvm"), host = resolvedShutdownHost)
+          DesktopProcessManager.stopAll(baseOutputDir = File(buildRoot, "parikshan/multi-target"), host = resolvedShutdownHost)
+        } else {
+          DesktopProcessManager.stopAll(baseOutputDir = null, host = resolvedShutdownHost)
+        }
+      } catch (_: Exception) {}
+      try {
         val manifest = desktopLaunchManifestFile.orNull?.asFile
         if (manifest != null && manifest.exists()) {
           val props = java.util.Properties()
@@ -480,30 +513,76 @@ abstract class E2ETestTask : DefaultTask() {
         val duration = System.currentTimeMillis() - targetStartTime
         listOf(result.copy(durationMs = duration))
       } else {
-        val executor = Executors.newFixedThreadPool(effectiveTargets.size)
-        val res = try {
-          val futures = mutableListOf<Future<TargetResult>>()
+        val allMultiTargetClasses = multiTargetClasses.orNull ?: emptyList()
+        val relevantMultiTargetClasses = filteredClasses.filter { it in allMultiTargetClasses }
+        val selectedMultiTargetMethods = resolveSelectedMultiTargetMethods(relevantMultiTargetClasses)
+        val scopedActorTargetMap = resolveScopedMultiTargetActorMap(selectedMultiTargetMethods)
+        val requiredTargets = scopedActorTargetMap.values.distinct()
 
-          effectiveTargets.forEach { target ->
-            val future = executor.submit<TargetResult> {
-              val targetStartTime = System.currentTimeMillis()
-              try {
-                val result = executeTarget(target, filteredClasses, activeProcesses, activeForwardedPorts, resolvedHost, finalAndroidSerial, finalIosDevice)
-                val duration = System.currentTimeMillis() - targetStartTime
-                result.copy(durationMs = duration)
-              } catch (e: Exception) {
-                val duration = System.currentTimeMillis() - targetStartTime
-                TargetResult(target, false, e.message ?: "Execution failed", duration)
-              }
-            }
-            futures.add(future)
-          }
-
-          futures.map { it.get() }
-        } finally {
-          executor.shutdown()
+        val unsupportedMultiTargets = requiredTargets.filter { it != "desktop" && it != "wasm" }
+        if (unsupportedMultiTargets.isNotEmpty() && relevantMultiTargetClasses.isNotEmpty() && effectiveTargets.size > 1) {
+          throw GradleException(
+            "Multi-target E2E execution supports Desktop (JVM) and Web (Wasm) in Parikshan 0.1.0. " +
+              "Unsupported target(s) declared in selected tests: [${unsupportedMultiTargets.joinToString()}]. " +
+              "Android and iOS multi-target support is planned for 0.2.0."
+          )
         }
-        res
+
+        val hasAllRequiredTargets = requiredTargets.isNotEmpty() && requiredTargets.all { it in effectiveTargets }
+        val willRunMultiTarget = hasAllRequiredTargets && relevantMultiTargetClasses.isNotEmpty() && effectiveTargets.size > 1
+        val isMultiTargetOnlyFilter = willRunMultiTarget && isExclusiveMultiTargetMethodFilter(filteredClasses, selectedMultiTargetMethods)
+
+        val res = if (isMultiTargetOnlyFilter) {
+          logger.lifecycle("Parikshan: Test filter matches only multi-target method(s); skipping redundant single-target passes.")
+          emptyList()
+        } else {
+          val executor = Executors.newFixedThreadPool(effectiveTargets.size)
+          try {
+            val futures = mutableListOf<Future<TargetResult>>()
+
+            effectiveTargets.forEach { target ->
+              val future = executor.submit<TargetResult> {
+                val targetStartTime = System.currentTimeMillis()
+                try {
+                  val result = executeTarget(target, filteredClasses, activeProcesses, activeForwardedPorts, resolvedHost, finalAndroidSerial, finalIosDevice)
+                  val duration = System.currentTimeMillis() - targetStartTime
+                  result.copy(durationMs = duration)
+                } catch (e: Exception) {
+                  val duration = System.currentTimeMillis() - targetStartTime
+                  TargetResult(target, false, e.message ?: "Execution failed", duration)
+                }
+              }
+              futures.add(future)
+            }
+
+            futures.map { it.get() }
+          } finally {
+            executor.shutdown()
+          }
+        }
+
+        val multiTargetResults = if (willRunMultiTarget) {
+          logger.lifecycle("\nParikshan: Starting multi-target execution for: ${relevantMultiTargetClasses.joinToString()}...")
+          val targetStartTime = System.currentTimeMillis()
+          val multiTargetResult = try {
+            executeMultiTarget(
+              activeTargets = requiredTargets,
+              classes = relevantMultiTargetClasses,
+              scopedActorTargetMap = scopedActorTargetMap,
+              activeProcesses = activeProcesses,
+              finalAndroidSerial = finalAndroidSerial,
+              finalIosDevice = finalIosDevice
+            )
+          } catch (e: Exception) {
+            TargetResult("multi-target", false, e.message ?: "Multi-target execution failed")
+          }
+          val duration = System.currentTimeMillis() - targetStartTime
+          listOf(multiTargetResult.copy(durationMs = duration))
+        } else {
+          emptyList()
+        }
+
+        res + multiTargetResults
       }
     } finally {
       try {
@@ -535,6 +614,79 @@ abstract class E2ETestTask : DefaultTask() {
     val message: String,
     val durationMs: Long = 0L
   )
+
+  private fun resolveScopedInstancesForClasses(classes: List<String>): List<String> {
+    val byClass = autoDiscoveredInstancesByClass.orNull ?: emptyMap()
+    if (byClass.isNotEmpty()) {
+      val scoped = classes.flatMap { clazz ->
+        byClass[clazz]?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+      }.distinct()
+      return scoped
+    }
+    return autoDiscoveredInstances.getOrElse(emptyList())
+  }
+
+  private fun resolveSelectedMultiTargetMethods(classes: List<String>): List<String> {
+    val allDiscoveredMethods = multiTargetMethods.orNull ?: emptyList()
+    if (classes.isEmpty()) return emptyList()
+    val result = mutableListOf<String>()
+    classes.forEach { testClass ->
+      val methodsForClass = allDiscoveredMethods.filter { it.startsWith("$testClass#") }
+      val lastDotIdx = testsPattern.lastIndexOf('.')
+      val methodPart = if (lastDotIdx >= 0) testsPattern.substring(lastDotIdx + 1) else ""
+      val isMethodFilter = methodPart.isNotEmpty() && !methodPart.contains('*') && !methodPart.contains('?') &&
+        (methodPart.firstOrNull()?.isLowerCase() == true || testsPattern.length > testClass.length)
+
+      if (isMethodFilter) {
+        val requested = "$testClass#$methodPart"
+        if (methodsForClass.contains(requested)) {
+          result.add(requested)
+        }
+      } else {
+        result.addAll(methodsForClass)
+      }
+    }
+    return result.distinct()
+  }
+
+  private fun isExclusiveMultiTargetMethodFilter(
+    filteredClasses: List<String>,
+    selectedMultiTargetMethods: List<String>
+  ): Boolean {
+    if (testsPattern.isBlank() || filteredClasses.size != 1 || selectedMultiTargetMethods.isEmpty()) return false
+    val testClass = filteredClasses.first()
+    val lastDotIdx = testsPattern.lastIndexOf('.')
+    val methodPart = if (lastDotIdx >= 0) testsPattern.substring(lastDotIdx + 1) else ""
+    val isMethodFilter = methodPart.isNotEmpty() && !methodPart.contains('*') && !methodPart.contains('?') &&
+      (methodPart.firstOrNull()?.isLowerCase() == true || testsPattern.length > testClass.length)
+    if (!isMethodFilter) return false
+    return selectedMultiTargetMethods == listOf("$testClass#$methodPart")
+  }
+
+  private fun resolveScopedMultiTargetActorMap(selectedMethods: List<String>): Map<String, String> {
+    val perMethodEncoded = multiTargetActorMapsByMethod.orNull ?: emptyMap()
+    if (selectedMethods.isNotEmpty() && perMethodEncoded.isNotEmpty()) {
+      val merged = linkedMapOf<String, String>()
+      val actorSourceMethod = mutableMapOf<String, String>()
+      selectedMethods.forEach { methodSpec ->
+        val encoded = perMethodEncoded[methodSpec] ?: return@forEach
+        encoded.split(",").filter { it.contains("=") }.forEach { entry ->
+          val (actor, target) = entry.split("=", limit = 2)
+          val existing = merged[actor]
+          if (existing != null && existing != target) {
+            throw GradleException(
+              "Conflicting target assignments for actor '$actor': '$existing' in ${actorSourceMethod[actor]} vs '$target' in $methodSpec. " +
+                "In Parikshan 0.1.0, use distinct actor names or filter to a single test method via --tests."
+            )
+          }
+          merged[actor] = target
+          actorSourceMethod[actor] = methodSpec
+        }
+      }
+      if (merged.isNotEmpty()) return merged
+    }
+    return autoDiscoveredInstanceTargets.orNull ?: emptyMap()
+  }
 
   private fun executeTarget(
     target: String,
@@ -579,10 +731,20 @@ abstract class E2ETestTask : DefaultTask() {
             System.clearProperty("parikshan.desktop.windowY")
           }
 
+          val instanceList = resolveScopedInstancesForClasses(classes)
+          val isMultiInstance = instanceList.size > 1 || (instanceList.size == 1 && instanceList.first() != "desktop")
+
+          val primaryInstance = if (isMultiInstance) instanceList.first() else "desktop"
+          val secondaryInstances = if (isMultiInstance) instanceList.drop(1) else emptyList()
+          val multiClasses = multiInstanceClasses.orNull ?: emptyList()
+          val multiInstanceClassesInSuite = classes.filter { it in multiClasses }
+          val singleInstanceClassesInSuite = classes.filter { it !in multiClasses }
+
           val jarFile = appJarFile.orNull?.asFile
-          val resolvedPort = if (canReuse && session != null) {
+          val reusableSession = if (canReuse) session else null
+          val resolvedPort = if (reusableSession != null) {
             logger.lifecycle("Parikshan [$target]: Keeping active instance alive (skipping build/launch).")
-            session.port
+            reusableSession.port
           } else {
             if (session != null) {
               logger.lifecycle("Parikshan [$target]: Active instance is stale or unhealthy. Relaunching...")
@@ -598,60 +760,243 @@ abstract class E2ETestTask : DefaultTask() {
               host = host.get(),
               logger = logger
             )
+            val targetBaseDir = File(buildDir.get().asFile, "parikshan/$target").apply { mkdirs() }
+            var effectivePort = port
             if (jarFile != null) {
-              DesktopProcess.start(
-                jar = jarFile,
-                token = token.get(),
-                logFile = File(buildDir.get().asFile, "parikshan/${target}-app-logs.log"),
-                manifestFile = desktopLaunchManifestFile.get().asFile,
-                appArgs = appArgs.get(),
-                host = host.get(),
-                port = port,
-                timeoutMs = 15000L,
-                pollMs = 250L,
-                title = title.orNull,
-                background = true
-              )
-              writeSession(target, TargetSession(token.get(), port, System.currentTimeMillis()))
+              if (isMultiInstance) {
+                desktopLaunchManifestFile.get().asFile.delete()
+                logger.lifecycle("Parikshan [$target]: Spawning primary desktop instance for: $primaryInstance")
+                val launched = DesktopProcessManager.launchInstances(
+                  jarFile = jarFile,
+                  instances = listOf(primaryInstance),
+                  baseOutputDir = targetBaseDir,
+                  preferredWindowWidth = size?.first ?: 800,
+                  preferredWindowHeight = size?.second ?: 700,
+                  originX = pos?.first ?: 50,
+                  originY = pos?.second ?: 50,
+                  appArgs = appArgs.get(),
+                  host = host.get(),
+                  timeoutMs = 15000L,
+                  pollMs = 250L,
+                  titlePrefix = title.orNull,
+                  background = true
+                )
+                if (launched.isNotEmpty()) {
+                  val primary = launched.first()
+                  effectivePort = primary.port
+                  writeSession(target, TargetSession(primary.token, primary.port, System.currentTimeMillis()))
+                }
+              } else {
+                DesktopProcess.start(
+                  jar = jarFile,
+                  token = token.get(),
+                  logFile = File(buildDir.get().asFile, "parikshan/${target}-app-logs.log"),
+                  manifestFile = desktopLaunchManifestFile.get().asFile,
+                  appArgs = appArgs.get(),
+                  host = host.get(),
+                  port = port,
+                  timeoutMs = 15000L,
+                  pollMs = 250L,
+                  title = title.orNull,
+                  background = true
+                )
+                writeSession(target, TargetSession(token.get(), port, System.currentTimeMillis()))
+              }
             } else {
               logger.lifecycle("Parikshan [$target]: No application JAR was provided. Skipping application startup; running tests against an external or manually-started instance.")
             }
-            port
+            effectivePort
           }
 
-          val activeToken = if (canReuse && session != null) session.token else token.get()
+          val targetBaseDir = File(buildDir.get().asFile, "parikshan/$target").apply { mkdirs() }
+          val targetSessionsDir = File(targetBaseDir, "sessions").apply { mkdirs() }
+          val activePort = if (isMultiInstance && jarFile != null) {
+            val primarySession = SessionStore.readInstanceSession(targetSessionsDir, primaryInstance)
+            primarySession?.port ?: resolvedPort
+          } else {
+            resolvedPort
+          }
+          val activeToken = if (reusableSession != null) reusableSession.token else {
+            if (isMultiInstance && jarFile != null) {
+              val primarySession = SessionStore.readInstanceSession(targetSessionsDir, primaryInstance)
+              primarySession?.token ?: token.get()
+            } else {
+              token.get()
+            }
+          }
           val systemProps = mutableMapOf(
             "parikshan.target" to target,
+            "parikshan.activeTargets" to target,
             "parikshan.host" to host.get(),
-            "parikshan.port" to resolvedPort.toString(),
+            "parikshan.port" to activePort.toString(),
             "parikshan.token" to activeToken,
-            "parikshan.desktop.launchManifest" to desktopLaunchManifestFile.get().asFile.absolutePath
+            "parikshan.desktop.launchManifest" to desktopLaunchManifestFile.get().asFile.absolutePath,
+            "parikshan.projectRootDir" to projectRootDir.get()
           )
-          System.getProperty("parikshan.desktop.windowX")?.let { systemProps["parikshan.desktop.windowX"] = it }
-          System.getProperty("parikshan.desktop.windowY")?.let { systemProps["parikshan.desktop.windowY"] = it }
-          System.getProperty("parikshan.desktop.windowWidth")?.let { systemProps["parikshan.desktop.windowWidth"] = it }
-          System.getProperty("parikshan.desktop.windowHeight")?.let { systemProps["parikshan.desktop.windowHeight"] = it }
+          if (isMultiInstance) {
+            systemProps["parikshan.instances"] = instanceList.joinToString(",")
+            systemProps["parikshan.sessionsDir"] = targetSessionsDir.absolutePath
+          }
+          pos?.let {
+            systemProps["parikshan.desktop.windowX"] = it.first.toString()
+            systemProps["parikshan.desktop.windowY"] = it.second.toString()
+          }
+          size?.let {
+            systemProps["parikshan.desktop.windowWidth"] = it.first.toString()
+            systemProps["parikshan.desktop.windowHeight"] = it.second.toString()
+          }
           if (System.getProperty("parikshan.background") == "true") {
             systemProps["parikshan.background"] = "true"
           }
-          logger.lifecycle("Parikshan [$target]: Running test suite across ${classes.size} classes...")
-          val exitCode = spawnTestJvmForClasses(
-            target = target,
-            testClasses = classes,
-            systemProperties = systemProps,
-            activeProcesses = activeProcesses
-          )
-          if (exitCode != 0) {
-            classes.forEach { testClass ->
-              printTestFailures(target, testClass)
+
+          val shouldPartition = isMultiInstance && jarFile != null && singleInstanceClassesInSuite.isNotEmpty() && multiInstanceClassesInSuite.isNotEmpty() && secondaryInstances.isNotEmpty()
+
+          val exitCode = if (shouldPartition) {
+            val singleSystemProps = systemProps.toMutableMap()
+            singleSystemProps["parikshan.instances"] = primaryInstance
+            logger.lifecycle("Parikshan [$target]: Running single-instance suite across ${singleInstanceClassesInSuite.size} classes...")
+            val exit1 = spawnTestJvmForClasses(
+              target = target,
+              testClasses = singleInstanceClassesInSuite,
+              systemProperties = singleSystemProps,
+              activeProcesses = activeProcesses,
+              reportSubDir = "single"
+            )
+            if (exit1 != 0) {
+              singleInstanceClassesInSuite.forEach { testClass ->
+                printTestFailures(target, testClass)
+              }
+              if (!keepAlive) {
+                DesktopProcessManager.stopAll(baseOutputDir = targetBaseDir, host = host.get())
+                clearSession("desktop")
+              }
+              return createTargetResult("desktop", false, classes, "Single-instance test execution failed (exit code $exit1). Check logs at build/parikshan/logs/desktop-*.log")
             }
-            if (!keepAlive) {
-              DesktopProcess.stop(
+
+            logger.lifecycle("Parikshan [$target]: Spawning secondary multi-instance(s) JIT for: $secondaryInstances")
+            try {
+              DesktopProcessManager.launchInstances(
+                jarFile = jarFile,
+                instances = secondaryInstances,
+                baseOutputDir = targetBaseDir,
+                preferredWindowWidth = size?.first ?: 800,
+                preferredWindowHeight = size?.second ?: 700,
+                originX = pos?.first ?: 50,
+                originY = pos?.second ?: 50,
+                appArgs = appArgs.get(),
                 host = host.get(),
-                port = resolvedPort,
-                token = activeToken,
-                manifestFile = desktopLaunchManifestFile.get().asFile
+                timeoutMs = 15000L,
+                pollMs = 250L,
+                titlePrefix = title.orNull,
+                background = true,
+                startIndex = 1
               )
+            } catch (t: Throwable) {
+              if (!keepAlive) {
+                DesktopProcessManager.stopAll(baseOutputDir = targetBaseDir, host = host.get())
+                clearSession("desktop")
+              }
+              throw t
+            }
+
+            val multiSystemProps = systemProps.toMutableMap()
+            multiSystemProps["parikshan.instances"] = instanceList.joinToString(",")
+            logger.lifecycle("Parikshan [$target]: Running multi-instance suite across ${multiInstanceClassesInSuite.size} classes...")
+            val exit2 = try {
+              spawnTestJvmForClasses(
+                target = target,
+                testClasses = multiInstanceClassesInSuite,
+                systemProperties = multiSystemProps,
+                activeProcesses = activeProcesses,
+                reportSubDir = "multi-instance"
+              )
+            } finally {
+              if (!keepAlive) {
+                logger.lifecycle("Parikshan [$target]: Tearing down secondary multi-instance(s): $secondaryInstances")
+                secondaryInstances.forEach {
+                  DesktopProcessManager.stopInstance(instanceId = it, baseOutputDir = targetBaseDir, host = host.get())
+                }
+              }
+            }
+
+            if (exit2 != 0) {
+              multiInstanceClassesInSuite.forEach { testClass ->
+                printTestFailures(target, testClass)
+              }
+            }
+            exit2
+          } else {
+            if (isMultiInstance && jarFile != null && singleInstanceClassesInSuite.isEmpty() && secondaryInstances.isNotEmpty()) {
+              logger.lifecycle("Parikshan [$target]: Spawning secondary multi-instance(s) for: $secondaryInstances")
+              try {
+                DesktopProcessManager.launchInstances(
+                  jarFile = jarFile,
+                  instances = secondaryInstances,
+                  baseOutputDir = targetBaseDir,
+                  preferredWindowWidth = size?.first ?: 800,
+                  preferredWindowHeight = size?.second ?: 700,
+                  originX = pos?.first ?: 50,
+                  originY = pos?.second ?: 50,
+                  appArgs = appArgs.get(),
+                  host = host.get(),
+                  timeoutMs = 15000L,
+                  pollMs = 250L,
+                  titlePrefix = title.orNull,
+                  background = true,
+                  startIndex = 1
+                )
+              } catch (t: Throwable) {
+                if (!keepAlive) {
+                  DesktopProcessManager.stopAll(baseOutputDir = targetBaseDir, host = host.get())
+                  clearSession("desktop")
+                }
+                throw t
+              }
+            }
+            val activeInstances = if (isMultiInstance && multiInstanceClassesInSuite.isEmpty()) {
+              primaryInstance
+            } else {
+              instanceList.joinToString(",")
+            }
+            val effectiveSystemProps = systemProps.toMutableMap()
+            if (isMultiInstance) {
+              effectiveSystemProps["parikshan.instances"] = activeInstances
+            }
+            logger.lifecycle("Parikshan [$target]: Running test suite across ${classes.size} classes...")
+            val singleExit = try {
+              spawnTestJvmForClasses(
+                target = target,
+                testClasses = classes,
+                systemProperties = effectiveSystemProps,
+                activeProcesses = activeProcesses
+              )
+            } finally {
+              if (!keepAlive && isMultiInstance && jarFile != null && secondaryInstances.isNotEmpty()) {
+                logger.lifecycle("Parikshan [$target]: Tearing down secondary multi-instance(s): $secondaryInstances")
+                secondaryInstances.forEach {
+                  DesktopProcessManager.stopInstance(instanceId = it, baseOutputDir = targetBaseDir, host = host.get())
+                }
+              }
+            }
+            if (singleExit != 0) {
+              classes.forEach { testClass ->
+                printTestFailures(target, testClass)
+              }
+            }
+            singleExit
+          }
+          if (exitCode != 0) {
+            if (!keepAlive) {
+              if (isMultiInstance) {
+                DesktopProcessManager.stopAll(baseOutputDir = targetBaseDir, host = host.get())
+              } else {
+                DesktopProcess.stop(
+                  host = host.get(),
+                  port = resolvedPort,
+                  token = activeToken,
+                  manifestFile = desktopLaunchManifestFile.get().asFile
+                )
+              }
               clearSession("desktop")
             }
             return createTargetResult("desktop", false, classes, "Test class execution failed (exit code $exitCode). Check logs at build/parikshan/logs/desktop-*.log")
@@ -670,12 +1015,16 @@ abstract class E2ETestTask : DefaultTask() {
             }
           } else {
             if (jarFile != null) {
-              DesktopProcess.stop(
-                host = host.get(),
-                port = resolvedPort,
-                token = activeToken,
-                manifestFile = desktopLaunchManifestFile.get().asFile
-              )
+              if (isMultiInstance) {
+                DesktopProcessManager.stopAll(baseOutputDir = targetBaseDir, host = host.get())
+              } else {
+                DesktopProcess.stop(
+                  host = host.get(),
+                  port = resolvedPort,
+                  token = activeToken,
+                  manifestFile = desktopLaunchManifestFile.get().asFile
+                )
+              }
               clearSession(target)
             }
           }
@@ -692,9 +1041,10 @@ abstract class E2ETestTask : DefaultTask() {
                        isTargetFresh("wasm") && 
                        session.timestamp >= minBinaryTimestamp
 
-        val resolvedPort = if (canReuse && session != null) {
+        val reusableWasmSession = if (canReuse) session else null
+        val resolvedPort = if (reusableWasmSession != null) {
           logger.lifecycle("Parikshan [wasm]: Keeping active instance alive (skipping build/launch).")
-          session.port
+          reusableWasmSession.port
         } else {
           if (session != null) {
             logger.lifecycle("Parikshan [wasm]: Active instance is stale or unhealthy. Relaunching...")
@@ -714,14 +1064,41 @@ abstract class E2ETestTask : DefaultTask() {
           boundPort
         }
 
-        val activeToken = if (canReuse && session != null) session.token else token.get()
+        val activeToken = reusableWasmSession?.token ?: token.get()
+
+        val instanceList = resolveScopedInstancesForClasses(classes)
+        val isMultiInstance = instanceList.size > 1 || (instanceList.size == 1 && instanceList.first() != "wasm")
+
+        val targetBaseDir = File(buildDir.get().asFile, "parikshan/wasm").apply { mkdirs() }
+        val sessionsDir = File(targetBaseDir, "sessions").apply { mkdirs() }
+        if (isMultiInstance) {
+          logger.lifecycle("Parikshan [wasm]: Setting up multi-instance cluster for: $instanceList")
+          instanceList.forEach { instanceId ->
+            val dataDir = File(targetBaseDir, "data/$instanceId").apply { mkdirs() }
+            val targetSession = TargetSession(
+              token = activeToken,
+              port = resolvedPort,
+              timestamp = System.currentTimeMillis(),
+              instanceId = instanceId,
+              target = "wasm",
+              pid = null,
+              dataDir = dataDir.absolutePath
+            )
+            SessionStore.writeInstanceSession(sessionsDir, targetSession)
+          }
+        }
 
         val systemProps = mutableMapOf(
           "parikshan.target" to "wasm",
+          "parikshan.activeTargets" to "wasm",
           "parikshan.token" to activeToken,
           "parikshan.wasm.url" to "http://127.0.0.1:$resolvedPort",
           "parikshan.projectRootDir" to projectRootDir.get()
         )
+        if (isMultiInstance) {
+          systemProps["parikshan.instances"] = instanceList.joinToString(",")
+          systemProps["parikshan.sessionsDir"] = sessionsDir.absolutePath
+        }
         val isAppModeActive = appMode || (layout == "side-by-side")
         systemProps["parikshan.wasm.appMode"] = isAppModeActive.toString()
         val resolvedWasmSize = parseSize(wasmWindowSize.takeIf { it.isNotBlank() } ?: windowSize) ?: Pair(800, 600)
@@ -739,7 +1116,8 @@ abstract class E2ETestTask : DefaultTask() {
           systemProps["parikshan.wasm.windowX"] = resolvedWasmPos.first.toString()
           systemProps["parikshan.wasm.windowY"] = resolvedWasmPos.second.toString()
         }
-        logger.lifecycle("Parikshan [wasm]: Running test suite across ${classes.size} classes in single browser window...")
+        val windowMsg = if (isMultiInstance) "multi-instance cluster: $instanceList" else "single browser window"
+        logger.lifecycle("Parikshan [wasm]: Running test suite across ${classes.size} classes in $windowMsg...")
         val exitCode = spawnTestJvmForClasses(
           target = "wasm",
           testClasses = classes,
@@ -750,6 +1128,11 @@ abstract class E2ETestTask : DefaultTask() {
           classes.forEach { testClass ->
             printTestFailures("wasm", testClass)
           }
+          if (isMultiInstance) {
+            instanceList.forEach { instanceId ->
+              SessionStore.clearInstanceSession(sessionsDir, instanceId)
+            }
+          }
           if (!keepAlive) {
             WasmServer.stop()
             clearSession("wasm")
@@ -757,6 +1140,11 @@ abstract class E2ETestTask : DefaultTask() {
           return createTargetResult("wasm", false, classes, "Test class execution failed (exit code $exitCode). Check logs at build/parikshan/logs/wasm-*.log")
         }
 
+        if (isMultiInstance) {
+          instanceList.forEach { instanceId ->
+            SessionStore.clearInstanceSession(sessionsDir, instanceId)
+          }
+        }
         if (!keepAlive) {
           WasmServer.stop()
           clearSession("wasm")
@@ -1301,7 +1689,8 @@ abstract class E2ETestTask : DefaultTask() {
     target: String,
     testClass: String,
     systemProperties: Map<String, String>,
-    activeProcesses: MutableList<Process>
+    activeProcesses: MutableList<Process>,
+    selectedMethods: List<String> = emptyList()
   ): Int {
     val isWindows = System.getProperty("os.name").lowercase().contains("win")
     val javaBin = File(System.getProperty("java.home"), "bin/java" + (if (isWindows) ".exe" else "")).absolutePath
@@ -1372,16 +1761,23 @@ abstract class E2ETestTask : DefaultTask() {
     pbArgs.add("execute")
     pbArgs.add("--reports-dir")
     pbArgs.add(reportsDir)
-    val lastDotIdx = testsPattern.lastIndexOf('.')
-    val methodPart = if (lastDotIdx >= 0) testsPattern.substring(lastDotIdx + 1) else ""
-    val isMethodFilter = methodPart.isNotEmpty() && !methodPart.contains('*') && !methodPart.contains('?') && 
-                         (methodPart.firstOrNull()?.isLowerCase() == true || testsPattern.length > testClass.length)
-    if (isMethodFilter) {
-      pbArgs.add("--select-method")
-      pbArgs.add("$testClass#$methodPart")
+    if (selectedMethods.isNotEmpty()) {
+      selectedMethods.forEach { methodSpec ->
+        pbArgs.add("--select-method")
+        pbArgs.add(if (methodSpec.contains("#")) methodSpec else "$testClass#$methodSpec")
+      }
     } else {
-      pbArgs.add("--select-class")
-      pbArgs.add(testClass)
+      val lastDotIdx = testsPattern.lastIndexOf('.')
+      val methodPart = if (lastDotIdx >= 0) testsPattern.substring(lastDotIdx + 1) else ""
+      val isMethodFilter = methodPart.isNotEmpty() && !methodPart.contains('*') && !methodPart.contains('?') && 
+                           (methodPart.firstOrNull()?.isLowerCase() == true || testsPattern.length > testClass.length)
+      if (isMethodFilter) {
+        pbArgs.add("--select-method")
+        pbArgs.add("$testClass#$methodPart")
+      } else {
+        pbArgs.add("--select-class")
+        pbArgs.add(testClass)
+      }
     }
 
     val logFile = File(buildDir.get().asFile, "parikshan/logs/${target}-${testClass}.log")
@@ -1418,7 +1814,8 @@ abstract class E2ETestTask : DefaultTask() {
     target: String,
     testClasses: List<String>,
     systemProperties: Map<String, String>,
-    activeProcesses: MutableList<Process>
+    activeProcesses: MutableList<Process>,
+    reportSubDir: String = ""
   ): Int {
     if (testClasses.isEmpty()) return 0
     if (testClasses.size == 1) return spawnTestJvm(target, testClasses.first(), systemProperties, activeProcesses)
@@ -1483,7 +1880,11 @@ abstract class E2ETestTask : DefaultTask() {
       pbArgs.add("-Dparikshan.video.granularity=$granularity")
     }
 
-    val reportsDirFile = File(buildDir.get().asFile, "test-results/e2eTest/$target")
+    val reportsDirFile = if (reportSubDir.isNotEmpty()) {
+      File(buildDir.get().asFile, "test-results/e2eTest/$target/$reportSubDir")
+    } else {
+      File(buildDir.get().asFile, "test-results/e2eTest/$target")
+    }
     reportsDirFile.mkdirs()
     val reportsDir = reportsDirFile.absolutePath
     pbArgs.add("-Dparikshan.video.outputDir=" + File(buildDir.get().asFile, "parikshan/videos/$target").absolutePath)
@@ -1503,7 +1904,9 @@ abstract class E2ETestTask : DefaultTask() {
 
     val logsDir = File(buildDir.get().asFile, "parikshan/logs")
     logsDir.mkdirs()
-    logsDir.listFiles { f -> f.name.startsWith("${target}-") }?.forEach { it.delete() }
+    if (reportSubDir.isEmpty() || reportSubDir == "single") {
+      logsDir.listFiles { f -> f.name.startsWith("${target}-") }?.forEach { it.delete() }
+    }
 
     val classWriters = testClasses.associateWith { testClass ->
       java.io.PrintWriter(File(logsDir, "${target}-${testClass}.log").bufferedWriter())
@@ -1596,8 +1999,13 @@ abstract class E2ETestTask : DefaultTask() {
   private fun parseTestMetrics(target: String, testClass: String): TargetMetrics? {
     val simpleName = testClass.substringAfterLast('.')
 
-    val xmlReport = File(buildDir.get().asFile, "test-results/e2eTest/$target/TEST-junit-jupiter.xml")
-    if (xmlReport.exists()) {
+    val targetResultsDir = File(buildDir.get().asFile, "test-results/e2eTest/$target")
+    val xmlReports = if (targetResultsDir.exists()) {
+      targetResultsDir.walkTopDown().filter { it.isFile && it.name.startsWith("TEST-") && it.extension == "xml" }.toList()
+    } else {
+      emptyList()
+    }
+    for (xmlReport in xmlReports) {
       val xmlContent = xmlReport.readText()
       val testCaseRegex = Regex("<testcase [^>]*classname=\"([^\"]+)\"[^>]*>(.*?)</testcase>", RegexOption.DOT_MATCHES_ALL)
       var found = 0
@@ -1605,10 +2013,12 @@ abstract class E2ETestTask : DefaultTask() {
       testCaseRegex.findAll(xmlContent).forEach { match ->
         val clazz = match.groupValues[1]
         if (clazz == testClass || clazz.endsWith(".$simpleName")) {
-          found++
           val body = match.groupValues[2]
-          if (body.contains("<failure") || body.contains("<error")) {
-            failed++
+          if (!body.contains("<skipped")) {
+            found++
+            if (body.contains("<failure") || body.contains("<error")) {
+              failed++
+            }
           }
         }
       }
@@ -1997,6 +2407,7 @@ abstract class E2ETestTask : DefaultTask() {
                 System.clearProperty("parikshan.desktop.windowY")
               }
 
+              val jarFile = appJarFile.orNull?.asFile
               val resolvedPort = if (canReuse && session != null) {
                 logger.lifecycle("Parikshan [desktop]: Keeping active instance alive (skipping build/launch).")
                 session.port
@@ -2015,21 +2426,25 @@ abstract class E2ETestTask : DefaultTask() {
                   host = host.get(),
                   logger = logger
                 )
-                DesktopProcess.start(
-                  jar = appJarFile.get().asFile,
-                  token = token.get(),
-                  logFile = File(buildDir.get().asFile, "parikshan/desktop-app-logs.log"),
-                  manifestFile = desktopLaunchManifestFile.get().asFile,
-                  appArgs = appArgs.get(),
-                  host = host.get(),
-                  port = port,
-                  timeoutMs = 15000L,
-                  pollMs = 250L,
-                  title = title.orNull,
-                  background = true
-                )
-                writeSession("desktop", TargetSession(token.get(), port, System.currentTimeMillis()))
-                port
+                if (jarFile != null) {
+                  DesktopProcess.start(
+                    jar = jarFile,
+                    token = token.get(),
+                    logFile = File(buildDir.get().asFile, "parikshan/desktop-app-logs.log"),
+                    manifestFile = desktopLaunchManifestFile.get().asFile,
+                    appArgs = appArgs.get(),
+                    host = host.get(),
+                    port = port,
+                    timeoutMs = 15000L,
+                    pollMs = 250L,
+                    title = title.orNull,
+                    background = true
+                  )
+                  writeSession("desktop", TargetSession(token.get(), port, System.currentTimeMillis()))
+                  port
+                } else {
+                  port
+                }
               }
 
               desktopToken.set(if (canReuse && session != null) session.token else token.get())
@@ -2152,7 +2567,6 @@ abstract class E2ETestTask : DefaultTask() {
                   ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", androidApplicationId.get()).start().waitFor()
                 }
                 logger.lifecycle("Parikshan [android]: Device detected. Starting E2E execution on port $activePort...")
-                // 1. Start App
                 val startArgs = mutableListOf(
                   gradlew,
                   "-p", projectRootDir.get(),
@@ -2360,6 +2774,9 @@ abstract class E2ETestTask : DefaultTask() {
         systemProps["parikshan.target"] = "sync"
         systemProps["parikshan.sync.targets"] = activeTargets.joinToString(",")
         systemProps["parikshan.token"] = token.get()
+        systemProps["parikshan.projectRootDir"] = projectRootDir.get()
+        val syncSessionsDir = File(buildDir.get().asFile, "parikshan/sync/sessions").apply { mkdirs() }
+        systemProps["parikshan.sessionsDir"] = syncSessionsDir.absolutePath
 
         if (activeTargets.contains("desktop") || activeTargets.contains("jvm")) {
           systemProps["parikshan.desktop.host"] = host.get()
@@ -2438,7 +2855,7 @@ abstract class E2ETestTask : DefaultTask() {
         )
       }
 
-      val syncTargetLabel = "sync: ${activeTargets.joinToString(", ") { it.uppercase() }}"
+      val syncTargetLabel = "sync"
       createTargetResult(syncTargetLabel, runSuccess, classes, testFailureMessage)
     }
   }
@@ -2468,6 +2885,7 @@ abstract class E2ETestTask : DefaultTask() {
           writeSession("desktop", TargetSession(desktopToken, desktopPort, System.currentTimeMillis()))
         }
       } else {
+        DesktopProcessManager.stopAll(baseOutputDir = File(buildDir.get().asFile, "parikshan"), host = host.get())
         DesktopProcess.stop(
           host = host.get(),
           port = desktopPort,
@@ -2516,6 +2934,761 @@ abstract class E2ETestTask : DefaultTask() {
         }
         ProcessBuilder(stopArgs).apply { cleanXcodeEnv(this) }.start().waitFor()
         clearSession("ios")
+      }
+    }
+    val syncBaseDir = File(buildDir.get().asFile, "parikshan/sync")
+    val syncSessionsDir = File(syncBaseDir, "sessions")
+    if (syncSessionsDir.exists()) {
+      syncSessionsDir.listFiles()?.filter { it.extension == "json" && it.name != "active-session.json" }?.forEach {
+        runCatching { it.delete() }
+      }
+    }
+  }
+
+  private fun executeMultiTarget(
+    activeTargets: List<String>,
+    classes: List<String>,
+    scopedActorTargetMap: Map<String, String>,
+    activeProcesses: MutableList<Process>,
+    finalAndroidSerial: String?,
+    finalIosDevice: String
+  ): TargetResult {
+    val logger = logger
+    logger.lifecycle("Parikshan [multi-target]: Starting multi-target E2E execution for ${activeTargets.joinToString()}...")
+
+    return withTargetsLock(activeTargets) {
+      val desktopPort = java.util.concurrent.atomic.AtomicInteger(0)
+      val desktopToken = java.util.concurrent.atomic.AtomicReference("")
+      val wasmPort = java.util.concurrent.atomic.AtomicInteger(0)
+      val wasmToken = java.util.concurrent.atomic.AtomicReference("")
+      val androidPort = java.util.concurrent.atomic.AtomicInteger(0)
+      val androidToken = java.util.concurrent.atomic.AtomicReference("")
+      val androidSerial = java.util.concurrent.atomic.AtomicReference<String?>(null)
+      val iosPortVal = java.util.concurrent.atomic.AtomicInteger(0)
+      val iosTokenVal = java.util.concurrent.atomic.AtomicReference("")
+      val iosUdidVal = java.util.concurrent.atomic.AtomicReference("")
+      val bundleId = iosBundleId.orNull ?: ""
+
+      var bootSuccess = false
+      val bootProcesses = java.util.Collections.synchronizedList(mutableListOf<Process>())
+      val threads = mutableListOf<Thread>()
+      val cancelAndTeardownBoot = {
+        threads.forEach { runCatching { it.interrupt() } }
+        synchronized(bootProcesses) {
+          bootProcesses.forEach { proc ->
+            runCatching {
+              terminateProcessTree(proc.toHandle(), timeoutMs = 1000L)
+            }
+          }
+          bootProcesses.clear()
+        }
+      }
+
+      val instanceList = resolveScopedInstancesForClasses(classes).ifEmpty {
+        scopedActorTargetMap.keys.toList()
+      }
+
+      val instanceTargetMap = linkedMapOf<String, String>()
+      instanceList.forEach { item ->
+        if (item.contains(":")) {
+          val (name, target) = item.split(":", limit = 2)
+          instanceTargetMap[name.trim()] = when (target.trim().lowercase()) {
+            "jvm" -> "desktop"
+            "web" -> "wasm"
+            else -> target.trim().lowercase()
+          }
+        } else {
+          val discovered = scopedActorTargetMap[item]
+          if (discovered != null) {
+            instanceTargetMap[item] = discovered
+          }
+        }
+      }
+      if (instanceTargetMap.isEmpty() && scopedActorTargetMap.isNotEmpty()) {
+        instanceTargetMap.putAll(scopedActorTargetMap)
+      }
+
+      val unsupportedTargets = instanceTargetMap.values.filter { it != "desktop" && it != "wasm" }.distinct()
+      if (unsupportedTargets.isNotEmpty()) {
+        throw GradleException(
+          "Multi-target E2E execution supports Desktop (JVM) and Web (Wasm) in Parikshan 0.1.0. " +
+            "Unsupported target(s): [${unsupportedTargets.joinToString()}]. Android and iOS multi-target support is planned for 0.2.0."
+        )
+      }
+
+      val desktopInstances = if (instanceTargetMap.isNotEmpty()) {
+        instanceTargetMap.filter { it.value == "desktop" }.keys.toList()
+      } else if (instanceList.isNotEmpty()) {
+        instanceList
+      } else {
+        emptyList()
+      }
+
+      val wasmInstances = if (instanceTargetMap.isNotEmpty()) {
+        instanceTargetMap.filter { it.value == "wasm" }.keys.toList()
+      } else if (instanceList.isNotEmpty()) {
+        instanceList
+      } else {
+        emptyList()
+      }
+
+      val androidInstances = emptyList<String>()
+      val iosInstances = emptyList<String>()
+
+      val isMultiInstanceDesktop = desktopInstances.size > 1 || (desktopInstances.size == 1 && desktopInstances.first() != "desktop")
+      val multiTargetBaseDir = File(buildDir.get().asFile, "parikshan/multi-target").apply { mkdirs() }
+      val multiTargetSessionsDir = File(multiTargetBaseDir, "sessions").apply { mkdirs() }
+
+      try {
+        val gradleReclaimPorts = providers.gradleProperty("parikshan.reclaimPorts").orNull?.toBoolean() ?: false
+        val errors = java.util.concurrent.CopyOnWriteArrayList<Throwable>()
+
+        if (activeTargets.contains("desktop") || activeTargets.contains("jvm")) {
+          threads.add(Thread {
+            try {
+              val session = if (keepAlive) readSession("desktop") else null
+              val minBinaryTimestamp = getTargetOutputTimestamp("desktop")
+              val expectedDesktopPort = originalDesktopPort.get()
+              val healthy = session != null && session.port == expectedDesktopPort && checkTargetHealth(host.get(), session.port, session.token)
+              val fresh = isTargetFresh("desktop")
+              val canReuse = session != null && healthy && fresh && session.timestamp >= minBinaryTimestamp
+
+              val optDesktopSize = desktopWindowSize.takeIf { it.isNotBlank() } ?: windowSize
+              val size = parseSize(optDesktopSize)
+              val pos = parsePosition(desktopWindowPosition) ?: if (layout == "side-by-side") Pair(10, 50) else null
+              if (size != null) {
+                System.setProperty("parikshan.desktop.windowWidth", size.first.toString())
+                System.setProperty("parikshan.desktop.windowHeight", size.second.toString())
+              } else {
+                System.clearProperty("parikshan.desktop.windowWidth")
+                System.clearProperty("parikshan.desktop.windowHeight")
+              }
+              if (pos != null) {
+                System.setProperty("parikshan.desktop.windowX", pos.first.toString())
+                System.setProperty("parikshan.desktop.windowY", pos.second.toString())
+              } else {
+                System.clearProperty("parikshan.desktop.windowX")
+                System.clearProperty("parikshan.desktop.windowY")
+              }
+
+              val jarFile = appJarFile.orNull?.asFile
+              val reusableDesktopSession = if (canReuse) session else null
+              val resolvedPort = if (reusableDesktopSession != null) {
+                logger.lifecycle("Parikshan [multi-target]: Keeping active desktop instance alive (skipping build/launch).")
+                reusableDesktopSession.port
+              } else {
+                if (session != null) {
+                  logger.lifecycle("Parikshan [multi-target]: Active desktop instance is stale or unhealthy. Relaunching...")
+                  DesktopProcess.stop(
+                    host = host.get(),
+                    port = session.port,
+                    token = session.token,
+                    manifestFile = desktopLaunchManifestFile.get().asFile
+                  )
+                }
+                val port = PortConflictHandler.resolvePortAndCleanStale(
+                  originalPort = originalDesktopPort.get(),
+                  host = host.get(),
+                  logger = logger
+                )
+                if (jarFile != null) {
+                  if (isMultiInstanceDesktop) {
+                    logger.lifecycle("Parikshan [multi-target]: Spawning desktop instance(s) for: $desktopInstances")
+                    val launched = DesktopProcessManager.launchInstances(
+                      jarFile = jarFile,
+                      instances = desktopInstances,
+                      baseOutputDir = multiTargetBaseDir,
+                      preferredWindowWidth = size?.first ?: 800,
+                      preferredWindowHeight = size?.second ?: 700,
+                      originX = pos?.first ?: 50,
+                      originY = pos?.second ?: 50,
+                      appArgs = appArgs.get(),
+                      host = host.get(),
+                      timeoutMs = 15000L,
+                      pollMs = 250L,
+                      titlePrefix = title.orNull,
+                      background = true
+                    )
+                    if (launched.isNotEmpty()) {
+                      val primary = launched.first()
+                      writeSession("desktop", TargetSession(primary.token, primary.port, System.currentTimeMillis()))
+                      port
+                    } else {
+                      port
+                    }
+                  } else {
+                    DesktopProcess.start(
+                      jar = jarFile,
+                      token = token.get(),
+                      logFile = File(multiTargetBaseDir, "logs/desktop-app-logs.log").apply { parentFile.mkdirs() },
+                      manifestFile = desktopLaunchManifestFile.get().asFile,
+                      appArgs = appArgs.get(),
+                      host = host.get(),
+                      port = port,
+                      timeoutMs = 15000L,
+                      pollMs = 250L,
+                      title = title.orNull,
+                      background = true
+                    )
+                    writeSession("desktop", TargetSession(token.get(), port, System.currentTimeMillis()))
+                    val targetSession = TargetSession(
+                      token = token.get(),
+                      port = port,
+                      timestamp = System.currentTimeMillis(),
+                      instanceId = "desktop",
+                      target = "desktop",
+                      pid = null,
+                      dataDir = null
+                    )
+                    SessionStore.writeInstanceSession(multiTargetSessionsDir, targetSession)
+                    port
+                  }
+                } else {
+                  port
+                }
+              }
+
+              if (isMultiInstanceDesktop && jarFile != null) {
+                val primarySession = desktopInstances.firstOrNull()?.let { SessionStore.readInstanceSession(multiTargetSessionsDir, it) }
+                desktopPort.set(primarySession?.port ?: resolvedPort)
+                desktopToken.set(primarySession?.token ?: token.get())
+              } else {
+                desktopToken.set(reusableDesktopSession?.token ?: token.get())
+                desktopPort.set(resolvedPort)
+              }
+            } catch (e: Throwable) {
+              errors.add(e)
+            }
+          }.apply { name = "parikshan-boot-desktop"; start() })
+        }
+
+        if (activeTargets.contains("wasm")) {
+          threads.add(Thread {
+            try {
+              val session = if (keepAlive) readSession("wasm") else null
+              val minBinaryTimestamp = getTargetOutputTimestamp("wasm")
+              val expectedWasmPort = originalWasmPort.get()
+              val canReuse = session != null && 
+                             session.port == expectedWasmPort &&
+                             checkTargetHealth("127.0.0.1", session.port, session.token) && 
+                             isTargetFresh("wasm") && 
+                             session.timestamp >= minBinaryTimestamp
+
+              val reusableWasmSession = if (canReuse) session else null
+              val resolvedPort = if (reusableWasmSession != null) {
+                logger.lifecycle("Parikshan [multi-target]: Keeping active wasm instance alive (skipping build/launch).")
+                reusableWasmSession.port
+              } else {
+                if (session != null) {
+                  logger.lifecycle("Parikshan [multi-target]: Active wasm instance is stale or unhealthy. Relaunching...")
+                  WasmServer.stop()
+                }
+                val port = PortConflictHandler.resolvePortAndCleanStale(
+                  originalPort = originalWasmPort.get(),
+                  host = "127.0.0.1",
+                  logger = logger
+                )
+                val boundPort = WasmServer.start(port, wasmOutputDir.get().asFile)
+                val portFile = wasmPortFile.get().asFile
+                portFile.parentFile.mkdirs()
+                portFile.writeText(boundPort.toString())
+
+                writeSession("wasm", TargetSession(token.get(), boundPort, System.currentTimeMillis()))
+                boundPort
+              }
+
+              val activeWasmToken = reusableWasmSession?.token ?: token.get()
+              val effectiveWasmInstances = if (wasmInstances.isNotEmpty()) wasmInstances else listOf("wasm")
+              effectiveWasmInstances.forEach { actorId ->
+                val dataDir = File(multiTargetBaseDir, "data/$actorId").apply { mkdirs() }
+                val targetSession = TargetSession(
+                  token = activeWasmToken,
+                  port = resolvedPort,
+                  timestamp = System.currentTimeMillis(),
+                  instanceId = actorId,
+                  target = "wasm",
+                  pid = null,
+                  dataDir = dataDir.absolutePath
+                )
+                SessionStore.writeInstanceSession(multiTargetSessionsDir, targetSession)
+              }
+
+              wasmToken.set(activeWasmToken)
+              wasmPort.set(resolvedPort)
+            } catch (e: Throwable) {
+              errors.add(e)
+            }
+          }.apply { name = "parikshan-boot-wasm"; start() })
+        }
+
+        if (activeTargets.contains("android")) {
+          threads.add(Thread {
+            try {
+              val serial = AndroidTargetConfigurer.AndroidRecorder.resolveDeviceSerial(logger, File(projectRootDir.get()), finalAndroidSerial)
+              androidSerial.set(serial)
+              val session = if (keepAlive) readSession("android") else null
+              val defaultAndroidPort = 9879
+              val resolvedAndroidPort = session?.port ?: defaultAndroidPort
+              val resolvedToken = session?.token ?: token.get()
+              val isHealthy = session != null && session.port == defaultAndroidPort && checkTargetHealth("127.0.0.1", resolvedAndroidPort, resolvedToken)
+              val isFresh = isTargetFresh("android")
+              val minBinaryTimestamp = getTargetOutputTimestamp("android")
+              val canReuse = isHealthy && isFresh && session!!.timestamp >= minBinaryTimestamp
+
+              val activeToken = if (canReuse && session != null) session.token else token.get()
+              var activePort = if (canReuse && session != null) session.port else 9879
+              val gradlew = getGradlewExecutable(File(projectRootDir.get()))
+
+              androidPort.set(activePort)
+              androidToken.set(activeToken)
+
+              if (canReuse) {
+                logger.lifecycle("Parikshan [multi-target]: Keeping active android instance alive (skipping build/launch).")
+              } else {
+                val reclaim = reclaimPorts || gradleReclaimPorts
+                val devicePortState = checkDevicePortState(serial, 9879)
+                if (devicePortState.isBusy || !PortConflictHandler.isPortAvailable("127.0.0.1", 9879)) {
+                  val activeAppId = devicePortState.parikshanAppId
+                  if (activeAppId != null) {
+                    if (activeAppId == androidApplicationId.get()) {
+                      ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", androidApplicationId.get()).start().waitFor()
+                      ProcessBuilder("adb", "-s", serial, "forward", "--remove", "tcp:9879").start().waitFor()
+                      Thread.sleep(500)
+                    } else if (reclaim) {
+                      logger.lifecycle("Parikshan [android]: Port 9879 was held by '${activeAppId}'. Reclaiming port via --reclaim-ports...")
+                      ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", activeAppId).start().waitFor()
+                      ProcessBuilder("adb", "-s", serial, "forward", "--remove", "tcp:9879").start().waitFor()
+                      Thread.sleep(500)
+                    } else {
+                      var fbPort = 9880
+                      while (fbPort <= 65535) {
+                        if (PortConflictHandler.isPortAvailable("127.0.0.1", fbPort) && !checkDevicePortState(serial, fbPort).isBusy) {
+                          break
+                        }
+                        fbPort++
+                      }
+                      logger.lifecycle("Parikshan [android]: Port 9879 is held by another active application '${activeAppId}'. Falling back to host port $fbPort.")
+                      activePort = fbPort
+                    }
+                  } else {
+                    var fbPort = 9880
+                    while (fbPort <= 65535) {
+                      if (PortConflictHandler.isPortAvailable("127.0.0.1", fbPort) && !checkDevicePortState(serial, fbPort).isBusy) {
+                        break
+                      }
+                      fbPort++
+                    }
+                    logger.lifecycle("Parikshan [android]: Port 9879 is occupied by a non-Parikshan process or busy on device. Falling back to host port $fbPort.")
+                    activePort = fbPort
+                  }
+                }
+
+                androidPort.set(activePort)
+
+                if (session != null) {
+                  logger.lifecycle("Parikshan [multi-target]: Active android instance is stale or unhealthy. Relaunching...")
+                  ProcessBuilder("adb", "-s", serial, "forward", "--remove", "tcp:${session.port}").start().waitFor()
+                  ProcessBuilder("adb", "-s", serial, "shell", "am", "force-stop", androidApplicationId.get()).start().waitFor()
+                }
+                logger.lifecycle("Parikshan [multi-target]: Device detected. Starting E2E execution on port $activePort...")
+                val startArgs = mutableListOf(
+                  gradlew, "$projectPathPrefix:startParikshanAndroidApp",
+                  "-Pparikshan.token=${token.get()}",
+                  "-Pparikshan.port=$activePort",
+                  "-Pparikshan.e2e.active=true"
+                )
+                if (!serial.isNullOrBlank()) {
+                  startArgs.add("-Pparikshan.android.serial=$serial")
+                }
+                val startProcess = ProcessBuilder(startArgs).apply {
+                  cleanXcodeEnv(this)
+                  redirectErrorStream(true)
+                  val logF = File(multiTargetBaseDir, "logs/android-start.log")
+                  logF.parentFile.mkdirs()
+                  redirectOutput(logF)
+                }.start()
+                bootProcesses.add(startProcess)
+                val startExit = try {
+                  startProcess.waitFor()
+                } finally {
+                  bootProcesses.remove(startProcess)
+                }
+                if (startExit != 0) {
+                  throw GradleException("Failed to start Android app (exit code $startExit). Check build/parikshan/multi-target/logs/android-start.log")
+                }
+                writeSession("android", TargetSession(token.get(), activePort, System.currentTimeMillis()))
+                val effectiveAndroidInstances = if (androidInstances.isNotEmpty()) androidInstances else listOf("android")
+                effectiveAndroidInstances.forEach { actorId ->
+                  val targetSession = TargetSession(
+                    token = activeToken,
+                    port = activePort,
+                    timestamp = System.currentTimeMillis(),
+                    instanceId = actorId,
+                    target = "android",
+                    pid = null,
+                    dataDir = null
+                  )
+                  SessionStore.writeInstanceSession(multiTargetSessionsDir, targetSession)
+                }
+              }
+            } catch (e: Throwable) {
+              errors.add(e)
+              cancelAndTeardownBoot()
+            }
+          }.apply { name = "parikshan-boot-android"; start() })
+        }
+
+        if (activeTargets.contains("ios")) {
+          threads.add(Thread {
+            try {
+              val udid = getIosSimulatorUdid(finalIosDevice) ?: getBootedIosSimulatorUdid() ?: ""
+              iosUdidVal.set(udid)
+              val defaultIosPort = iosPort.get()
+              val session = if (keepAlive) readSession("ios") else null
+              val resolvedIosPort = session?.port ?: defaultIosPort
+              val resolvedToken = session?.token ?: token.get()
+              val isHealthy = session != null && session.port == defaultIosPort && checkTargetHealth("127.0.0.1", resolvedIosPort, resolvedToken)
+              val isFresh = isTargetFresh("ios")
+              val minBinaryTimestamp = getTargetOutputTimestamp("ios")
+              val canReuse = isHealthy && isFresh && session!!.timestamp >= minBinaryTimestamp
+
+              val activeToken = if (canReuse && session != null) session.token else token.get()
+              var activePort = if (canReuse && session != null) session.port else iosPort.get()
+              val gradlew = getGradlewExecutable(File(projectRootDir.get()))
+
+              iosPortVal.set(activePort)
+              iosTokenVal.set(activeToken)
+
+              if (canReuse) {
+                logger.lifecycle("Parikshan [multi-target]: Keeping active iOS instance alive (skipping build/launch).")
+              } else {
+                val reclaim = reclaimPorts || gradleReclaimPorts
+                val defaultIosPort = iosPort.get()
+
+                if (!PortConflictHandler.isPortAvailable("127.0.0.1", defaultIosPort)) {
+                  val activeAppId = PortConflictHandler.queryApplicationId("127.0.0.1", defaultIosPort)
+                  if (activeAppId != null) {
+                    if (activeAppId == bundleId) {
+                      ProcessBuilder("xcrun", "simctl", "terminate", udid, bundleId).start().waitFor()
+                      Thread.sleep(500)
+                    } else if (reclaim) {
+                      logger.lifecycle("Parikshan [ios]: Port $defaultIosPort was held by '${activeAppId}'. Reclaiming port via --reclaim-ports...")
+                      ProcessBuilder("xcrun", "simctl", "terminate", udid, activeAppId).start().waitFor()
+                      Thread.sleep(500)
+                    } else {
+                      var fbPort = defaultIosPort + 3
+                      while (fbPort <= 65535) {
+                        if (PortConflictHandler.isPortAvailable("127.0.0.1", fbPort)) {
+                          break
+                        }
+                        fbPort++
+                      }
+                      logger.lifecycle("Parikshan [ios]: Port $defaultIosPort is held by another active application '${activeAppId}'. Falling back to host port $fbPort.")
+                      activePort = fbPort
+                    }
+                  } else {
+                    var fbPort = defaultIosPort + 3
+                    while (fbPort <= 65535) {
+                      if (PortConflictHandler.isPortAvailable("127.0.0.1", fbPort)) {
+                        break
+                      }
+                      fbPort++
+                    }
+                    logger.lifecycle("Parikshan [ios]: Port $defaultIosPort is occupied by a non-Parikshan process. Falling back to host port $fbPort.")
+                    activePort = fbPort
+                  }
+                }
+
+                iosPortVal.set(activePort)
+
+                if (session != null) {
+                  logger.lifecycle("Parikshan [multi-target]: Active iOS instance is stale or unhealthy. Relaunching...")
+                  val stopProcess = ProcessBuilder(
+                    gradlew, 
+                    "$projectPathPrefix:stopIosApp",
+                    "-Pparikshan.ios.device=$finalIosDevice",
+                    "-Pparikshan.ios.port=${session.port}"
+                  ).apply {
+                    cleanXcodeEnv(this)
+                  }.start()
+                  bootProcesses.add(stopProcess)
+                  try { stopProcess.waitFor() } finally { bootProcesses.remove(stopProcess) }
+                }
+                logger.lifecycle("Parikshan [multi-target]: Simulator target: '$finalIosDevice' ($udid). Starting E2E execution on port $activePort...")
+                val startProcess = ProcessBuilder(
+                  gradlew, 
+                  "$projectPathPrefix:startIosApp", 
+                  "-Pparikshan.token=${token.get()}", 
+                  "-Pparikshan.ios.port=$activePort",
+                  "-Pparikshan.e2e.active=true",
+                  "-Pparikshan.ios.device=$finalIosDevice"
+                ).apply {
+                  cleanXcodeEnv(this)
+                  redirectErrorStream(true)
+                  val logF = File(multiTargetBaseDir, "logs/ios-start.log")
+                  logF.parentFile.mkdirs()
+                  redirectOutput(logF)
+                }.start()
+                bootProcesses.add(startProcess)
+                val startExit = try {
+                  startProcess.waitFor()
+                } finally {
+                  bootProcesses.remove(startProcess)
+                }
+                if (startExit != 0) {
+                  throw GradleException("Failed to start iOS app (exit code $startExit). Check build/parikshan/multi-target/logs/ios-start.log")
+                }
+                writeSession("ios", TargetSession(token.get(), activePort, System.currentTimeMillis()))
+                val effectiveIosInstances = if (iosInstances.isNotEmpty()) iosInstances else listOf("ios")
+                effectiveIosInstances.forEach { actorId ->
+                  val targetSession = TargetSession(
+                    token = activeToken,
+                    port = activePort,
+                    timestamp = System.currentTimeMillis(),
+                    instanceId = actorId,
+                    target = "ios",
+                    pid = null,
+                    dataDir = null
+                  )
+                  SessionStore.writeInstanceSession(multiTargetSessionsDir, targetSession)
+                }
+              }
+            } catch (e: Throwable) {
+              errors.add(e)
+              cancelAndTeardownBoot()
+            }
+          }.apply { name = "parikshan-boot-ios"; start() })
+        }
+
+        threads.filter { it.name == "parikshan-boot-desktop" || it.name == "parikshan-boot-wasm" }.forEach { it.join() }
+        
+        while (activeTargets.contains("android") && androidPort.get() == 0) {
+          if (errors.isNotEmpty()) {
+            cancelAndTeardownBoot()
+            throw errors.first()
+          }
+          Thread.sleep(10)
+        }
+        while (activeTargets.contains("ios") && iosPortVal.get() == 0) {
+          if (errors.isNotEmpty()) {
+            cancelAndTeardownBoot()
+            throw errors.first()
+          }
+          Thread.sleep(10)
+        }
+
+        if (errors.isNotEmpty()) {
+          cancelAndTeardownBoot()
+          throw errors.first()
+        }
+
+        bootSuccess = true
+      } catch (e: Throwable) {
+        cancelAndTeardownBoot()
+        logger.error("Parikshan [multi-target]: Error during multi-target boot phase: ${e.message}", e)
+        cleanupMultiTarget(
+          activeTargets = activeTargets,
+          keepAlive = false,
+          runSuccess = false,
+          desktopPort = desktopPort.get(),
+          desktopToken = desktopToken.get(),
+          wasmPort = wasmPort.get(),
+          androidSerial = androidSerial.get(),
+          iosPortVal = iosPortVal.get(),
+          finalIosDevice = finalIosDevice
+        )
+        return@withTargetsLock TargetResult("multi-target", false, "Boot phase failed: ${e.message}")
+      }
+
+      var runSuccess = true
+      var testFailureMessage: String? = null
+
+      try {
+        val systemProps = mutableMapOf<String, String>()
+        systemProps["parikshan.executionMode"] = "multi-target"
+        systemProps["parikshan.target"] = "multi-target"
+        systemProps["parikshan.activeTargets"] = activeTargets.joinToString(",")
+        systemProps["parikshan.token"] = token.get()
+        systemProps["parikshan.projectRootDir"] = projectRootDir.get()
+        systemProps["parikshan.sessionsDir"] = multiTargetSessionsDir.absolutePath
+        if (instanceList.isNotEmpty()) {
+          systemProps["parikshan.instances"] = instanceList.joinToString(",")
+        }
+
+        if (activeTargets.contains("desktop") || activeTargets.contains("jvm")) {
+          systemProps["parikshan.desktop.host"] = host.get()
+          systemProps["parikshan.desktop.port"] = desktopPort.get().toString()
+          systemProps["parikshan.desktop.launchManifest"] = desktopLaunchManifestFile.get().asFile.absolutePath
+
+          System.getProperty("parikshan.desktop.windowX")?.let { systemProps["parikshan.desktop.windowX"] = it }
+          System.getProperty("parikshan.desktop.windowY")?.let { systemProps["parikshan.desktop.windowY"] = it }
+          System.getProperty("parikshan.desktop.windowWidth")?.let { systemProps["parikshan.desktop.windowWidth"] = it }
+          System.getProperty("parikshan.desktop.windowHeight")?.let { systemProps["parikshan.desktop.windowHeight"] = it }
+        }
+        if (activeTargets.contains("wasm")) {
+          systemProps["parikshan.wasm.url"] = "http://127.0.0.1:${wasmPort.get()}"
+          systemProps["parikshan.wasm.port"] = wasmPort.get().toString()
+
+          val isAppModeActive = appMode || (layout == "side-by-side")
+          systemProps["parikshan.wasm.appMode"] = isAppModeActive.toString()
+
+          val resolvedWasmSize = parseSize(wasmWindowSize.takeIf { it.isNotBlank() } ?: windowSize) ?: Pair(800, 600)
+          systemProps["parikshan.wasm.viewportWidth"] = resolvedWasmSize.first.toString()
+          systemProps["parikshan.wasm.viewportHeight"] = resolvedWasmSize.second.toString()
+
+          val resolvedWasmPos = if (layout == "side-by-side") {
+            val resolvedDesktopPos = parsePosition(desktopWindowPosition) ?: Pair(10, 50)
+            val resolvedDesktopSize = parseSize(desktopWindowSize.takeIf { it.isNotBlank() } ?: windowSize) ?: Pair(800, 600)
+            val gap = 5
+            Pair(resolvedDesktopPos.first + resolvedDesktopSize.first + gap, resolvedDesktopPos.second)
+          } else {
+            parsePosition(wasmWindowPosition)
+          }
+          if (resolvedWasmPos != null) {
+            systemProps["parikshan.wasm.windowX"] = resolvedWasmPos.first.toString()
+            systemProps["parikshan.wasm.windowY"] = resolvedWasmPos.second.toString()
+          }
+        }
+        if (activeTargets.contains("android")) {
+          systemProps["parikshan.android.host"] = "127.0.0.1"
+          systemProps["parikshan.android.port"] = androidPort.get().toString()
+          val serialVal = androidSerial.get()
+          if (!serialVal.isNullOrBlank()) {
+            systemProps["parikshan.android.serial"] = serialVal
+          }
+        }
+        if (activeTargets.contains("ios")) {
+          systemProps["parikshan.ios.host"] = "127.0.0.1"
+          systemProps["parikshan.ios.port"] = iosPortVal.get().toString()
+          systemProps["parikshan.ios.udid"] = iosUdidVal.get()
+          systemProps["parikshan.ios.bundleId"] = bundleId
+          systemProps["parikshan.ios.device"] = finalIosDevice
+        }
+
+        val allDiscoveredMethods = multiTargetMethods.orNull ?: emptyList()
+
+        classes.forEach { testClass ->
+          val methodsForClass = allDiscoveredMethods.filter { it.startsWith("$testClass#") }
+          val lastDotIdx = testsPattern.lastIndexOf('.')
+          val methodPart = if (lastDotIdx >= 0) testsPattern.substring(lastDotIdx + 1) else ""
+          val isMethodFilter = methodPart.isNotEmpty() && !methodPart.contains('*') && !methodPart.contains('?') && 
+                               (methodPart.firstOrNull()?.isLowerCase() == true || testsPattern.length > testClass.length)
+
+          val selectedMethods = if (isMethodFilter && methodPart.isNotEmpty()) {
+            val requested = "$testClass#$methodPart"
+            if (methodsForClass.contains(requested) || methodsForClass.isEmpty()) {
+              listOf(requested)
+            } else {
+              emptyList()
+            }
+          } else {
+            methodsForClass
+          }
+
+          logger.lifecycle("Parikshan [multi-target]: Running $testClass...")
+          val exitCode = spawnTestJvm(
+            target = "multi-target",
+            testClass = testClass,
+            systemProperties = systemProps,
+            activeProcesses = activeProcesses,
+            selectedMethods = selectedMethods
+          )
+          if (exitCode != 0) {
+            runSuccess = false
+            printTestFailures("multi-target", testClass)
+            testFailureMessage = "Test class $testClass failed (exit code $exitCode). Check logs at build/parikshan/logs/multi-target-${testClass.substringAfterLast('.')}.log"
+          }
+        }
+      } finally {
+        cleanupMultiTarget(
+          activeTargets = activeTargets,
+          keepAlive = keepAlive,
+          runSuccess = runSuccess,
+          desktopPort = desktopPort.get(),
+          desktopToken = desktopToken.get(),
+          wasmPort = wasmPort.get(),
+          androidSerial = androidSerial.get(),
+          iosPortVal = iosPortVal.get(),
+          finalIosDevice = finalIosDevice
+        )
+      }
+
+      val multiTargetLabel = "multi-target"
+      createTargetResult(multiTargetLabel, runSuccess, classes, testFailureMessage)
+    }
+  }
+
+  private fun cleanupMultiTarget(
+    activeTargets: List<String>,
+    keepAlive: Boolean,
+    runSuccess: Boolean,
+    desktopPort: Int,
+    desktopToken: String,
+    wasmPort: Int,
+    androidSerial: String?,
+    iosPortVal: Int,
+    finalIosDevice: String
+  ) {
+    val logger = logger
+    val multiTargetBaseDir = File(buildDir.get().asFile, "parikshan/multi-target")
+    if (activeTargets.contains("desktop") || activeTargets.contains("jvm")) {
+      if (keepAlive && runSuccess) {
+        val manifest = desktopLaunchManifestFile.get().asFile
+        if (manifest.exists()) {
+          val props = java.util.Properties()
+          runCatching { manifest.inputStream().use { props.load(it) } }
+          val finalPort = props.getProperty("port")?.toIntOrNull() ?: desktopPort
+          val finalToken = props.getProperty("token") ?: desktopToken
+          writeSession("desktop", TargetSession(finalToken, finalPort, System.currentTimeMillis()))
+        } else {
+          writeSession("desktop", TargetSession(desktopToken, desktopPort, System.currentTimeMillis()))
+        }
+      } else {
+        DesktopProcessManager.stopAll(baseOutputDir = multiTargetBaseDir, host = host.get())
+        DesktopProcess.stop(
+          host = host.get(),
+          port = desktopPort,
+          token = desktopToken,
+          manifestFile = desktopLaunchManifestFile.get().asFile
+        )
+        clearSession("desktop")
+      }
+    }
+    if (activeTargets.contains("wasm")) {
+      if (!keepAlive) {
+        WasmServer.stop()
+        clearSession("wasm")
+      }
+    }
+    if (activeTargets.contains("android")) {
+      if (!keepAlive) {
+        val gradlew = getGradlewExecutable(File(projectRootDir.get()))
+        val stopArgs = mutableListOf(gradlew, "$projectPathPrefix:stopParikshanAndroidApp")
+        if (!androidSerial.isNullOrBlank()) {
+          stopArgs.add("-Pparikshan.android.serial=$androidSerial")
+        }
+        ProcessBuilder(stopArgs).apply { cleanXcodeEnv(this) }.start().waitFor()
+        clearSession("android")
+      }
+    }
+    if (activeTargets.contains("ios")) {
+      if (!keepAlive) {
+        val gradlew = getGradlewExecutable(File(projectRootDir.get()))
+        ProcessBuilder(
+          gradlew, 
+          "$projectPathPrefix:stopIosApp",
+          "-Pparikshan.ios.device=$finalIosDevice",
+          "-Pparikshan.ios.port=$iosPortVal"
+        ).apply { cleanXcodeEnv(this) }.start().waitFor()
+        clearSession("ios")
+      }
+    }
+    if (!(keepAlive && runSuccess)) {
+      val multiTargetSessionsDir = File(multiTargetBaseDir, "sessions")
+      if (multiTargetSessionsDir.exists()) {
+        multiTargetSessionsDir.listFiles()?.filter { it.extension == "json" }?.forEach {
+          runCatching { it.delete() }
+        }
       }
     }
   }

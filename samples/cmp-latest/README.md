@@ -6,7 +6,7 @@ This sample demonstrates end-to-end (E2E) testing for a full-stack Compose Multi
 
 ## What This Sample Demonstrates
 
-* **MVVM + MVI Storefront Application**: Email authentication, asynchronous product catalog loading, modal details sheets with option toggles, delivery signature canvas, and checkout success confirmation.
+* **MVVM + MVI Storefront Application**: Email authentication, asynchronous product catalog loading, modal details sheets with option toggles, selectable delivery methods, payment summary, and checkout confirmation.
 * **Full-Stack Ktor Backend (`:server`)**: Local HTTP REST endpoints (`GET /api/products`, `POST /api/login`, `POST /api/orders`) providing dynamic JSON payloads over port 8080.
 * **Hermetic & Live E2E Testing**: Tests run against Ktor `MockEngine` in automated CI pipelines without external server dependencies, while local runtime app builds connect live to the Ktor server with offline fallback.
 

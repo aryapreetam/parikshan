@@ -10,19 +10,27 @@ The following table outlines platform capabilities available in Parikshan:
 
 | Capability | Desktop (JVM) | Web (Wasm) | Android | iOS |
 | :--- | :---: | :---: | :---: | :---: |
-| **[Core Intent DSL](../getting-started/quickstart.md)** | Supported | Supported | Supported | Supported |
-| **[File Picker Automation](file-picker.md)** | Supported | Supported | Supported | Supported |
-| **[Synchronized Lockstep (`--sync`)](synchronized-execution.md)** | Supported | Supported | Supported | Supported |
-| **[Window Layout & Sizing](window-layout.md)** | Supported | Supported | Fixed Viewport | Fixed Viewport |
-| **[Continuous Watch Mode (`--watch`)](watch-mode.md)** | Supported | Supported | Planned | Planned |
-| **[Video Recording & Reports](test-reports.md)** | Supported | Supported | Supported | Supported |
+| **[Core Intent DSL](../getting-started/quickstart.md)** | ✅ | ✅ | ✅ | ✅ |
+| **[Multi-Instance Testing](multi-instance.md)** | ✅ | ✅ | Planned | Planned |
+| **[Multi-Target Testing](multi-target.md)** | ✅ | ✅ | Planned | Planned |
+| **[File Picker Automation](file-picker.md)** | ✅ | ✅ | ✅ | ✅ |
+| **[Synchronized Lockstep (`--sync`)](synchronized-execution.md)** | ✅ | ✅ | ✅ | ✅ |
+| **[Window Layout & Sizing](window-layout.md)** | ✅ | ✅ | Fixed Viewport | Fixed Viewport |
+| **[Continuous Watch Mode (`--watch`)](watch-mode.md)** | ✅ | ✅ | Planned | Planned |
+| **[Video Recording & Reports](test-reports.md)** | ✅ *(single-actor)* | ✅ *(single-actor)* | ✅ | ✅ |
 
 ---
 
 ## Feature Highlights
 
 ### [Unified Intent DSL](../getting-started/quickstart.md)
-Write UI tests in Kotlin using clean, high-level intents (`click`, `input`, `assertVisible`, `scrollUntilVisible`) that execute identically across all target platforms without target-specific selectors or boilerplate.
+Write UI tests in Kotlin using intent-based commands (`click`, `input`, `assertVisible`, `scrollUntilVisible`) that run across all target platforms without platform-specific selectors.
+
+### [Multi-Instance Testing](multi-instance.md)
+Run multiple instances of your application simultaneously on the same platform (multiple Desktop windows or isolated Web browser contexts) to test peer-to-peer messaging and real-time collaboration.
+
+### [Multi-Target Testing](multi-target.md)
+Drive multiple actors running on different platform targets (Desktop JVM and Web Wasm) within a single test scenario to verify cross-platform workflows.
 
 ### [File Picker Automation](file-picker.md)
 Automate native OS dialogs and browser file choosers using `withFilePicker` and `withFilePickerCancel` without blocking the application UI thread.

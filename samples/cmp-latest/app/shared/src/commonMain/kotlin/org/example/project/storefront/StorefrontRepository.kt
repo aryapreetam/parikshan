@@ -26,13 +26,13 @@ class StorefrontRepository(
     }
   }
 
-  suspend fun submitOrder(signature: String, cart: List<CartItem>): Result<String> {
+  suspend fun submitOrder(shippingMethod: String, cart: List<CartItem>): Result<String> {
     return try {
-      val apiOrderId = api.submitOrder(signature, cart)
-      val orderId = database.saveOrder(signature, cart)
+      val apiOrderId = api.submitOrder(shippingMethod, cart)
+      val orderId = database.saveOrder(shippingMethod, cart)
       Result.success(if (apiOrderId.isNotBlank()) apiOrderId else orderId)
     } catch (e: Throwable) {
-      val fallbackId = database.saveOrder(signature, cart)
+      val fallbackId = database.saveOrder(shippingMethod, cart)
       Result.success(fallbackId)
     }
   }

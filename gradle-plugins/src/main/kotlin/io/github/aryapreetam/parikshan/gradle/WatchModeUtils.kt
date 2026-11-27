@@ -8,41 +8,75 @@ import java.io.File
  * @property token Authorization token required for communicating with the target session.
  * @property port Local HTTP/CDP communication port bound by the target application process.
  * @property timestamp Unix epoch timestamp in milliseconds when the session was registered.
+ * @property instanceId Actor or instance identifier (e.g. desktop, wasm, alice, bob).
+ * @property target Target platform identifier (e.g. desktop, wasm, android, ios).
+ * @property pid Process ID of the launched child application process, if known.
+ * @property dataDir Path to the isolated application data directory, if configured.
  */
 internal data class TargetSession(
   val token: String,
   val port: Int,
-  val timestamp: Long
-)
+  val timestamp: Long,
+  val instanceId: String = "",
+  val target: String = "",
+  val pid: Long? = null,
+  val dataDir: String? = null
+) {
+  val sessionToken: String get() = token
+}
 
 /**
  * Persistence manager for recording and querying active target application sessions.
+ *
+ * Supports both unified multi-target session manifests (`active-session.json`)
+ * and actor-keyed individual session descriptors (`sessions/{instanceId}.json`).
  */
 internal object SessionStore {
 
   /**
-   * Reads session metadata for a target platform from the specified active session JSON file.
+   * Reads session metadata for a target platform or instance.
    *
-   * @param sessionFile File handle pointing to the active session JSON file.
-   * @param target Target platform identifier (e.g. desktop, wasm, android, ios).
+   * @param sessionFile File handle pointing to the active session JSON file or directory.
+   * @param target Target platform or instance identifier.
    * @return Active [TargetSession] if found, or null if the session record does not exist.
    */
   fun readSession(sessionFile: File, target: String): TargetSession? {
-    if (!sessionFile.exists()) return null
-    val text = runCatching { sessionFile.readText() }.getOrNull() ?: return null
-    val targetBlockRegex = Regex("\"$target\"\\s*:\\s*\\{([^}]+)}")
-    val blockMatch = targetBlockRegex.find(text) ?: return null
-    val blockContent = blockMatch.groupValues[1]
+    if (sessionFile.exists()) {
+      val text = runCatching { sessionFile.readText() }.getOrNull()
+      if (!text.isNullOrBlank()) {
+        val targetBlockRegex = Regex("\"$target\"\\s*:\\s*\\{([^}]+)}")
+        val blockMatch = targetBlockRegex.find(text)
+        if (blockMatch != null) {
+          return parseSessionBlock(blockMatch.groupValues[1], defaultTarget = target)
+        }
 
-    val token = Regex("\"token\"\\s*:\\s*\"([^\"]+)\"").find(blockContent)?.groupValues?.get(1) ?: return null
-    val port = Regex("\"port\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toIntOrNull() ?: return null
-    val timestamp = Regex("\"timestamp\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toLongOrNull() ?: return null
+        // If sessionFile is a multi-target manifest, do not treat as standalone or fall back
+        val isMultiTargetMap = listOf("desktop", "wasm", "android", "ios").any { t ->
+          Regex("\"$t\"\\s*:\\s*\\{").containsMatchIn(text)
+        }
+        if (isMultiTargetMap) {
+          return null
+        }
 
-    return TargetSession(token, port, timestamp)
+        val standalone = parseStandaloneSession(text, fallbackTarget = target)
+        if (standalone != null && (standalone.target == target || standalone.instanceId == target)) {
+          return standalone
+        }
+      }
+    }
+
+    val parent = sessionFile.parentFile ?: return null
+    val instanceFile = File(parent, "sessions/$target.json")
+    if (instanceFile.exists()) {
+      return readInstanceSession(instanceFile)
+    }
+
+    return null
   }
 
   /**
-   * Writes or updates session metadata for a target platform in the specified session JSON file.
+   * Writes or updates session metadata for a target platform in the specified session JSON file,
+   * synchronizing actor-keyed descriptors in `sessions/{target}.json`.
    *
    * @param sessionFile File handle pointing to the active session JSON file.
    * @param target Target platform identifier.
@@ -56,12 +90,8 @@ internal object SessionStore {
         val targetBlockRegex = Regex("\"$t\"\\s*:\\s*\\{([^}]+)}")
         val blockMatch = targetBlockRegex.find(text)
         if (blockMatch != null) {
-          val blockContent = blockMatch.groupValues[1]
-          val token = Regex("\"token\"\\s*:\\s*\"([^\"]+)\"").find(blockContent)?.groupValues?.get(1)
-          val port = Regex("\"port\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toIntOrNull()
-          val timestamp = Regex("\"timestamp\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toLongOrNull()
-          if (token != null && port != null && timestamp != null) {
-            sessions[t] = TargetSession(token, port, timestamp)
+          parseSessionBlock(blockMatch.groupValues[1], defaultTarget = t)?.let {
+            sessions[t] = it
           }
         }
       }
@@ -69,45 +99,254 @@ internal object SessionStore {
     sessions[target] = session
 
     val json = sessions.entries.joinToString(prefix = "{", postfix = "}") { (t, s) ->
-      "\"$t\":{\"token\":\"${s.token}\",\"port\":${s.port},\"timestamp\":${s.timestamp}}"
+      buildTargetBlockJson(t, s)
     }
     runCatching {
       sessionFile.parentFile?.mkdirs()
       sessionFile.writeText(json)
     }
+
+    sessionFile.parentFile?.let { parent ->
+      val sessionsDir = File(parent, "sessions")
+      val effectiveSession = if (session.target.isBlank() || session.instanceId.isBlank()) {
+        session.copy(target = session.target.ifBlank { target }, instanceId = session.instanceId.ifBlank { target })
+      } else {
+        session
+      }
+      writeInstanceSession(sessionsDir, effectiveSession)
+    }
   }
 
   /**
-   * Removes session metadata for a target platform from the specified session JSON file.
+   * Removes session metadata for a target platform from the specified session JSON file,
+   * and clears the actor-keyed descriptor in `sessions/{target}.json`.
    *
    * @param sessionFile File handle pointing to the active session JSON file.
    * @param target Target platform identifier to clear.
    */
   fun clearSession(sessionFile: File, target: String) {
-    if (!sessionFile.exists()) return
-    val sessions = mutableMapOf<String, TargetSession>()
-    val text = runCatching { sessionFile.readText() }.getOrNull().orEmpty()
-    listOf("desktop", "wasm", "android", "ios").forEach { t ->
-      if (t == target) return@forEach
-      val targetBlockRegex = Regex("\"$t\"\\s*:\\s*\\{([^}]+)}")
-      val blockMatch = targetBlockRegex.find(text)
-      if (blockMatch != null) {
-        val blockContent = blockMatch.groupValues[1]
-        val token = Regex("\"token\"\\s*:\\s*\"([^\"]+)\"").find(blockContent)?.groupValues?.get(1)
-        val port = Regex("\"port\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toIntOrNull()
-        val timestamp = Regex("\"timestamp\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toLongOrNull()
-        if (token != null && port != null && timestamp != null) {
-          sessions[t] = TargetSession(token, port, timestamp)
+    if (sessionFile.exists()) {
+      val sessions = mutableMapOf<String, TargetSession>()
+      val text = runCatching { sessionFile.readText() }.getOrNull().orEmpty()
+      listOf("desktop", "wasm", "android", "ios").forEach { t ->
+        if (t == target) return@forEach
+        val targetBlockRegex = Regex("\"$t\"\\s*:\\s*\\{([^}]+)}")
+        val blockMatch = targetBlockRegex.find(text)
+        if (blockMatch != null) {
+          parseSessionBlock(blockMatch.groupValues[1], defaultTarget = t)?.let {
+            sessions[t] = it
+          }
         }
+      }
+
+      val json = sessions.entries.joinToString(prefix = "{", postfix = "}") { (t, s) ->
+        buildTargetBlockJson(t, s)
+      }
+      runCatching {
+        sessionFile.writeText(json)
       }
     }
 
-    val json = sessions.entries.joinToString(prefix = "{", postfix = "}") { (t, s) ->
-      "\"$t\":{\"token\":\"${s.token}\",\"port\":${s.port},\"timestamp\":${s.timestamp}}"
+    sessionFile.parentFile?.let { parent ->
+      val sessionsDir = File(parent, "sessions")
+      clearInstanceSession(sessionsDir, target)
     }
+  }
+
+  /**
+   * Reads an actor-keyed session descriptor from `sessions/{instanceId}.json`.
+   *
+   * @param sessionsDirOrFile Directory containing session files or direct session JSON file.
+   * @param instanceId Optional instance ID if [sessionsDirOrFile] is a directory.
+   * @return Parsed [TargetSession] if valid, or null.
+   */
+  fun readInstanceSession(sessionsDirOrFile: File, instanceId: String? = null): TargetSession? {
+    val file = if (sessionsDirOrFile.isDirectory) {
+      if (instanceId == null) return null
+      File(sessionsDirOrFile, "$instanceId.json")
+    } else {
+      sessionsDirOrFile
+    }
+
+    if (!file.exists()) return null
+    val text = runCatching { file.readText() }.getOrNull() ?: return null
+    return parseStandaloneSession(text, fallbackTarget = instanceId ?: file.nameWithoutExtension)
+  }
+
+  /**
+   * Writes an actor-keyed session descriptor into `sessions/{instanceId}.json`.
+   *
+   * @param sessionsDir Directory to hold session JSON files (`build/parikshan/sessions`).
+   * @param session Session metadata object to record.
+   */
+  fun writeInstanceSession(sessionsDir: File, session: TargetSession) {
+    val id = session.instanceId.ifBlank { session.target.ifBlank { "default" } }
+    val file = File(sessionsDir, "$id.json")
+    val json = buildStandaloneJson(session.copy(instanceId = id))
     runCatching {
-      sessionFile.writeText(json)
+      sessionsDir.mkdirs()
+      file.writeText(json)
     }
+  }
+
+  /**
+   * Removes an actor-keyed session descriptor `sessions/{instanceId}.json`.
+   *
+   * @param sessionsDir Directory holding session JSON files.
+   * @param instanceId Instance identifier to clear.
+   */
+  fun clearInstanceSession(sessionsDir: File, instanceId: String) {
+    val file = File(sessionsDir, "$instanceId.json")
+    runCatching {
+      if (file.exists()) {
+        file.delete()
+      }
+    }
+  }
+
+  /**
+   * Lists all active actor-keyed session descriptors in [sessionsDir].
+   *
+   * @param sessionsDir Directory holding session JSON files.
+   * @return List of parsed [TargetSession] records.
+   */
+  fun listInstanceSessions(sessionsDir: File): List<TargetSession> {
+    if (!sessionsDir.exists() || !sessionsDir.isDirectory) return emptyList()
+    return sessionsDir.listFiles { f -> f.extension == "json" }
+      ?.mapNotNull { readInstanceSession(it) }
+      ?.sortedBy { it.timestamp }
+      ?: emptyList()
+  }
+
+  private const val JSON_STRING_GROUP = "\"((?:\\\\.|[^\"\\\\])*)\""
+
+  internal fun escapeJsonString(value: String): String {
+    val sb = StringBuilder(value.length + 8)
+    for (ch in value) {
+      when (ch) {
+        '\\' -> sb.append("\\\\")
+        '"' -> sb.append("\\\"")
+        '\b' -> sb.append("\\b")
+        '\u000c' -> sb.append("\\f")
+        '\n' -> sb.append("\\n")
+        '\r' -> sb.append("\\r")
+        '\t' -> sb.append("\\t")
+        else -> {
+          if (ch.code < 0x20) {
+            sb.append(String.format("\\u%04x", ch.code))
+          } else {
+            sb.append(ch)
+          }
+        }
+      }
+    }
+    return sb.toString()
+  }
+
+  internal fun unescapeJsonString(value: String): String {
+    val sb = StringBuilder(value.length)
+    var i = 0
+    while (i < value.length) {
+      val ch = value[i]
+      if (ch == '\\' && i + 1 < value.length) {
+        when (val next = value[i + 1]) {
+          '\\' -> { sb.append('\\'); i += 2 }
+          '"' -> { sb.append('"'); i += 2 }
+          '/' -> { sb.append('/'); i += 2 }
+          'b' -> { sb.append('\b'); i += 2 }
+          'f' -> { sb.append('\u000c'); i += 2 }
+          'n' -> { sb.append('\n'); i += 2 }
+          'r' -> { sb.append('\r'); i += 2 }
+          't' -> { sb.append('\t'); i += 2 }
+          'u' -> {
+            if (i + 5 < value.length) {
+              val hex = value.substring(i + 2, i + 6).toIntOrNull(16)
+              if (hex != null) {
+                sb.append(hex.toChar())
+                i += 6
+              } else {
+                sb.append(next)
+                i += 2
+              }
+            } else {
+              sb.append(next)
+              i += 2
+            }
+          }
+          else -> { sb.append(next); i += 2 }
+        }
+      } else {
+        sb.append(ch)
+        i++
+      }
+    }
+    return sb.toString()
+  }
+
+  private fun parseSessionBlock(blockContent: String, defaultTarget: String): TargetSession? {
+    val tokenRaw = Regex("\"sessionToken\"\\s*:\\s*$JSON_STRING_GROUP").find(blockContent)?.groupValues?.get(1)
+      ?: Regex("\"token\"\\s*:\\s*$JSON_STRING_GROUP").find(blockContent)?.groupValues?.get(1)
+      ?: return null
+    val token = unescapeJsonString(tokenRaw)
+    val port = Regex("\"port\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+    val timestamp = Regex("\"timestamp\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toLongOrNull() ?: return null
+    val pid = Regex("\"pid\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toLongOrNull()
+    val dataDir = Regex("\"dataDir\"\\s*:\\s*$JSON_STRING_GROUP").find(blockContent)?.groupValues?.get(1)?.let(::unescapeJsonString)
+    val instanceId = Regex("\"instanceId\"\\s*:\\s*$JSON_STRING_GROUP").find(blockContent)?.groupValues?.get(1)?.let(::unescapeJsonString) ?: defaultTarget
+    val target = Regex("\"target\"\\s*:\\s*$JSON_STRING_GROUP").find(blockContent)?.groupValues?.get(1)?.let(::unescapeJsonString) ?: defaultTarget
+
+    return TargetSession(
+      token = token,
+      port = port,
+      timestamp = timestamp,
+      instanceId = instanceId,
+      target = target,
+      pid = pid,
+      dataDir = dataDir
+    )
+  }
+
+  private fun parseStandaloneSession(text: String, fallbackTarget: String): TargetSession? {
+    val hasInstanceId = Regex("\"instanceId\"\\s*:\\s*$JSON_STRING_GROUP").find(text)
+    val hasSessionToken = Regex("\"sessionToken\"\\s*:\\s*$JSON_STRING_GROUP").find(text)
+
+    if (hasInstanceId == null && hasSessionToken == null) {
+      val isMultiTargetMap = listOf("desktop", "wasm", "android", "ios").any { t ->
+        Regex("\"$t\"\\s*:\\s*\\{").containsMatchIn(text)
+      }
+      if (isMultiTargetMap) {
+        return null
+      }
+    }
+
+    return parseSessionBlock(text, defaultTarget = fallbackTarget)
+  }
+
+  private fun buildTargetBlockJson(target: String, session: TargetSession): String {
+    val parts = mutableListOf(
+      "\"token\":\"${escapeJsonString(session.token)}\"",
+      "\"port\":${session.port}",
+      "\"timestamp\":${session.timestamp}"
+    )
+    if (session.pid != null) parts.add("\"pid\":${session.pid}")
+    if (session.dataDir != null) parts.add("\"dataDir\":\"${escapeJsonString(session.dataDir)}\"")
+
+    return "\"${escapeJsonString(target)}\":{${parts.joinToString(",")}}"
+  }
+
+  private fun buildStandaloneJson(session: TargetSession): String {
+    val id = session.instanceId.ifBlank { session.target }
+    val parts = mutableListOf(
+      "\"instanceId\":\"${escapeJsonString(id)}\"",
+      "\"target\":\"${escapeJsonString(session.target)}\"",
+      "\"port\":${session.port}",
+      "\"sessionToken\":\"${escapeJsonString(session.token)}\""
+    )
+    if (session.pid != null) parts.add("\"pid\":${session.pid}")
+    if (!session.dataDir.isNullOrBlank()) parts.add("\"dataDir\":\"${escapeJsonString(session.dataDir)}\"")
+    parts.add("\"timestamp\":${session.timestamp}")
+
+    return "{\n  ${parts.joinToString(",\n  ")}\n}\n"
   }
 }
 

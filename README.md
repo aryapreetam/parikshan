@@ -29,6 +29,7 @@
 ### Features
 
 - Write tests in Kotlin, execute and visually watch them run across Android, iOS, Desktop, and Web (Wasm).
+- [Multi-instance](https://aryapreetam.github.io/parikshan/features/multi-instance/) and [multi-target](https://aryapreetam.github.io/parikshan/features/multi-target/) testing for multi-user Desktop and Web workflows.
 - Built-in [file picker automation](https://aryapreetam.github.io/parikshan/features/file-picker), [video recording](https://aryapreetam.github.io/parikshan/configuration/cli-options/#video-recording-options), screenshot capture, and [test reports](https://aryapreetam.github.io/parikshan/features/test-reports).
 - [Window layout and positioning](https://aryapreetam.github.io/parikshan/configuration/cli-options/#layout-size-position-control), [synchronized execution](https://aryapreetam.github.io/parikshan/configuration/cli-options/#synchronized-multi-target-execution-sync), and continuous [watch mode](https://aryapreetam.github.io/parikshan/configuration/cli-options/#continuous-watch-mode-watch).
 
@@ -82,7 +83,7 @@ class SimpleGreetTest {
 ./gradlew e2eTest --targets=desktop,wasm,android,ios
 ```
 
-> **Note:** The standalone desktop test task name depends on your target configuration in `build.gradle.kts` (`jvm("desktop")` registers `e2eDesktopTest`; `jvm()` registers `e2eJvmTest`). The unified `e2eTest` task accepts both `--targets=desktop` and `--targets=jvm`.
+> **Note:** For projects configuring `jvm()` or `jvm("desktop")`, both `e2eDesktopTest` and `e2eJvmTest` are registered as Gradle `Test` tasks supporting `--tests`. Custom JVM target names (such as `jvm("custom")`) register `e2eCustomTest`. The unified `e2eTest` task accepts both `--targets=desktop` and `--targets=jvm`.
 
 ---
 

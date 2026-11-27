@@ -465,6 +465,19 @@ class ParikshanPlugin : Plugin<Project> {
         }
         junitConsoleJars.setFrom(junitConsoleConfig.incoming.files)
         this.e2eTestClasses.set(e2eTestClasses)
+        this.autoDiscoveredInstances.set(project.discoverE2eTestInstances())
+        this.autoDiscoveredInstancesByClass.set(
+          project.discoverE2eTestInstancesByClass().mapValues { (_, actors) -> actors.joinToString(",") }
+        )
+        this.autoDiscoveredInstanceTargets.set(project.discoverE2eTestInstanceTargets())
+        this.multiTargetActorMapsByMethod.set(
+          project.discoverMultiTargetActorMapsByMethod().mapValues { (_, actorMap) ->
+            actorMap.entries.joinToString(",") { (actor, target) -> "$actor=$target" }
+          }
+        )
+        this.multiTargetClasses.set(project.discoverMultiTargetTestClasses())
+        this.multiTargetMethods.set(project.discoverMultiTargetTestMethods())
+        this.multiInstanceClasses.set(project.discoverMultiInstanceTestClasses())
         this.projectPath.set(project.path)
         this.host.set(extension.host)
         this.originalDesktopPort.set(extension.port)
@@ -596,7 +609,14 @@ class ParikshanPlugin : Plugin<Project> {
 
       project.tasks.configureEach {
         val jvmTargets = project.findJvmTargets()
-        val e2eTaskNames = setOf("e2eWasmTest", "e2eIosTest", "e2eAndroidTest", "e2eTest", "parikshanHostTest") + jvmTargets.map { "e2e${it.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }}Test" }
+        val desktopAliasNames = if (jvmTargets.any { it.equals("jvm", ignoreCase = true) || it.equals("desktop", ignoreCase = true) }) {
+          setOf("e2eJvmTest", "e2eDesktopTest")
+        } else {
+          emptySet()
+        }
+        val e2eTaskNames = setOf("e2eWasmTest", "e2eIosTest", "e2eAndroidTest", "e2eTest", "parikshanHostTest") +
+          desktopAliasNames +
+          jvmTargets.map { "e2e${it.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }}Test" }
         val isE2eTask = name in e2eTaskNames
         if (isE2eTask) return@configureEach
 

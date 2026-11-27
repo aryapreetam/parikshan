@@ -63,6 +63,8 @@ internal object DesktopTargetConfigurer {
       .orElse(optWindowSize)
     val optDesktopPos = project.providers.gradleProperty("parikshan.desktop.windowPosition")
       .orElse(project.providers.systemProperty("parikshan.desktop.windowPosition"))
+    val autoDiscoveredInstances = project.discoverE2eTestInstances()
+    val autoInstStr = if (autoDiscoveredInstances.size > 1) autoDiscoveredInstances.joinToString(",") else ""
 
     val startDesktopTask = project.tasks.register(startTaskName) {
       group = "verification"
@@ -95,25 +97,66 @@ internal object DesktopTargetConfigurer {
           System.setProperty("parikshan.desktop.windowY", pos.second.toString())
         }
 
-        DesktopProcess.start(
-          jar = jar,
-          token = tokenVal,
-          logFile = File(buildDirVal, "parikshan/${targetName.lowercase()}-app.log"),
-          manifestFile = manifestFileVal,
-          appArgs = appArgsVal,
-          host = hostVal,
-          port = resolvedPort,
-          timeoutMs = startupTimeoutMsVal,
-          pollMs = startupPollIntervalMsVal,
-          title = titleVal,
-          background = isBackgroundRequested
-        )
+        val instancesList = autoDiscoveredInstances
+
+        if (instancesList.size > 1 || (instancesList.size == 1 && instancesList.first() != "desktop")) {
+          logger.lifecycle("Parikshan: Launching multi-instance desktop cluster for instances: $instancesList")
+          val launched = DesktopProcessManager.launchInstances(
+            jarFile = jar,
+            instances = instancesList,
+            baseOutputDir = File(buildDirVal, "parikshan/desktop"),
+            preferredWindowWidth = size?.first ?: 800,
+            preferredWindowHeight = size?.second ?: 700,
+            originX = pos?.first ?: 50,
+            originY = pos?.second ?: 50,
+            appArgs = appArgsVal,
+            host = hostVal,
+            timeoutMs = startupTimeoutMsVal,
+            pollMs = startupPollIntervalMsVal,
+            titlePrefix = titleVal,
+            background = isBackgroundRequested
+          )
+          if (launched.isNotEmpty()) {
+            val primary = launched.first()
+            val javaExecutable = resolveJavaExecutable()
+            val mainClass = jar.readJarManifestAttribute("Main-Class") ?: ""
+            DesktopProcess.writeLaunchManifest(
+              manifestFile = manifestFileVal,
+              pid = primary.process.pid(),
+              javaExecutable = javaExecutable,
+              jar = jar,
+              appMainClass = mainClass,
+              token = primary.token,
+              logFile = File(buildDirVal, "parikshan/desktop/logs/desktop-${primary.instanceId}.log"),
+              appArgs = appArgsVal,
+              host = hostVal,
+              port = primary.port,
+              title = titleVal,
+              background = isBackgroundRequested
+            )
+          }
+        } else {
+          DesktopProcess.start(
+            jar = jar,
+            token = tokenVal,
+            logFile = File(buildDirVal, "parikshan/${targetName.lowercase()}-app.log"),
+            manifestFile = manifestFileVal,
+            appArgs = appArgsVal,
+            host = hostVal,
+            port = resolvedPort,
+            timeoutMs = startupTimeoutMsVal,
+            pollMs = startupPollIntervalMsVal,
+            title = titleVal,
+            background = isBackgroundRequested
+          )
+        }
       }
     }
 
     project.tasks.register(stopTaskName) {
       group = "verification"
       doLast {
+        DesktopProcessManager.stopAll(baseOutputDir = File(buildDirVal, "parikshan/desktop"), host = hostVal)
         DesktopProcess.stop(
           host = hostVal,
           port = portVal,
@@ -134,69 +177,90 @@ internal object DesktopTargetConfigurer {
       }
     }
 
-    project.registerE2eTestWithReport(e2eTaskName, capitalizedTarget) {
-      group = "verification"
-      dependsOn(startDesktopTask)
-      finalizedBy(stopTaskName)
+    fun registerDesktopTestTask(taskName: String, reportTargetLabel: String) {
+      project.registerE2eTestWithReport(taskName, reportTargetLabel) {
+        group = "verification"
+        dependsOn(startDesktopTask)
+        finalizedBy(stopTaskName)
 
-      configureE2eHostTestExecution(
-        e2eTestClasses = e2eTestClasses,
-        target = capitalizedTarget,
-        logger = logger
-      )
-      systemProperty("parikshan.host", hostVal)
-      doFirst {
-        val manifest = manifestFileVal
-        val port = if (manifest.exists()) {
-          val props = Properties()
-          runCatching { manifest.inputStream().use { props.load(it) } }
-          props.getProperty("port") ?: portVal.toString()
-        } else {
-          portVal.toString()
-        }
-        systemProperty("parikshan.port", port)
+        configureE2eHostTestExecution(
+          e2eTestClasses = e2eTestClasses,
+          target = reportTargetLabel,
+          logger = logger
+        )
+        systemProperty("parikshan.host", hostVal)
+        doFirst {
+          val manifest = manifestFileVal
+          val port = if (manifest.exists()) {
+            val props = Properties()
+            runCatching { manifest.inputStream().use { props.load(it) } }
+            val pToken = props.getProperty("token")
+            if (!pToken.isNullOrBlank()) {
+              systemProperty("parikshan.token", pToken)
+            }
+            props.getProperty("port") ?: portVal.toString()
+          } else {
+            portVal.toString()
+          }
+          systemProperty("parikshan.port", port)
 
-        val sizeStr = optDesktopSize.orNull
-        val posStr = optDesktopPos.orNull
+          val sizeStr = optDesktopSize.orNull
+          val posStr = optDesktopPos.orNull
 
-        val size = parseSize(sizeStr)
-        val pos = parsePosition(posStr)
-        if (size != null) {
-          systemProperty("parikshan.desktop.windowWidth", size.first.toString())
-          systemProperty("parikshan.desktop.windowHeight", size.second.toString())
+          val size = parseSize(sizeStr)
+          val pos = parsePosition(posStr)
+          if (size != null) {
+            systemProperty("parikshan.desktop.windowWidth", size.first.toString())
+            systemProperty("parikshan.desktop.windowHeight", size.second.toString())
+          }
+          if (pos != null) {
+            systemProperty("parikshan.desktop.windowX", pos.first.toString())
+            systemProperty("parikshan.desktop.windowY", pos.second.toString())
+          }
         }
-        if (pos != null) {
-          systemProperty("parikshan.desktop.windowX", pos.first.toString())
-          systemProperty("parikshan.desktop.windowY", pos.second.toString())
+        systemProperty("parikshan.target", targetName.lowercase())
+        systemProperty("parikshan.token", tokenVal)
+        systemProperty("parikshan.desktop.launchManifest", manifestFileVal.absolutePath)
+        val videosDir = project.layout.buildDirectory.dir("parikshan/videos/${reportTargetLabel.lowercase()}").get().asFile.absolutePath
+        systemProperty("parikshan.video.outputDir", videosDir)
+        systemProperty("parikshan.projectRootDir", project.rootDir.absolutePath)
+        if (autoInstStr.isNotBlank()) {
+          systemProperty("parikshan.instances", autoInstStr)
+          systemProperty("parikshan.sessionsDir", File(buildDirVal, "parikshan/desktop/sessions").absolutePath)
+        }
+        if (isBackgroundRequested) {
+          systemProperty("parikshan.background", "true")
+        }
+        if (isVideoRequested) {
+          systemProperty("parikshan.video.enabled", "true")
+        }
+        val fps = project.findProperty("parikshan.video.fps")?.toString()
+        if (!fps.isNullOrBlank()) {
+          systemProperty("parikshan.video.fps", fps)
+        }
+        val stepDelay = project.findProperty("parikshan.stepDelayMs")?.toString()
+        if (!stepDelay.isNullOrBlank()) {
+          systemProperty("parikshan.stepDelayMs", stepDelay)
+        }
+        val postRoll = project.findProperty("parikshan.video.postRollMs")?.toString()
+        if (!postRoll.isNullOrBlank()) {
+          systemProperty("parikshan.video.postRollMs", postRoll)
+        }
+        val granularity = project.findProperty("parikshan.video.granularity")?.toString()
+        if (!granularity.isNullOrBlank()) {
+          systemProperty("parikshan.video.granularity", granularity)
         }
       }
-      systemProperty("parikshan.target", targetName.lowercase())
-      systemProperty("parikshan.token", tokenVal)
-      systemProperty("parikshan.desktop.launchManifest", manifestFileVal.absolutePath)
-      val videosDir = project.layout.buildDirectory.dir("parikshan/videos/$targetName").get().asFile.absolutePath
-      systemProperty("parikshan.video.outputDir", videosDir)
-      if (isBackgroundRequested) {
-        systemProperty("parikshan.background", "true")
-      }
-      if (isVideoRequested) {
-        systemProperty("parikshan.video.enabled", "true")
-      }
-      val fps = project.findProperty("parikshan.video.fps")?.toString()
-      if (!fps.isNullOrBlank()) {
-        systemProperty("parikshan.video.fps", fps)
-      }
-      val stepDelay = project.findProperty("parikshan.stepDelayMs")?.toString()
-      if (!stepDelay.isNullOrBlank()) {
-        systemProperty("parikshan.stepDelayMs", stepDelay)
-      }
-      val postRoll = project.findProperty("parikshan.video.postRollMs")?.toString()
-      if (!postRoll.isNullOrBlank()) {
-        systemProperty("parikshan.video.postRollMs", postRoll)
-      }
-      val granularity = project.findProperty("parikshan.video.granularity")?.toString()
-      if (!granularity.isNullOrBlank()) {
-        systemProperty("parikshan.video.granularity", granularity)
-      }
+    }
+
+    registerDesktopTestTask(e2eTaskName, capitalizedTarget)
+
+    // Register real Test task aliases for standard jvm() / jvm("desktop") targets so `--tests` works identically on both,
+    // without touching custom JVM targets such as jvm("custom").
+    if (capitalizedTarget == "Jvm" && project.tasks.findByName("e2eDesktopTest") == null) {
+      registerDesktopTestTask("e2eDesktopTest", "Desktop")
+    } else if (capitalizedTarget == "Desktop" && project.tasks.findByName("e2eJvmTest") == null) {
+      registerDesktopTestTask("e2eJvmTest", "Jvm")
     }
   }
 }
@@ -218,15 +282,10 @@ internal object DesktopProcess {
     background: Boolean
   ) {
     stop(host = host, port = port, token = token, manifestFile = manifestFile)
-    val javaExecutable = System.getProperty("java.home") + "/bin/java"
-    val mainClass = java.util.jar.JarFile(jar).use { jarFile ->
-      jarFile.manifest.mainAttributes.getValue("Main-Class")
-    }
-    val hasPremain = runCatching {
-      java.util.jar.JarFile(jar).use { jarFile ->
-        jarFile.manifest?.mainAttributes?.getValue("Premain-Class") != null
-      }
-    }.getOrDefault(false)
+    val javaExecutable = resolveJavaExecutable()
+    val mainClass = jar.readJarManifestAttribute("Main-Class")
+      ?: error("Application JAR '${jar.absolutePath}' is missing Main-Class manifest attribute")
+    val hasPremain = jar.readJarManifestAttribute("Premain-Class") != null
     logFile.parentFile.mkdirs()
     val command = buildList {
       add(javaExecutable)
@@ -300,8 +359,7 @@ internal object DesktopProcess {
     }
     process?.let { active ->
       if (active.isAlive) {
-        active.destroy()
-        try { active.waitFor(500, java.util.concurrent.TimeUnit.MILLISECONDS) } catch (_: Exception) {}
+        terminateProcessTree(active.toHandle(), timeoutMs = 2000L)
       }
     }
     manifestFile?.let { destroyManifestProcess(it) }
@@ -321,7 +379,7 @@ internal object DesktopProcess {
     return ProcessHandle.of(pid).map { it.isAlive }.orElse(false)
   }
 
-  private fun writeLaunchManifest(
+  internal fun writeLaunchManifest(
     manifestFile: File,
     pid: Long,
     javaExecutable: String,
@@ -370,13 +428,6 @@ internal object DesktopProcess {
     if (!handle.isAlive) {
       return
     }
-    handle.destroy()
-    runCatching {
-      handle.onExit().get(10, TimeUnit.SECONDS)
-    }.onFailure {
-      if (handle.isAlive) {
-        handle.destroyForcibly()
-      }
-    }
+    terminateProcessTree(handle, timeoutMs = 10_000L)
   }
 }

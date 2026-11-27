@@ -53,8 +53,9 @@ internal object ParikshanVideoSessionManager {
     }
 
     val target = System.getProperty("parikshan.target")?.lowercase() ?: "desktop"
-    if (target == "sync") {
-      System.err.println("Parikshan: Video recording is currently not supported in multi-target sync mode; skipping video session.")
+    val executionMode = System.getProperty("parikshan.executionMode")?.lowercase()
+    if (target == "sync" || target == "multi-target" || executionMode == "multi-target") {
+      System.err.println("Parikshan: Video recording is not yet supported in $target mode; skipping video session.")
       return
     }
 

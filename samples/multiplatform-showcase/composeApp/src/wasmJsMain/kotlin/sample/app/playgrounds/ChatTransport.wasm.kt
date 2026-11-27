@@ -12,6 +12,10 @@ private external object JsDate {
 
 @OptIn(ExperimentalEncodingApi::class)
 actual object ChatTransport {
+  private const val RELAY_ENDPOINT = "http://127.0.0.1:18089/parikshan-chat"
+
+  actual fun ensureRelayStarted() {}
+
   actual fun getCurrentInstanceId(): String {
     val search = runCatching { window.location.search }.getOrNull().orEmpty()
     val match = Regex("parikshan_instance=([^&]+)").find(search)
@@ -29,7 +33,7 @@ actual object ChatTransport {
     }
     runCatching {
       val xhr = XMLHttpRequest()
-      xhr.open("POST", "/parikshan-chat", false)
+      xhr.open("POST", RELAY_ENDPOINT, false)
       xhr.setRequestHeader("Content-Type", "text/plain")
       xhr.send(body)
     }
@@ -38,7 +42,7 @@ actual object ChatTransport {
   actual fun getMessages(): List<ChatMessage> {
     return runCatching {
       val xhr = XMLHttpRequest()
-      xhr.open("GET", "/parikshan-chat", false)
+      xhr.open("GET", RELAY_ENDPOINT, false)
       xhr.send()
       val response = xhr.responseText
       if (response.isBlank()) return emptyList()
@@ -65,7 +69,7 @@ actual object ChatTransport {
   actual fun clearMessages() {
     runCatching {
       val xhr = XMLHttpRequest()
-      xhr.open("DELETE", "/parikshan-chat", false)
+      xhr.open("DELETE", RELAY_ENDPOINT, false)
       xhr.send()
     }
   }

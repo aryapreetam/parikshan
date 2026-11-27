@@ -1,6 +1,5 @@
 package io.github.aryapreetam.parikshan.gradle
 
-import java.awt.GraphicsEnvironment
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -9,6 +8,42 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import org.gradle.api.logging.Logger
 import org.gradle.api.logging.Logging
+
+internal fun resolveJavaExecutable(): String {
+  val isWindows = System.getProperty("os.name").lowercase().contains("win")
+  return File(System.getProperty("java.home"), if (isWindows) "bin/java.exe" else "bin/java").absolutePath
+}
+
+internal fun File.readJarManifestAttribute(attributeName: String): String? {
+  return runCatching {
+    java.util.jar.JarFile(this).use { jarFile ->
+      jarFile.manifest?.mainAttributes?.getValue(attributeName)
+    }
+  }.getOrNull()
+}
+
+internal fun terminateProcessTree(handle: ProcessHandle, timeoutMs: Long = 2000L) {
+  val descendants = runCatching { handle.descendants().toList() }.getOrDefault(emptyList())
+  descendants.forEach { child ->
+    runCatching { if (child.isAlive) child.destroy() }
+  }
+  runCatching { if (handle.isAlive) handle.destroy() }
+
+  val exited = runCatching {
+    handle.onExit().get(timeoutMs, TimeUnit.MILLISECONDS)
+  }.isSuccess
+
+  if (!exited || handle.isAlive) {
+    descendants.forEach { child ->
+      runCatching { if (child.isAlive) child.destroyForcibly() }
+    }
+    runCatching { if (handle.isAlive) handle.destroyForcibly() }
+  } else {
+    descendants.forEach { child ->
+      runCatching { if (child.isAlive) child.destroyForcibly() }
+    }
+  }
+}
 
 /**
  * Manages concurrent Desktop application processes for multi-instance E2E testing.
@@ -24,6 +59,12 @@ import org.gradle.api.logging.Logging
 internal object DesktopProcessManager {
 
   private val logger: Logger = Logging.getLogger(DesktopProcessManager::class.java)
+  private val ACTOR_ID_PATTERN = Regex("^[a-zA-Z0-9_-]+$")
+
+  private data class InstanceKey(
+    val baseDirPath: String,
+    val instanceId: String
+  )
 
   /**
    * Represents an active application instance launched by the manager.
@@ -37,7 +78,10 @@ internal object DesktopProcessManager {
     val windowPosition: Pair<Int, Int>
   )
 
-  private val activeInstances = ConcurrentHashMap<String, LaunchedInstance>()
+  private val activeInstances = ConcurrentHashMap<InstanceKey, LaunchedInstance>()
+
+  private fun normalizeBaseDir(baseOutputDir: File?): String =
+    baseOutputDir?.let { dir -> runCatching { dir.canonicalPath }.getOrElse { dir.absolutePath } } ?: ""
 
   /**
    * Calculates non-overlapping window coordinates for N instances.
@@ -65,19 +109,6 @@ internal object DesktopProcessManager {
   /**
    * Spawns N concurrent desktop application processes with isolated ports, session tokens,
    * local data storage directories, and tiled window positions.
-   *
-   * @param jarFile Packaged runnable application JAR artifact.
-   * @param instances List of unique actor/instance identifiers (e.g. `listOf("alice", "bob")`).
-   * @param baseOutputDir Root directory for logs, data directories, and session descriptors.
-   * @param preferredWindowWidth Preferred width of each desktop window.
-   * @param preferredWindowHeight Preferred height of each desktop window.
-   * @param appArgs Additional CLI arguments to pass to the application main method.
-   * @param host Localhost binding address (default: `127.0.0.1`).
-   * @param timeoutMs Maximum duration to wait for each instance's embedded server to become responsive.
-   * @param pollMs Interval between health check probes.
-   * @param titlePrefix Optional window title prefix.
-   * @param background When true, applies focus prevention flags for background execution.
-   * @return List of [LaunchedInstance] descriptors.
    */
   fun launchInstances(
     jarFile: File,
@@ -92,110 +123,118 @@ internal object DesktopProcessManager {
     titlePrefix: String? = null,
     background: Boolean = false,
     useAppLauncher: Boolean = true,
-    waitForReady: Boolean = true
+    waitForReady: Boolean = true,
+    startIndex: Int = 0
   ): List<LaunchedInstance> {
     require(instances.isNotEmpty()) { "Instance list must not be empty" }
     require(instances.distinct().size == instances.size) { "Duplicate instance IDs detected: $instances" }
-
-    val isWindows = System.getProperty("os.name").lowercase().contains("win")
-    val javaExecutable = System.getProperty("java.home") + "/bin/java" + (if (isWindows) ".exe" else "")
-    val mainClass = java.util.jar.JarFile(jarFile).manifest?.mainAttributes?.getValue("Main-Class")
-    val hasPremain = runCatching {
-      java.util.jar.JarFile(jarFile).use { jf ->
-        jf.manifest?.mainAttributes?.getValue("Premain-Class") != null
+    instances.forEach { id ->
+      require(id.isNotBlank() && ACTOR_ID_PATTERN.matches(id)) {
+        "Invalid instance identifier '$id'. Instance identifiers must be non-empty and match [a-zA-Z0-9_-]+."
       }
-    }.getOrDefault(false)
+    }
+
+    val javaExecutable = resolveJavaExecutable()
+    val mainClass = jarFile.readJarManifestAttribute("Main-Class")
+    val hasPremain = jarFile.readJarManifestAttribute("Premain-Class") != null
     val sessionsDir = File(baseOutputDir, "sessions").apply { mkdirs() }
     val logsDir = File(baseOutputDir, "logs").apply { mkdirs() }
-    val sharedDataDir = File(baseOutputDir, "data").apply { mkdirs() }
-    File(sharedDataDir, "shared_chat_messages.txt").delete()
+    val baseDirKey = normalizeBaseDir(baseOutputDir)
 
     val launched = mutableListOf<LaunchedInstance>()
 
-    instances.forEachIndexed { index, instanceId ->
-      stopInstance(instanceId = instanceId, baseOutputDir = baseOutputDir, host = host)
+    try {
+      instances.forEachIndexed { index, instanceId ->
+        stopInstance(instanceId = instanceId, baseOutputDir = baseOutputDir, host = host)
 
-      val port = PortAllocator.allocate()
-      val token = UUID.randomUUID().toString()
-      val dataDir = File(baseOutputDir, "data/$instanceId").apply { mkdirs() }
-      val (windowX, windowY) = calculateWindowCoordinates(
-        index = index,
-        totalCount = instances.size,
-        preferredWindowWidth = preferredWindowWidth,
-        preferredWindowHeight = preferredWindowHeight
-      )
+        val port = PortAllocator.allocate()
+        val token = UUID.randomUUID().toString()
+        val dataDir = File(baseOutputDir, "data/$instanceId").apply { mkdirs() }
+        val (windowX, windowY) = calculateWindowCoordinates(
+          index = startIndex + index,
+          totalCount = startIndex + instances.size,
+          preferredWindowWidth = preferredWindowWidth,
+          preferredWindowHeight = preferredWindowHeight
+        )
 
-      val logFile = File(logsDir, "desktop-$instanceId.log")
+        val logFile = File(logsDir, "desktop-$instanceId.log")
 
-      val command = buildList {
-        add(javaExecutable)
-        if (hasPremain) {
-          add("-javaagent:${jarFile.absolutePath}")
+        val command = buildList {
+          add(javaExecutable)
+          if (hasPremain) {
+            add("-javaagent:${jarFile.absolutePath}")
+          }
+          add("-Dparikshan.host=$host")
+          add("-Dparikshan.port=$port")
+          add("-Dparikshan.token=$token")
+          add("-Dparikshan.session.token=$token")
+          add("-Dparikshan.instance.id=$instanceId")
+          add("-Dparikshan.data.dir=${dataDir.absolutePath}")
+          add("-Dparikshan.desktop.windowX=$windowX")
+          add("-Dparikshan.desktop.windowY=$windowY")
+          add("-Dparikshan.desktop.windowWidth=$preferredWindowWidth")
+          add("-Dparikshan.desktop.windowHeight=$preferredWindowHeight")
+          if (!mainClass.isNullOrBlank()) {
+            add("-Dparikshan.desktop.appMainClass=$mainClass")
+          }
+          add("-Dapple.awt.takeFocusOnShow=false")
+          if (background) {
+            add("-Dparikshan.background=true")
+          }
+          if (!titlePrefix.isNullOrBlank()) {
+            add("-Dparikshan.desktop.windowTitle=$titlePrefix - $instanceId")
+          }
+          if (useAppLauncher) {
+            add("-cp")
+            add(jarFile.absolutePath)
+            add("io.github.aryapreetam.parikshan.server.DesktopAppLauncher")
+          } else {
+            add("-jar")
+            add(jarFile.absolutePath)
+          }
+          addAll(appArgs)
         }
-        add("-Dparikshan.host=$host")
-        add("-Dparikshan.port=$port")
-        add("-Dparikshan.token=$token")
-        add("-Dparikshan.session.token=$token")
-        add("-Dparikshan.instance.id=$instanceId")
-        add("-Dparikshan.data.dir=${dataDir.absolutePath}")
-        add("-Dparikshan.desktop.windowX=$windowX")
-        add("-Dparikshan.desktop.windowY=$windowY")
-        add("-Dparikshan.desktop.windowWidth=$preferredWindowWidth")
-        add("-Dparikshan.desktop.windowHeight=$preferredWindowHeight")
-        if (!mainClass.isNullOrBlank()) {
-          add("-Dparikshan.desktop.appMainClass=$mainClass")
+
+        val pb = ProcessBuilder(command).apply {
+          environment()["NSAppSleepDisabled"] = "YES"
+          redirectErrorStream(true)
+          redirectOutput(logFile)
         }
-        add("-Dapple.awt.takeFocusOnShow=false")
-        if (background) {
-          add("-Dparikshan.background=true")
-        }
-        if (!titlePrefix.isNullOrBlank()) {
-          add("-Dparikshan.desktop.windowTitle=$titlePrefix - $instanceId")
-        }
-        if (useAppLauncher) {
-          add("-cp")
-          add(jarFile.absolutePath)
-          add("io.github.aryapreetam.parikshan.server.DesktopAppLauncher")
-        } else {
-          add("-jar")
-          add(jarFile.absolutePath)
-        }
-        addAll(appArgs)
+
+        val process = pb.start()
+
+        val targetSession = TargetSession(
+          token = token,
+          port = port,
+          timestamp = System.currentTimeMillis(),
+          instanceId = instanceId,
+          target = "desktop",
+          pid = process.pid(),
+          dataDir = dataDir.absolutePath
+        )
+        SessionStore.writeInstanceSession(sessionsDir, targetSession)
+
+        val instance = LaunchedInstance(
+          instanceId = instanceId,
+          port = port,
+          token = token,
+          process = process,
+          dataDir = dataDir,
+          windowPosition = Pair(windowX, windowY)
+        )
+        activeInstances[InstanceKey(baseDirKey, instanceId)] = instance
+        launched.add(instance)
       }
 
-      val pb = ProcessBuilder(command).apply {
-        environment()["NSAppSleepDisabled"] = "YES"
-        redirectErrorStream(true)
-        redirectOutput(logFile)
+      if (waitForReady) {
+        waitForHealth(launched, baseOutputDir, host, timeoutMs, pollMs)
       }
-
-      val process = pb.start()
-
-      val targetSession = TargetSession(
-        token = token,
-        port = port,
-        timestamp = System.currentTimeMillis(),
-        instanceId = instanceId,
-        target = "desktop",
-        pid = process.pid(),
-        dataDir = dataDir.absolutePath
-      )
-      SessionStore.writeInstanceSession(sessionsDir, targetSession)
-
-      val instance = LaunchedInstance(
-        instanceId = instanceId,
-        port = port,
-        token = token,
-        process = process,
-        dataDir = dataDir,
-        windowPosition = Pair(windowX, windowY)
-      )
-      activeInstances[instanceId] = instance
-      launched.add(instance)
-    }
-
-    if (waitForReady) {
-      waitForHealth(launched, baseOutputDir, host, timeoutMs, pollMs)
+    } catch (t: Throwable) {
+      // Roll back every instance started during this batch to prevent orphaned processes/sessions.
+      launched.forEach { inst ->
+        runCatching { stopInstance(inst.instanceId, baseOutputDir, host) }
+      }
+      throw t
     }
 
     return launched
@@ -233,7 +272,7 @@ internal object DesktopProcessManager {
     }
   }
 
-  private fun isEndpointReady(host: String, port: Int, token: String): Boolean {
+  internal fun isEndpointReady(host: String, port: Int, token: String): Boolean {
     var conn: HttpURLConnection? = null
     return try {
       val url = URL("http://$host:$port/")
@@ -244,10 +283,11 @@ internal object DesktopProcessManager {
       conn.doOutput = true
       conn.connectTimeout = 300
       conn.readTimeout = 300
-      val probePayload = """{"type":"ping","id":"probe","token":"$token"}"""
+      val probePayload = """{"type":"ping","id":"probe","token":"${SessionStore.escapeJsonString(token)}"}"""
       conn.outputStream.use { it.write(probePayload.toByteArray()) }
       val code = conn.responseCode
-      code in 200..401
+      runCatching { (if (code in 200..299) conn.inputStream else conn.errorStream)?.use { it.readBytes() } }
+      code == 200
     } catch (_: Exception) {
       false
     } finally {
@@ -256,14 +296,19 @@ internal object DesktopProcessManager {
   }
 
   /**
-   * Gracefully requests termination of a specific desktop instance, followed by process destruction.
+   * Gracefully requests termination of a specific desktop instance, followed by recursive process-tree destruction.
    */
   fun stopInstance(
     instanceId: String,
     baseOutputDir: File? = null,
     host: String = "127.0.0.1"
   ) {
-    val inMem = activeInstances.remove(instanceId)
+    val inMem = if (baseOutputDir != null) {
+      activeInstances.remove(InstanceKey(normalizeBaseDir(baseOutputDir), instanceId))
+    } else {
+      val matchingKey = activeInstances.keys.firstOrNull { it.instanceId == instanceId }
+      matchingKey?.let { activeInstances.remove(it) }
+    }
     val sessionsDir = baseOutputDir?.let { File(it, "sessions") }
     val diskSession = sessionsDir?.let { SessionStore.readInstanceSession(it, instanceId) }
 
@@ -273,38 +318,31 @@ internal object DesktopProcessManager {
 
     if (port != null) {
       runCatching {
-        val json = """{"type":"stopRecording","id":"desktop-stop","sessionName":"any","token":"$token"}"""
+        val json = """{"type":"stopRecording","id":"desktop-stop","sessionName":"any","token":"${SessionStore.escapeJsonString(token)}"}"""
         val url = URL("http://$host:$port/")
         val conn = url.openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
         conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("Connection", "close")
         conn.doOutput = true
         conn.connectTimeout = 500
         conn.readTimeout = 500
         conn.outputStream.use { it.write(json.toByteArray()) }
         conn.responseCode
+        conn.disconnect()
       }
     }
 
     inMem?.process?.let { proc ->
       if (proc.isAlive) {
-        proc.destroy()
-        try {
-          proc.waitFor(500, TimeUnit.MILLISECONDS)
-        } catch (_: Exception) {}
-        if (proc.isAlive) {
-          proc.destroyForcibly()
-        }
+        terminateProcessTree(proc.toHandle(), timeoutMs = 2000L)
       }
     }
 
     if (pid != null) {
       ProcessHandle.of(pid).ifPresent { handle ->
         if (handle.isAlive) {
-          handle.destroy()
-          runCatching { handle.onExit().get(2, TimeUnit.SECONDS) }.onFailure {
-            if (handle.isAlive) handle.destroyForcibly()
-          }
+          terminateProcessTree(handle, timeoutMs = 2000L)
         }
       }
     }
@@ -315,13 +353,17 @@ internal object DesktopProcessManager {
   }
 
   /**
-   * Terminates all active desktop application processes (in-memory and on-disk)
-   * and clears session records.
+   * Terminates all active desktop application processes (scoped to [baseOutputDir] when provided,
+   * or all tracked instances when null) and clears session records.
    */
   fun stopAll(baseOutputDir: File? = null, host: String = "127.0.0.1") {
-    val inMemoryIds = activeInstances.keys.toList()
-    for (id in inMemoryIds) {
-      stopInstance(id, baseOutputDir, host)
+    val baseDirKey = baseOutputDir?.let(::normalizeBaseDir)
+    val matchingKeys = activeInstances.keys.filter { key ->
+      baseDirKey == null || key.baseDirPath == baseDirKey
+    }
+    for (key in matchingKeys) {
+      val dirForKey = if (baseOutputDir != null) baseOutputDir else key.baseDirPath.takeIf { it.isNotBlank() }?.let(::File)
+      stopInstance(key.instanceId, dirForKey, host)
     }
 
     if (baseOutputDir != null) {
@@ -338,11 +380,18 @@ internal object DesktopProcessManager {
     }
   }
 
-  fun getActiveInstances(): Map<String, LaunchedInstance> = activeInstances.toMap()
+  fun getActiveInstances(baseOutputDir: File? = null): Map<String, LaunchedInstance> {
+    val baseDirKey = baseOutputDir?.let(::normalizeBaseDir)
+    return activeInstances.entries
+      .filter { baseDirKey == null || it.key.baseDirPath == baseDirKey }
+      .associate { it.key.instanceId to it.value }
+  }
 
-  fun isInstanceAlive(instanceId: String): Boolean {
-    val instance = activeInstances[instanceId] ?: return false
-    return instance.process.isAlive
+  fun isInstanceAlive(instanceId: String, baseOutputDir: File? = null): Boolean {
+    val baseDirKey = baseOutputDir?.let(::normalizeBaseDir)
+    return activeInstances.entries.any { (key, inst) ->
+      key.instanceId == instanceId && (baseDirKey == null || key.baseDirPath == baseDirKey) && inst.process.isAlive
+    }
   }
 
   fun resetForTesting() {

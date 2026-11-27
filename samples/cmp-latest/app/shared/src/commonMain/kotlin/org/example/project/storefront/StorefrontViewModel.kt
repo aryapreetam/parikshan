@@ -44,11 +44,8 @@ class StorefrontViewModel(
         _uiState.update { it.copy(step = StorefrontStep.CHECKOUT) }
       }
       is StorefrontUserAction.RefreshCatalog -> refreshCatalog()
-      is StorefrontUserAction.AddSignaturePoint -> {
-        _uiState.update { it.copy(signaturePoints = it.signaturePoints + action.point) }
-      }
-      is StorefrontUserAction.ClearSignature -> {
-        _uiState.update { it.copy(signaturePoints = emptyList()) }
+      is StorefrontUserAction.SelectShippingMethod -> {
+        _uiState.update { it.copy(shippingMethod = action.method) }
       }
       is StorefrontUserAction.ConfirmCheckout -> confirmCheckout()
       is StorefrontUserAction.ResetFlow -> resetFlow()
@@ -61,8 +58,15 @@ class StorefrontViewModel(
   fun refreshCatalog() {
     scope.launch {
       val productsResult = repository.fetchProducts().getOrDefault(emptyList())
-      _uiState.update {
-        it.copy(products = productsResult)
+      _uiState.update { state ->
+        val reservedByProduct = state.cart
+          .groupBy { it.product.id }
+          .mapValues { (_, items) -> items.sumOf { it.quantity } }
+        val adjustedProducts = productsResult.map { product ->
+          val reserved = reservedByProduct[product.id] ?: 0
+          product.copy(stock = (product.stock - reserved).coerceAtLeast(0))
+        }
+        state.copy(products = adjustedProducts)
       }
     }
   }
@@ -103,17 +107,25 @@ class StorefrontViewModel(
   }
 
   private fun addToCart(product: Product) {
-    val currentCart = _uiState.value.cart.toMutableList()
-    val giftWrap = _uiState.value.isGiftWrapped
-    val existingIndex = currentCart.indexOfFirst { it.product.id == product.id && it.giftWrap == giftWrap }
-    if (existingIndex >= 0) {
-      val item = currentCart[existingIndex]
-      currentCart[existingIndex] = item.copy(quantity = item.quantity + 1)
-    } else {
-      currentCart.add(CartItem(product = product, quantity = 1, giftWrap = giftWrap))
-    }
-    _uiState.update {
-      it.copy(
+    _uiState.update { state ->
+      val currentProduct = state.products.find { it.id == product.id } ?: product
+      if (currentProduct.stock <= 0) {
+        return@update state
+      }
+      val currentCart = state.cart.toMutableList()
+      val giftWrap = state.isGiftWrapped
+      val existingIndex = currentCart.indexOfFirst { it.product.id == product.id && it.giftWrap == giftWrap }
+      if (existingIndex >= 0) {
+        val item = currentCart[existingIndex]
+        currentCart[existingIndex] = item.copy(quantity = item.quantity + 1)
+      } else {
+        currentCart.add(CartItem(product = currentProduct, quantity = 1, giftWrap = giftWrap))
+      }
+      val updatedProducts = state.products.map { item ->
+        if (item.id == product.id) item.copy(stock = (item.stock - 1).coerceAtLeast(0)) else item
+      }
+      state.copy(
+        products = updatedProducts,
         cart = currentCart,
         isBottomSheetOpen = false,
         selectedProduct = null
@@ -122,18 +134,17 @@ class StorefrontViewModel(
   }
 
   private fun confirmCheckout() {
-    val points = _uiState.value.signaturePoints
-    val signatureStr = if (points.isNotEmpty()) "SVG_PATH_${points.size}_NODES" else "CHECKOUT_SIGNED"
+    val shippingMethod = _uiState.value.shippingMethod
     val cart = _uiState.value.cart
 
     scope.launch {
-      val orderIdResult = repository.submitOrder(signatureStr, cart).getOrDefault("ORD-9999")
+      val orderIdResult = repository.submitOrder(shippingMethod.label, cart).getOrDefault("ORD-9999")
       _uiState.update {
         it.copy(
           step = StorefrontStep.SUCCESS,
           orderId = orderIdResult,
           cart = emptyList(),
-          signaturePoints = emptyList()
+          shippingMethod = ShippingMethod.STANDARD
         )
       }
     }
@@ -144,7 +155,7 @@ class StorefrontViewModel(
       it.copy(
         step = StorefrontStep.FEED,
         orderId = null,
-        signaturePoints = emptyList()
+        shippingMethod = ShippingMethod.STANDARD
       )
     }
   }

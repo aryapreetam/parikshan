@@ -7,7 +7,7 @@ This document outlines accomplished milestones, active capabilities, and upcomin
 ## Accomplished Milestones
 
 * **Multi-Instance Testing for Desktop & Web (0.1.0):** Multiple application windows or browser contexts on Desktop (JVM) and Web (Wasm) with ephemeral ports and Just-In-Time window lifecycle.
-* **Multi-Target Testing for Desktop & Web (0.1.0):** Cross-platform actor coordination (`instances = mapOf(...)`) between Desktop (JVM) and Web (Wasm) with build-time AST method filtering (`--select-method`) and runtime target affinity guards.
+* **Multi-Target Testing for Desktop & Web (0.1.0):** Cross-platform actor coordination (`instances = mapOf(...)`) between Desktop (JVM) and Web (Wasm) with build-time source scanning, method filtering (`--select-method`), and runtime target affinity guards.
 * **File Picker Automation (0.0.11):** Non-blocking native OS file dialog and browser file chooser interception (`withFilePicker`, `withFilePickerCancel`) across Desktop, Web, Android, and iOS.
 * **CMP 1.11–1.12 & Android 17 (SDK 36) Support (0.0.10):** Target SDK 36 qualification, Compose Multiplatform 1.11–1.12 compatibility, and declarative soft keyboard dismissal (`hideKeyboard()`).
 * **Standalone Android Support & Adaptive Latches (0.0.9):** Zero-configuration testing for standalone Android apps (`com.android.application` without Desktop targets) and non-blocking video recording latches.

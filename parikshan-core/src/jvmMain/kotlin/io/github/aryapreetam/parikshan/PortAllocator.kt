@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * Provides deterministic, collision-free local port discovery for multi-instance
  * test drivers and embedded application servers.
  */
+@InternalParikshanApi
 object PortAllocator {
 
   /**

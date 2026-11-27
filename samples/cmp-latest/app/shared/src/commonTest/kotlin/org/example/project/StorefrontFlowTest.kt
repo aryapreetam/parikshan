@@ -5,15 +5,58 @@ import io.github.aryapreetam.parikshan.E2ETestScope
 import io.github.aryapreetam.parikshan.e2eTest
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.github.aryapreetam.parikshan.protocol.atIndex
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
 import org.example.project.storefront.ServiceRegistry
 import kotlinx.coroutines.delay
 import kotlin.test.AfterTest
+import kotlin.test.BeforeTest
 import kotlin.test.Test
 
 class StorefrontFlowTest : E2ETestLifecycle {
 
   @AfterTest
   fun cleanupState() {
+    ServiceRegistry.resetForTesting()
+  }
+
+  @BeforeTest
+  fun setupMocking() {
+    val mockEngine = MockEngine { request ->
+      when {
+        request.url.encodedPath.contains("/products") -> respond(
+          content = """[
+            {"id":"p1","title":"Wireless Noise-Canceling Headphones","category":"Electronics","price":199.99,"description":"Premium over-ear headphones with active noise cancellation.","tags":["Audio","Wireless","Premium"],"rating":4.8,"stock":10},
+            {"id":"p2","title":"Ergonomic Mechanical Keyboard","category":"Electronics","price":129.50,"description":"Custom RGB mechanical keyboard with tactile switches.","tags":["Peripheral","Office"],"rating":4.7,"stock":10},
+            {"id":"p3","title":"Smart Fitness Watch","category":"Wearables","price":149.00,"description":"Track workouts, heart rate, and sleep quality.","tags":["Fitness","Health"],"rating":4.5,"stock":10}
+          ]""",
+          status = HttpStatusCode.OK,
+          headers = headersOf(HttpHeaders.ContentType, "application/json")
+        )
+        request.url.encodedPath.contains("/login") -> respond(
+          content = """{"status":"success","user":{"email":"alex@example.com"}}""",
+          status = HttpStatusCode.OK,
+          headers = headersOf(HttpHeaders.ContentType, "application/json")
+        )
+        request.url.encodedPath.contains("/orders") -> respond(
+          content = """{"status":"success","orderId":"ORD-8821"}""",
+          status = HttpStatusCode.OK,
+          headers = headersOf(HttpHeaders.ContentType, "application/json")
+        )
+        else -> respond(
+          content = """{"status":"ok"}""",
+          status = HttpStatusCode.OK,
+          headers = headersOf(HttpHeaders.ContentType, "application/json")
+        )
+      }
+    }
+
+    val testClient = HttpClient(mockEngine)
+    ServiceRegistry.registerHttpClient(testClient)
     ServiceRegistry.resetForTesting()
   }
 
@@ -51,18 +94,21 @@ class StorefrontFlowTest : E2ETestLifecycle {
     assertVisible(Selector.Tag("checkout_button"))
     click(Selector.Tag("checkout_button"))
 
-    // 3. Delivery Signature Checkout Screen
+    // 3. Checkout & Delivery Selection
     assertVisible("Checkout & Delivery")
-    assertVisible("Draw Delivery Signature Below")
+    assertVisible("Delivery Method")
 
-    // Draw creative cursive 'hi' signature gesture on canvas
-    drawCursiveHiSignature("storefront_signature_canvas")
+    // Select Express Delivery and verify shipping fee updates Order Summary
+    click(Selector.Tag("shipping_option_express"))
+    assertVisible(Selector.Tag("checkout_shipping_fee"))
+    assertText(Selector.Tag("checkout_shipping_fee"), "$9.99")
 
-    // Complete Order
+    // Scroll to Payment Method & Place Order
     scrollUntilVisible(
       containerSelector = Selector.Tag("storefront_checkout_screen"),
       targetSelector = Selector.Tag("complete_order_button")
     )
+    assertVisible("Visa ending in 4242")
     click(Selector.Tag("complete_order_button"))
 
     // 4. Order Success Screen
@@ -75,26 +121,6 @@ class StorefrontFlowTest : E2ETestLifecycle {
     if (hasVisibleNode("storefront_sign_out_button")) {
       click("storefront_sign_out_button")
     }
-  }
-
-  private suspend fun E2ETestScope.drawCursiveHiSignature(canvasTag: String) {
-    val canvasNode = resolveNode(Selector.Tag(canvasTag))
-    val bounds = canvasNode.bounds
-    val startX = bounds.left + 30.0
-    val centerY = bounds.centerY
-
-    // Letter 'h' - loop up, straight down, arch over
-    drag(fromX = startX, fromY = centerY + 15.0, toX = startX + 10.0, toY = centerY - 30.0, durationMs = 150)
-    drag(fromX = startX + 10.0, fromY = centerY - 30.0, toX = startX + 15.0, toY = centerY + 20.0, durationMs = 150)
-    drag(fromX = startX + 15.0, fromY = centerY + 20.0, toX = startX + 30.0, toY = centerY - 10.0, durationMs = 150)
-    drag(fromX = startX + 30.0, fromY = centerY - 10.0, toX = startX + 40.0, toY = centerY + 20.0, durationMs = 150)
-
-    // Connecting tail to 'i'
-    drag(fromX = startX + 40.0, fromY = centerY + 20.0, toX = startX + 55.0, toY = centerY - 10.0, durationMs = 150)
-    drag(fromX = startX + 55.0, fromY = centerY - 10.0, toX = startX + 62.0, toY = centerY + 20.0, durationMs = 150)
-
-    // Dot over 'i'
-    drag(fromX = startX + 58.0, fromY = centerY - 25.0, toX = startX + 60.0, toY = centerY - 23.0, durationMs = 100)
   }
 
   private suspend fun E2ETestScope.expandBottomSheetUntilVisible(

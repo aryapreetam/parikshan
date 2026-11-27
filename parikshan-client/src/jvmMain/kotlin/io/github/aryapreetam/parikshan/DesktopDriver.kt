@@ -1,3 +1,5 @@
+@file:OptIn(InternalParikshanApi::class)
+
 package io.github.aryapreetam.parikshan
 
 import io.github.aryapreetam.parikshan.protocol.Command
@@ -93,6 +95,13 @@ internal class DesktopDriver(
   }
 
   override suspend fun relaunchApp() {
+    if (context != null) {
+      throw UnsupportedOperationException(
+        "relaunchApp() on multi-instance Desktop actor '${context.instanceId}' is not supported in Parikshan 0.1.0. " +
+          "Reset application state via UI/API, or use Web (Wasm) for per-actor relaunch."
+      )
+    }
+
     // 1. Coordinate pause
     io.github.aryapreetam.parikshan.client.ParikshanVideoSessionManager.pauseRecording()
 
@@ -178,16 +187,26 @@ internal class DesktopDriver(
 
   private fun destroyProcessByPid(pid: Long) {
     val handle = ProcessHandle.of(pid).orElse(null) ?: return
+    terminateProcessTree(handle, timeoutSeconds = 5L)
+  }
+
+  private fun terminateProcessTree(handle: ProcessHandle, timeoutSeconds: Long) {
     if (!handle.isAlive) {
       return
     }
-    handle.destroy()
+    val descendants = runCatching { handle.descendants().toList() }.getOrDefault(emptyList())
+    descendants.forEach { runCatching { it.destroy() } }
+    runCatching { handle.destroy() }
     runCatching {
-      handle.onExit().get(5, java.util.concurrent.TimeUnit.SECONDS)
+      handle.onExit().get(timeoutSeconds, TimeUnit.SECONDS)
     }.onFailure {
-      if (handle.isAlive) {
-        handle.destroyForcibly()
+      descendants.forEach { child ->
+        runCatching { if (child.isAlive) child.destroyForcibly() }
       }
+      runCatching { if (handle.isAlive) handle.destroyForcibly() }
+    }
+    descendants.forEach { child ->
+      runCatching { if (child.isAlive) child.destroyForcibly() }
     }
   }
 
@@ -240,18 +259,7 @@ internal class DesktopDriver(
   private fun destroyProcessFromManifest(properties: Properties) {
     val pid = properties.getProperty("pid")?.toLongOrNull() ?: return
     val handle = ProcessHandle.of(pid).orElse(null) ?: return
-    if (!handle.isAlive) {
-      return
-    }
-
-    handle.destroy()
-    runCatching {
-      handle.onExit().get(10, TimeUnit.SECONDS)
-    }.onFailure {
-      if (handle.isAlive) {
-        handle.destroyForcibly()
-      }
-    }
+    terminateProcessTree(handle, timeoutSeconds = 10L)
   }
 
   private fun launchDesktopProcess(

@@ -25,6 +25,7 @@ data class ChatMessage(
 )
 
 expect object ChatTransport {
+  fun ensureRelayStarted()
   fun getCurrentInstanceId(): String
   fun broadcastMessage(text: String, attachment: ChatFileAttachment? = null)
   fun getMessages(): List<ChatMessage>

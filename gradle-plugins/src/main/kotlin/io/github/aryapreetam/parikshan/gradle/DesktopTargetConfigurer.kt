@@ -124,8 +124,8 @@ internal object DesktopTargetConfigurer {
           )
           if (launched.isNotEmpty()) {
             val primary = launched.first()
-            val javaExecutable = System.getProperty("java.home") + "/bin/java"
-            val mainClass = java.util.jar.JarFile(jar).manifest?.mainAttributes?.getValue("Main-Class") ?: ""
+            val javaExecutable = resolveJavaExecutable()
+            val mainClass = jar.readJarManifestAttribute("Main-Class") ?: ""
             DesktopProcess.writeLaunchManifest(
               manifestFile = manifestFileVal,
               pid = primary.process.pid(),
@@ -183,87 +183,91 @@ internal object DesktopTargetConfigurer {
       }
     }
 
-    project.registerE2eTestWithReport(e2eTaskName, capitalizedTarget) {
-      group = "verification"
-      dependsOn(startDesktopTask)
-      finalizedBy(stopTaskName)
+    fun registerDesktopTestTask(taskName: String, reportTargetLabel: String) {
+      project.registerE2eTestWithReport(taskName, reportTargetLabel) {
+        group = "verification"
+        dependsOn(startDesktopTask)
+        finalizedBy(stopTaskName)
 
-      configureE2eHostTestExecution(
-        e2eTestClasses = e2eTestClasses,
-        target = capitalizedTarget,
-        logger = logger
-      )
-      systemProperty("parikshan.host", hostVal)
-      doFirst {
-        val manifest = manifestFileVal
-        val port = if (manifest.exists()) {
-          val props = Properties()
-          runCatching { manifest.inputStream().use { props.load(it) } }
-          val pToken = props.getProperty("token")
-          if (!pToken.isNullOrBlank()) {
-            systemProperty("parikshan.token", pToken)
+        configureE2eHostTestExecution(
+          e2eTestClasses = e2eTestClasses,
+          target = reportTargetLabel,
+          logger = logger
+        )
+        systemProperty("parikshan.host", hostVal)
+        doFirst {
+          val manifest = manifestFileVal
+          val port = if (manifest.exists()) {
+            val props = Properties()
+            runCatching { manifest.inputStream().use { props.load(it) } }
+            val pToken = props.getProperty("token")
+            if (!pToken.isNullOrBlank()) {
+              systemProperty("parikshan.token", pToken)
+            }
+            props.getProperty("port") ?: portVal.toString()
+          } else {
+            portVal.toString()
           }
-          props.getProperty("port") ?: portVal.toString()
-        } else {
-          portVal.toString()
-        }
-        systemProperty("parikshan.port", port)
+          systemProperty("parikshan.port", port)
 
-        val sizeStr = optDesktopSize.orNull
-        val posStr = optDesktopPos.orNull
+          val sizeStr = optDesktopSize.orNull
+          val posStr = optDesktopPos.orNull
 
-        val size = parseSize(sizeStr)
-        val pos = parsePosition(posStr)
-        if (size != null) {
-          systemProperty("parikshan.desktop.windowWidth", size.first.toString())
-          systemProperty("parikshan.desktop.windowHeight", size.second.toString())
+          val size = parseSize(sizeStr)
+          val pos = parsePosition(posStr)
+          if (size != null) {
+            systemProperty("parikshan.desktop.windowWidth", size.first.toString())
+            systemProperty("parikshan.desktop.windowHeight", size.second.toString())
+          }
+          if (pos != null) {
+            systemProperty("parikshan.desktop.windowX", pos.first.toString())
+            systemProperty("parikshan.desktop.windowY", pos.second.toString())
+          }
         }
-        if (pos != null) {
-          systemProperty("parikshan.desktop.windowX", pos.first.toString())
-          systemProperty("parikshan.desktop.windowY", pos.second.toString())
+        systemProperty("parikshan.target", targetName.lowercase())
+        systemProperty("parikshan.token", tokenVal)
+        systemProperty("parikshan.desktop.launchManifest", manifestFileVal.absolutePath)
+        val videosDir = project.layout.buildDirectory.dir("parikshan/videos/${reportTargetLabel.lowercase()}").get().asFile.absolutePath
+        systemProperty("parikshan.video.outputDir", videosDir)
+        systemProperty("parikshan.projectRootDir", project.rootDir.absolutePath)
+        val instStr = optInstances.orNull
+        if (!instStr.isNullOrBlank()) {
+          systemProperty("parikshan.instances", instStr)
+          systemProperty("parikshan.sessionsDir", File(buildDirVal, "parikshan/desktop/sessions").absolutePath)
         }
-      }
-      systemProperty("parikshan.target", targetName.lowercase())
-      systemProperty("parikshan.token", tokenVal)
-      systemProperty("parikshan.desktop.launchManifest", manifestFileVal.absolutePath)
-      val videosDir = project.layout.buildDirectory.dir("parikshan/videos/$targetName").get().asFile.absolutePath
-      systemProperty("parikshan.video.outputDir", videosDir)
-      systemProperty("parikshan.projectRootDir", project.rootDir.absolutePath)
-      val instStr = optInstances.orNull
-      if (!instStr.isNullOrBlank()) {
-        systemProperty("parikshan.instances", instStr)
-        systemProperty("parikshan.sessionsDir", File(buildDirVal, "parikshan/desktop/sessions").absolutePath)
-      }
-      if (isBackgroundRequested) {
-        systemProperty("parikshan.background", "true")
-      }
-      if (isVideoRequested) {
-        systemProperty("parikshan.video.enabled", "true")
-      }
-      val fps = project.findProperty("parikshan.video.fps")?.toString()
-      if (!fps.isNullOrBlank()) {
-        systemProperty("parikshan.video.fps", fps)
-      }
-      val stepDelay = project.findProperty("parikshan.stepDelayMs")?.toString()
-      if (!stepDelay.isNullOrBlank()) {
-        systemProperty("parikshan.stepDelayMs", stepDelay)
-      }
-      val postRoll = project.findProperty("parikshan.video.postRollMs")?.toString()
-      if (!postRoll.isNullOrBlank()) {
-        systemProperty("parikshan.video.postRollMs", postRoll)
-      }
-      val granularity = project.findProperty("parikshan.video.granularity")?.toString()
-      if (!granularity.isNullOrBlank()) {
-        systemProperty("parikshan.video.granularity", granularity)
+        if (isBackgroundRequested) {
+          systemProperty("parikshan.background", "true")
+        }
+        if (isVideoRequested) {
+          systemProperty("parikshan.video.enabled", "true")
+        }
+        val fps = project.findProperty("parikshan.video.fps")?.toString()
+        if (!fps.isNullOrBlank()) {
+          systemProperty("parikshan.video.fps", fps)
+        }
+        val stepDelay = project.findProperty("parikshan.stepDelayMs")?.toString()
+        if (!stepDelay.isNullOrBlank()) {
+          systemProperty("parikshan.stepDelayMs", stepDelay)
+        }
+        val postRoll = project.findProperty("parikshan.video.postRollMs")?.toString()
+        if (!postRoll.isNullOrBlank()) {
+          systemProperty("parikshan.video.postRollMs", postRoll)
+        }
+        val granularity = project.findProperty("parikshan.video.granularity")?.toString()
+        if (!granularity.isNullOrBlank()) {
+          systemProperty("parikshan.video.granularity", granularity)
+        }
       }
     }
 
+    registerDesktopTestTask(e2eTaskName, capitalizedTarget)
+
+    // Register real Test task aliases for standard jvm() / jvm("desktop") targets so `--tests` works identically on both,
+    // without touching custom JVM targets such as jvm("custom").
     if (capitalizedTarget == "Jvm" && project.tasks.findByName("e2eDesktopTest") == null) {
-      project.tasks.register("e2eDesktopTest") {
-        group = "verification"
-        description = "Runs E2E tests on Desktop target (alias for $e2eTaskName)."
-        dependsOn(e2eTaskName)
-      }
+      registerDesktopTestTask("e2eDesktopTest", "Desktop")
+    } else if (capitalizedTarget == "Desktop" && project.tasks.findByName("e2eJvmTest") == null) {
+      registerDesktopTestTask("e2eJvmTest", "Jvm")
     }
   }
 }
@@ -285,15 +289,10 @@ internal object DesktopProcess {
     background: Boolean
   ) {
     stop(host = host, port = port, token = token, manifestFile = manifestFile)
-    val javaExecutable = System.getProperty("java.home") + "/bin/java"
-    val mainClass = java.util.jar.JarFile(jar).use { jarFile ->
-      jarFile.manifest.mainAttributes.getValue("Main-Class")
-    }
-    val hasPremain = runCatching {
-      java.util.jar.JarFile(jar).use { jarFile ->
-        jarFile.manifest?.mainAttributes?.getValue("Premain-Class") != null
-      }
-    }.getOrDefault(false)
+    val javaExecutable = resolveJavaExecutable()
+    val mainClass = jar.readJarManifestAttribute("Main-Class")
+      ?: error("Application JAR '${jar.absolutePath}' is missing Main-Class manifest attribute")
+    val hasPremain = jar.readJarManifestAttribute("Premain-Class") != null
     logFile.parentFile.mkdirs()
     val command = buildList {
       add(javaExecutable)
@@ -367,8 +366,7 @@ internal object DesktopProcess {
     }
     process?.let { active ->
       if (active.isAlive) {
-        active.destroy()
-        try { active.waitFor(500, java.util.concurrent.TimeUnit.MILLISECONDS) } catch (_: Exception) {}
+        terminateProcessTree(active.toHandle(), timeoutMs = 2000L)
       }
     }
     manifestFile?.let { destroyManifestProcess(it) }
@@ -437,13 +435,6 @@ internal object DesktopProcess {
     if (!handle.isAlive) {
       return
     }
-    handle.destroy()
-    runCatching {
-      handle.onExit().get(10, TimeUnit.SECONDS)
-    }.onFailure {
-      if (handle.isAlive) {
-        handle.destroyForcibly()
-      }
-    }
+    terminateProcessTree(handle, timeoutMs = 10_000L)
   }
 }

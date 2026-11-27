@@ -12,6 +12,7 @@ class MultiInstanceCollaborationTest {
 
   @BeforeTest
   fun setup() {
+    ChatTransport.ensureRelayStarted()
     ChatTransport.clearMessages()
   }
 

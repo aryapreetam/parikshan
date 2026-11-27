@@ -33,6 +33,7 @@ fun Application.module() {
     call.response.headers.append("Access-Control-Allow-Origin", "*")
     call.response.headers.append("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
     call.response.headers.append("Access-Control-Allow-Headers", "*")
+    call.response.headers.append("Cross-Origin-Resource-Policy", "cross-origin")
     if (call.request.httpMethod == io.ktor.http.HttpMethod.Options) {
       call.respond(HttpStatusCode.OK)
       finish()
@@ -74,8 +75,18 @@ fun Application.module() {
 
     post("/api/orders") {
       val body = call.receiveText()
-      val targetProduct = if (body.contains("p2")) "p2" else if (body.contains("p3")) "p3" else "p1"
-      val remaining = productInventory[targetProduct]?.decrementAndGet() ?: 0
+      val idsMatch = Regex("\"productIds\"\\s*:\\s*\"([^\"]*)\"").find(body)?.groupValues?.get(1).orEmpty()
+      val orderedIds = idsMatch.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+      val idsToDecrement = orderedIds.ifEmpty {
+        listOf(if (body.contains("p2")) "p2" else if (body.contains("p3")) "p3" else "p1")
+      }
+      var remaining = 0
+      idsToDecrement.forEach { productId ->
+        val counter = productInventory[productId]
+        if (counter != null) {
+          remaining = counter.updateAndGet { current -> (current - 1).coerceAtLeast(0) }
+        }
+      }
       val orderId = "ORD-" + (1000..9999).random()
       call.respondText("""{"status":"success","orderId":"$orderId","remainingStock":$remaining}""", ContentType.Application.Json)
     }

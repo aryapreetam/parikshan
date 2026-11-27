@@ -78,6 +78,7 @@ kotlin {
     }
     commonTest.dependencies {
       implementation(libs.kotlin.test)
+      implementation(libs.ktor.clientMock)
     }
     jvmMain.dependencies {
       implementation(libs.kotlinx.coroutinesSwing)
@@ -128,7 +129,8 @@ abstract class StartStorefrontServerTask : DefaultTask() {
     }
 
     logger.lifecycle("Parikshan: Starting Storefront Ktor Server on port 8080...")
-    val javaExec = System.getProperty("java.home") + "/bin/java"
+    val isWindows = System.getProperty("os.name").lowercase().contains("win")
+    val javaExec = File(System.getProperty("java.home"), if (isWindows) "bin/java.exe" else "bin/java").absolutePath
     val pb = ProcessBuilder(javaExec, "-jar", jar.absolutePath)
       .redirectErrorStream(true)
       .redirectOutput(logFile)
@@ -177,10 +179,13 @@ abstract class StopStorefrontServerTask : DefaultTask() {
         val handle = ProcessHandle.of(pid).orElse(null)
         if (handle != null && handle.isAlive) {
           logger.lifecycle("Parikshan: Stopping Storefront Ktor Server (PID: $pid)...")
+          val descendants = runCatching { handle.descendants().toList() }.getOrDefault(emptyList())
+          descendants.forEach { runCatching { it.destroy() } }
           handle.destroy()
           runCatching {
             handle.onExit().get(5, TimeUnit.SECONDS)
           }.onFailure {
+            descendants.forEach { runCatching { if (it.isAlive) it.destroyForcibly() } }
             if (handle.isAlive) handle.destroyForcibly()
           }
         }
@@ -205,10 +210,14 @@ val stopStorefrontServer = tasks.register<StopStorefrontServerTask>("stopStorefr
   serverPid.set(layout.buildDirectory.file("parikshan/storefront-server.pid"))
 }
 
-tasks.matching { it.name == "startParikshanJvmApp" || it.name == "e2eTest" }.configureEach {
+tasks.matching {
+  it.name == "startParikshanJvmApp" || it.name == "startParikshanWasmApp" || it.name == "e2eTest"
+}.configureEach {
   dependsOn(startStorefrontServer)
 }
 
-tasks.matching { it.name == "stopParikshanJvmApp" || it.name == "e2eTest" }.configureEach {
+tasks.matching {
+  it.name == "stopParikshanJvmApp" || it.name == "stopParikshanWasmApp" || it.name == "e2eTest"
+}.configureEach {
   finalizedBy(stopStorefrontServer)
 }

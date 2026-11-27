@@ -246,4 +246,39 @@ class SessionStoreTest {
       tempDir.deleteRecursively()
     }
   }
+
+  @Test
+  fun testWindowsBackslashPathsRoundTripAsValidEscapedJson() {
+    val tempDir = createTempDirectory("parikshan-win-json-test").toFile()
+    try {
+      val sessionsDir = File(tempDir, "sessions")
+      val windowsPath = """C:\Users\runneradmin\workspace\build\parikshan\desktop\data\alice"""
+      val session = TargetSession(
+        token = """tok\"with\slash""",
+        port = 9901,
+        timestamp = 1725180000123L,
+        instanceId = "alice",
+        target = "desktop",
+        pid = 51234L,
+        dataDir = windowsPath
+      )
+
+      SessionStore.writeInstanceSession(sessionsDir, session)
+
+      val rawJson = File(sessionsDir, "alice.json").readText()
+      assertTrue(
+        rawJson.contains("""C:\\Users\\runneradmin\\workspace\\build\\parikshan\\desktop\\data\\alice"""),
+        "Serialized JSON must escape Windows backslashes: $rawJson"
+      )
+
+      val readBack = SessionStore.readInstanceSession(sessionsDir, "alice")
+      assertNotNull(readBack)
+      assertEquals(windowsPath, readBack.dataDir)
+      assertEquals("""tok\"with\slash""", readBack.token)
+      assertEquals(9901, readBack.port)
+      assertEquals(51234L, readBack.pid)
+    } finally {
+      tempDir.deleteRecursively()
+    }
+  }
 }

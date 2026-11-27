@@ -1,19 +1,15 @@
 package org.example.project
 
 import io.github.aryapreetam.parikshan.Actor
-import io.github.aryapreetam.parikshan.E2ETestLifecycle
-import io.github.aryapreetam.parikshan.E2ETestScope
 import io.github.aryapreetam.parikshan.Target
 import io.github.aryapreetam.parikshan.e2eTest
 import io.github.aryapreetam.parikshan.isWasm
 import io.github.aryapreetam.parikshan.protocol.Selector
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
-import kotlin.test.AfterTest
-import kotlin.test.BeforeTest
 import kotlin.test.Test
 
-class StorefrontMultiInstanceInventoryTest : E2ETestLifecycle {
+class StorefrontMultiInstanceInventoryTest {
 
   private suspend fun resetBackendInventory(productId: String = "p1", stock: Int = 2) {
     val client = HttpClient()
@@ -82,11 +78,21 @@ class StorefrontMultiInstanceInventoryTest : E2ETestLifecycle {
       targetSelector = Selector.Tag("add_to_cart_button_$productId")
     )
     alice.click(Selector.Tag("add_to_cart_button_$productId"))
+    alice.scrollUntilVisible(
+      containerSelector = Selector.Tag("product_lazy_column"),
+      targetSelector = Selector.Tag("stock_text_$productId")
+    )
+    alice.assertVisible("Stock: 1")
     alice.assertVisible(Selector.Tag("checkout_button"))
     alice.click(Selector.Tag("checkout_button"))
 
     alice.assertVisible("Checkout & Delivery")
-    alice.drawSignature("storefront_signature_canvas")
+    alice.click(Selector.Tag("shipping_option_express"))
+    alice.assertText(Selector.Tag("checkout_shipping_fee"), "$9.99")
+    alice.scrollUntilVisible(
+      containerSelector = Selector.Tag("storefront_checkout_screen"),
+      targetSelector = Selector.Tag("complete_order_button")
+    )
     alice.click(Selector.Tag("complete_order_button"))
 
     alice.assertVisible("Order Confirmed!")
@@ -108,11 +114,19 @@ class StorefrontMultiInstanceInventoryTest : E2ETestLifecycle {
       targetSelector = Selector.Tag("add_to_cart_button_$productId")
     )
     alice.click(Selector.Tag("add_to_cart_button_$productId"))
+    alice.scrollUntilVisible(
+      containerSelector = Selector.Tag("product_lazy_column"),
+      targetSelector = Selector.Tag("out_of_stock_badge_$productId")
+    )
+    alice.assertVisible(Selector.Tag("out_of_stock_badge_$productId"))
     alice.assertVisible(Selector.Tag("checkout_button"))
     alice.click(Selector.Tag("checkout_button"))
 
     alice.assertVisible("Checkout & Delivery")
-    alice.drawSignature("storefront_signature_canvas")
+    alice.scrollUntilVisible(
+      containerSelector = Selector.Tag("storefront_checkout_screen"),
+      targetSelector = Selector.Tag("complete_order_button")
+    )
     alice.click(Selector.Tag("complete_order_button"))
 
     alice.assertVisible("Order Confirmed!")
@@ -132,15 +146,5 @@ class StorefrontMultiInstanceInventoryTest : E2ETestLifecycle {
     bob.click("storefront_sign_out_button")
 
     resetBackendInventory(productId = productId, stock = 2)
-  }
-
-  private suspend fun E2ETestScope.drawSignature(canvasTag: String) {
-    val canvasNode = resolveNode(Selector.Tag(canvasTag))
-    val bounds = canvasNode.bounds
-    val startX = bounds.left + 30.0
-    val centerY = bounds.centerY
-
-    drag(fromX = startX, fromY = centerY, toX = startX + 40.0, toY = centerY - 15.0, durationMs = 100)
-    drag(fromX = startX + 40.0, fromY = centerY - 15.0, toX = startX + 70.0, toY = centerY + 15.0, durationMs = 100)
   }
 }

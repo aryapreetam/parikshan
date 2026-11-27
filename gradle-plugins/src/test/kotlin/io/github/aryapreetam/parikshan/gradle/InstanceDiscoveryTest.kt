@@ -177,4 +177,77 @@ class InstanceDiscoveryTest {
     val multiClasses = discoverMultiInstanceTestClassesInFile(file)
     assertTrue(multiClasses.isEmpty())
   }
+
+  @Test
+  fun testCommentedOutDeclarationsAreIgnored() {
+    val file = File(tempDir, "CommentedTest.kt").apply {
+      writeText(
+        """
+        package sample.app
+        import io.github.aryapreetam.parikshan.Target
+        import io.github.aryapreetam.parikshan.e2eTest
+        import kotlin.test.Test
+
+        class CommentedTest {
+          // @Test fun ghostLine() = e2eTest(listOf("ghost1", "ghost2")) {}
+          /*
+          @Test
+          fun ghostBlock() = e2eTest(instances = mapOf("ghost3" to Target.Desktop, "ghost4" to Target.Wasm)) {}
+          /* nested comment e2eTest("ghost5", "ghost6") {} */
+          */
+          @Test
+          fun realTest() = e2eTest(listOf("alice", "bob")) {
+            val url = "http://127.0.0.1:8080/api"
+          }
+        }
+        """.trimIndent()
+      )
+    }
+
+    assertEquals(listOf("alice", "bob"), discoverE2eTestInstancesInFile(file))
+    assertTrue(discoverMultiTargetTestMethodsInFile(file).isEmpty())
+    assertTrue(discoverMultiTargetActorMapsByMethodInFile(file).isEmpty())
+  }
+
+  @Test
+  fun testPerClassInstancesAndPerMethodTargetMapsScopedAccurately() {
+    val file = File(tempDir, "ScopedSuiteTest.kt").apply {
+      writeText(
+        """
+        package sample.app
+        import io.github.aryapreetam.parikshan.Target
+        import io.github.aryapreetam.parikshan.e2eTest
+        import kotlin.test.Test
+
+        class ChatSuiteTest {
+          @Test
+          fun testTwoUsers() = e2eTest(listOf("alice", "bob")) {}
+
+          @Test
+          fun testDesktopToWeb() = e2eTest(
+            instances = mapOf("alice" to Target.Desktop, "bob" to Target.Wasm)
+          ) {}
+
+          @Test
+          fun testReversedTargets() = e2eTest(
+            instances = mapOf("admin" to Target.Wasm, "guest" to Target.Desktop)
+          ) {}
+        }
+        """.trimIndent()
+      )
+    }
+
+    val byClass = discoverE2eTestInstancesByClassInFile(file)
+    assertEquals(listOf("alice", "bob"), byClass["sample.app.ChatSuiteTest"])
+
+    val byMethod = discoverMultiTargetActorMapsByMethodInFile(file)
+    assertEquals(
+      mapOf("alice" to "desktop", "bob" to "wasm"),
+      byMethod["sample.app.ChatSuiteTest#testDesktopToWeb"]
+    )
+    assertEquals(
+      mapOf("admin" to "wasm", "guest" to "desktop"),
+      byMethod["sample.app.ChatSuiteTest#testReversedTargets"]
+    )
+  }
 }

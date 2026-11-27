@@ -198,44 +198,6 @@ internal object WasmServer {
         ex.close()
         return@createContext
       }
-      if (ex.requestURI.path == "/parikshan-chat") {
-        val chatMessagesFile = File(System.getProperty("java.io.tmpdir"), "parikshan_chat/shared_chat_messages.txt")
-        ex.responseHeaders.add("Access-Control-Allow-Origin", "*")
-        ex.responseHeaders.add("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-        ex.responseHeaders.add("Access-Control-Allow-Headers", "*")
-        when (ex.requestMethod.uppercase()) {
-          "OPTIONS" -> {
-            ex.sendResponseHeaders(204, -1)
-          }
-          "GET" -> {
-            val bytes = if (chatMessagesFile.exists()) chatMessagesFile.readBytes() else ByteArray(0)
-            ex.responseHeaders.add("Content-Type", "text/plain; charset=utf-8")
-            ex.sendResponseHeaders(200, bytes.size.toLong())
-            ex.responseBody.write(bytes)
-          }
-          "POST" -> {
-            val body = ex.requestBody.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            chatMessagesFile.parentFile?.mkdirs()
-            synchronized(WasmServer) {
-              chatMessagesFile.appendText(body)
-            }
-            ex.sendResponseHeaders(200, 0)
-          }
-          "DELETE" -> {
-            synchronized(WasmServer) {
-              if (chatMessagesFile.exists()) {
-                chatMessagesFile.delete()
-              }
-            }
-            ex.sendResponseHeaders(200, 0)
-          }
-          else -> {
-            ex.sendResponseHeaders(405, 0)
-          }
-        }
-        ex.close()
-        return@createContext
-      }
       val path = if (ex.requestURI.path == "/") "/index.html" else ex.requestURI.path
       val file = File(root, path.removePrefix("/"))
       if (file.exists() && file.isFile) {

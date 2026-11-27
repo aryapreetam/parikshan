@@ -12,6 +12,7 @@ import kotlinx.serialization.Serializable
  * @property dataDir Path to the isolated application data directory, or null for default.
  * @property windowPosition Optional (x, y) coordinates for desktop window placement.
  */
+@InternalParikshanApi
 @Serializable
 data class ParikshanTestContext(
   val instanceId: String,

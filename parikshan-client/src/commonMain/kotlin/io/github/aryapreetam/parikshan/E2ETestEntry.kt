@@ -33,22 +33,22 @@ expect fun e2eTest(
 /**
  * Executes a multi-instance end-to-end test across named application actors.
  *
- * Each instance corresponds to an isolated application process, browser context,
- * or device session, identified by a unique name (such as `"alice"` or `"bob"`).
+ * Each instance corresponds to an isolated Desktop JVM process or Web (Wasm) browser context,
+ * identified by a unique name matching `[a-zA-Z0-9_-]+` (such as `"alice"` or `"bob"`).
+ *
+ * Supported targets in `0.1.0`: Desktop (JVM) and Web (Wasm). Video recording is skipped during
+ * multi-instance execution.
  *
  * ### Example Usage
  * ```kotlin
  * @Test
- * fun testCollaboration() = e2eTest(instances = listOf("alice", "bob")) {
- *   val alice = instance("alice")
- *   val bob = instance("bob")
- *
+ * fun testCollaboration() = e2eTest(instances = listOf("alice", "bob")) { (alice, bob) ->
  *   alice.click("create_document")
  *   bob.click("join_document")
  * }
  * ```
  *
- * @param instances List of unique instance identifiers.
+ * @param instances List of unique instance identifiers matching `[a-zA-Z0-9_-]+`.
  * @param config Optional [E2ETestConfig] to customize timeouts, screenshot behavior, and step delays.
  * @param block Suspending test execution block with multi-instance handle access.
  * @see E2EMultiInstanceScope
@@ -63,8 +63,8 @@ expect fun e2eTest(
 /**
  * Executes a multi-instance end-to-end test across named application actors (vararg overload).
  *
- * @param firstInstance The first unique instance identifier.
- * @param otherInstances Additional unique instance identifiers.
+ * @param firstInstance The first unique instance identifier matching `[a-zA-Z0-9_-]+`.
+ * @param otherInstances Additional unique instance identifiers matching `[a-zA-Z0-9_-]+`.
  * @param config Optional [E2ETestConfig] to customize timeouts, screenshot behavior, and step delays.
  * @param block Suspending test execution block with multi-instance handle access.
  */
@@ -81,7 +81,11 @@ fun e2eTest(
  * Executes a multi-target multi-instance end-to-end test across named application actors,
  * mapping each instance to its required execution target platform.
  *
- * @param instances Mapping of unique instance identifier to its target platform.
+ * Supported targets in `0.1.0`: [Target.Desktop] and [Target.Wasm]. Passing [Target.Android] or
+ * [Target.Ios] fails fast with an [UnsupportedOperationException]. Video recording is skipped
+ * during multi-target execution.
+ *
+ * @param instances Mapping of unique instance identifier (`[a-zA-Z0-9_-]+`) to its target platform.
  * @param config Optional [E2ETestConfig] to customize timeouts, screenshot behavior, and step delays.
  * @param block Suspending test execution block with multi-instance handle access.
  */
@@ -141,31 +145,6 @@ fun E2ETestLifecycle.e2eTest(
       }
     }
   }
-}
-
-fun E2ETestLifecycle.e2eTest(
-  instances: List<String>,
-  config: E2ETestConfig = E2ETestConfig(),
-  block: suspend E2EMultiInstanceScope.(E2EMultiInstanceScope) -> Unit
-) {
-  io.github.aryapreetam.parikshan.e2eTest(instances = instances, config = config, block = block)
-}
-
-fun E2ETestLifecycle.e2eTest(
-  firstInstance: String,
-  vararg otherInstances: String,
-  config: E2ETestConfig = E2ETestConfig(),
-  block: suspend E2EMultiInstanceScope.(E2EMultiInstanceScope) -> Unit
-) {
-  e2eTest(instances = listOf(firstInstance, *otherInstances), config = config, block = block)
-}
-
-fun E2ETestLifecycle.e2eTest(
-  instances: Map<String, Target>,
-  config: E2ETestConfig = E2ETestConfig(),
-  block: suspend E2EMultiInstanceScope.(E2EMultiInstanceScope) -> Unit
-) {
-  io.github.aryapreetam.parikshan.e2eTest(instances = instances, config = config, block = block)
 }
 
 

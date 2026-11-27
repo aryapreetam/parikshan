@@ -1,3 +1,5 @@
+@file:OptIn(InternalParikshanApi::class)
+
 package io.github.aryapreetam.parikshan
 
 import java.net.ServerSocket

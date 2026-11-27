@@ -133,9 +133,12 @@ fun testDocumentUpload() = e2eTest {
 ## 6. Guardrails for AI Agents
 
 1. **Deterministic Sequential Flows**: Multi-actor tests should execute sequentially (`alice.input(...) -> bob.assertVisible(...)`) unless testing true concurrency.
-2. **Never Fabricate Targets**: Only use physical targets (`Target.Desktop`, `Target.Wasm`, `Target.Android`, `Target.Ios`).
-3. **No Thread Sleep**: Use `waitFor("element_tag")` or built-in auto-waiting on `click` / `assertVisible` instead of `Thread.sleep` or `delay`.
-4. **Scope Isolation**: Single-actor tests use `E2ETestScope`. Multi-actor tests receive `E2EMultiInstanceScope` with destructured `Actor` instances.
+2. **0.1.0 Multi-Instance / Multi-Target Platform Scope**: Only `Target.Desktop` and `Target.Wasm` are supported in `e2eTest(instances = mapOf(...))` and `e2eTest(listOf(...))` in `0.1.0`. `Target.Android` and `Target.Ios` multi-actor orchestration is planned for `0.2.0` (single-actor `e2eTest { ... }` supports all 4 platforms).
+3. **Actor Identifier Format**: Actor names must match `^[a-zA-Z0-9_-]+$` (no spaces, dots, or path separators).
+4. **Dedicated Test Classes**: Place multi-instance and multi-target tests in dedicated classes separate from single-instance `E2ETestLifecycle` classes. Reset shared backend and Desktop UI state explicitly between methods.
+5. **Static Actor Lists**: Pass literal actor lists/maps to `e2eTest(...)` so Gradle auto-discovers them at build time; if actor names are generated dynamically, pass `--instances=a,b` on the CLI.
+6. **No Thread Sleep**: Use `waitFor("element_tag")` or built-in auto-waiting on `click` / `assertVisible` instead of `Thread.sleep` or `delay`.
+7. **Scope Isolation**: Single-actor tests use `E2ETestScope`. Multi-actor tests receive `E2EMultiInstanceScope` with destructured `Actor` instances. Video recording is skipped in multi-instance/multi-target mode in `0.1.0`.
 
 ---
 

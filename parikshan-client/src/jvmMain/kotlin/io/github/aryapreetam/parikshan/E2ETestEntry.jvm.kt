@@ -1,3 +1,5 @@
+@file:OptIn(InternalParikshanApi::class)
+
 package io.github.aryapreetam.parikshan
 
 import kotlinx.coroutines.runBlocking
@@ -138,6 +140,8 @@ actual fun e2eTest(
   }
 }
 
+private val SUPPORTED_MULTI_INSTANCE_TARGETS = setOf("desktop", "wasm")
+
 actual fun e2eTest(
   instances: List<String>,
   config: E2ETestConfig,
@@ -145,15 +149,28 @@ actual fun e2eTest(
 ) {
   val executionMode = System.getProperty("parikshan.executionMode")?.lowercase()
   val targetProperty = System.getProperty("parikshan.target")?.lowercase()
-  if (executionMode == "multi-target" || targetProperty == "multi-target") {
-    abortTestExecution("Multi-instance test skipped during multi-target run.")
+  if (executionMode == "multi-target" || targetProperty == "multi-target" || targetProperty == "sync") {
+    abortTestExecution("Multi-instance test skipped during ${targetProperty ?: executionMode} run.")
+  }
+  val canonicalRunnerTarget = targetProperty?.takeIf { it.isNotBlank() }?.let(::canonicalizeTarget)
+  if (canonicalRunnerTarget != null && canonicalRunnerTarget !in SUPPORTED_MULTI_INSTANCE_TARGETS) {
+    abortTestExecution(
+      "Multi-instance E2E testing supports Desktop (JVM) and Web (Wasm) in Parikshan 0.1.0; " +
+        "skipped on target '$canonicalRunnerTarget' (planned for 0.2.0)."
+    )
   }
 
-  runMultiInstanceTest(instances, config, block)
+  runMultiInstanceTest(
+    instances = instances,
+    targetOverrides = emptyMap(),
+    config = config,
+    block = block
+  )
 }
 
 private fun runMultiInstanceTest(
   instances: List<String>,
+  targetOverrides: Map<String, String>,
   config: E2ETestConfig,
   block: suspend E2EMultiInstanceScope.(E2EMultiInstanceScope) -> Unit
 ) {
@@ -161,36 +178,36 @@ private fun runMultiInstanceTest(
   require(instances.distinct().size == instances.size) {
     "Duplicate instance identifier detected in test declaration: $instances"
   }
+  instances.forEach { validateActorIdentifier(it) }
 
   runBlocking {
-    val callerClassName = inferCallerClassName()
-    val callerMethodName = inferCallerMethodName()
     val videoConfig = ParikshanVideoConfig.fromSystemProperties()
-
-    val drivers = withContext(Dispatchers.IO) {
-      instances.associateWith { name ->
-        val (target, context) = resolveInstanceContext(name)
-        createDriverForInstance(target, context)
-      }
+    if (videoConfig.enabled) {
+      System.err.println(
+        "Parikshan: Video recording is not yet supported in multi-instance/multi-target mode; skipping video capture for this scenario."
+      )
     }
 
-    drivers.forEach { (name, driver) ->
-      val port = (driver as? DesktopDriver)?.activePort
-        ?: (driver as? IosRemoteDriver)?.context?.port
-        ?: (driver as? AndroidRemoteDriver)?.context?.port
-        ?: (driver as? WasmDriver)?.context?.port
-        ?: 9877
-      val clientConfig = io.github.aryapreetam.parikshan.client.ParikshanClientConfig(
-        host = "127.0.0.1",
-        port = port
-      )
-      ParikshanVideoSessionManager.beforeScenario(
-        driver = driver,
-        clientConfig = clientConfig,
-        config = videoConfig,
-        className = callerClassName,
-        methodName = "${callerMethodName}_$name"
-      )
+    val drivers = LinkedHashMap<String, TestDriver>(instances.size)
+    try {
+      withContext(Dispatchers.IO) {
+        instances.forEach { name ->
+          val (target, context) = resolveInstanceContext(name, targetOverrides)
+          val canonicalTarget = canonicalizeTarget(target)
+          if (canonicalTarget !in SUPPORTED_MULTI_INSTANCE_TARGETS) {
+            throw UnsupportedOperationException(
+              "Multi-instance/multi-target E2E testing supports Desktop (JVM) and Web (Wasm) in Parikshan 0.1.0. " +
+                "Actor '$name' resolved to unsupported target '$canonicalTarget' (planned for 0.2.0)."
+            )
+          }
+          drivers[name] = createDriverForInstance(canonicalTarget, context)
+        }
+      }
+    } catch (t: Throwable) {
+      drivers.values.forEach { driver ->
+        runCatching { driver.close() }
+      }
+      throw t
     }
 
     val userConfigStepDelay = if (config.stepDelayMs > 0L) config.stepDelayMs else null
@@ -198,22 +215,11 @@ private fun runMultiInstanceTest(
     val effectiveStepDelay = userConfigStepDelay ?: globalSystemStepDelay ?: 0L
     val effectiveConfig = config.copy(stepDelayMs = effectiveStepDelay)
 
-    try {
-      e2eTest(
-        drivers = drivers,
-        config = effectiveConfig,
-        block = { this.block(this) }
-      )
-    } finally {
-      drivers.forEach { (name, driver) ->
-        ParikshanVideoSessionManager.afterScenario(
-          driver = driver,
-          config = videoConfig,
-          className = callerClassName,
-          methodName = "${callerMethodName}_$name"
-        )
-      }
-    }
+    e2eTest(
+      drivers = drivers,
+      config = effectiveConfig,
+      block = { this.block(this) }
+    )
   }
 }
 
@@ -226,6 +232,22 @@ actual fun e2eTest(
   require(instances.keys.distinct().size == instances.size) {
     "Duplicate instance identifier detected in test declaration: ${instances.keys}"
   }
+  instances.keys.forEach { validateActorIdentifier(it) }
+
+  val unsupportedTargets = instances.values
+    .filter { canonicalizeTarget(it.platformName) !in SUPPORTED_MULTI_INSTANCE_TARGETS }
+    .distinct()
+  if (unsupportedTargets.isNotEmpty()) {
+    throw UnsupportedOperationException(
+      "Multi-target E2E testing supports Target.Desktop and Target.Wasm in Parikshan 0.1.0. " +
+        "Unsupported target(s): [${unsupportedTargets.joinToString()}]. Android and iOS multi-target support is planned for 0.2.0."
+    )
+  }
+
+  val targetProperty = System.getProperty("parikshan.target")?.lowercase()
+  if (targetProperty == "sync") {
+    abortTestExecution("Multi-target test skipped during --sync run.")
+  }
 
   val requiredTargets = instances.values.map { canonicalizeTarget(it.platformName) }.toSet()
   val activeTargets = resolveActiveTargets()
@@ -237,12 +259,11 @@ actual fun e2eTest(
     )
   }
 
-  instances.forEach { (name, target) ->
-    System.setProperty("parikshan.instance.$name.target", target.platformName)
-  }
+  val targetOverrides = instances.mapValues { (_, target) -> canonicalizeTarget(target.platformName) }
 
   runMultiInstanceTest(
     instances = instances.keys.toList(),
+    targetOverrides = targetOverrides,
     config = config,
     block = block
   )
@@ -351,19 +372,26 @@ private fun resolveSessionDirectory(): java.io.File {
   return java.io.File(baseDir, "sessions")
 }
 
-private fun resolveInstanceContext(name: String): Pair<String, ParikshanTestContext> {
+private fun resolveInstanceContext(
+  name: String,
+  targetOverrides: Map<String, String> = emptyMap()
+): Pair<String, ParikshanTestContext> {
   val activeRunnerTarget = System.getProperty("parikshan.target")?.trim()?.lowercase()
     ?.takeIf { it.isNotBlank() && it != "sync" && it != "multi-target" }
+    ?.let(::canonicalizeTarget)
+  val explicitTargetOverride = targetOverrides[name]?.let(::canonicalizeTarget)
+  val expectedTarget = explicitTargetOverride ?: activeRunnerTarget
+
   val sessionsDir = resolveSessionDirectory()
   val instanceFile = java.io.File(sessionsDir, "$name.json")
   if (instanceFile.exists()) {
     val text = runCatching { instanceFile.readText() }.getOrNull().orEmpty()
     val parsed = runCatching { sessionJson.decodeFromString<InstanceSessionDescriptor>(text) }.getOrNull()
     if (parsed != null) {
-      val rawTarget = parsed.target.ifBlank { "desktop" }
-      val isCompatible = activeRunnerTarget == null || canonicalizeTarget(rawTarget) == canonicalizeTarget(activeRunnerTarget)
+      val rawTarget = canonicalizeTarget(parsed.target.ifBlank { "desktop" })
+      val isCompatible = expectedTarget == null || rawTarget == expectedTarget
       if (isCompatible) {
-        val target = if (activeRunnerTarget != null) canonicalizeTarget(activeRunnerTarget) else rawTarget
+        val target = expectedTarget ?: rawTarget
         val ctx = ParikshanTestContext(
           instanceId = parsed.instanceId.ifBlank { name },
           host = parsed.host.ifBlank { "127.0.0.1" },
@@ -376,8 +404,8 @@ private fun resolveInstanceContext(name: String): Pair<String, ParikshanTestCont
     }
   }
 
-  val target = activeRunnerTarget
-    ?: System.getProperty("parikshan.instance.$name.target")
+  val target = expectedTarget
+    ?: System.getProperty("parikshan.instance.$name.target")?.let(::canonicalizeTarget)
     ?: "desktop"
   val host = System.getProperty("parikshan.instance.$name.host")
     ?: System.getProperty("parikshan.host")

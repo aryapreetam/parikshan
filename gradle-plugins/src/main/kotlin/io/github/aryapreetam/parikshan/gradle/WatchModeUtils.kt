@@ -218,16 +218,82 @@ internal object SessionStore {
       ?: emptyList()
   }
 
+  private const val JSON_STRING_GROUP = "\"((?:\\\\.|[^\"\\\\])*)\""
+
+  internal fun escapeJsonString(value: String): String {
+    val sb = StringBuilder(value.length + 8)
+    for (ch in value) {
+      when (ch) {
+        '\\' -> sb.append("\\\\")
+        '"' -> sb.append("\\\"")
+        '\b' -> sb.append("\\b")
+        '\u000c' -> sb.append("\\f")
+        '\n' -> sb.append("\\n")
+        '\r' -> sb.append("\\r")
+        '\t' -> sb.append("\\t")
+        else -> {
+          if (ch.code < 0x20) {
+            sb.append(String.format("\\u%04x", ch.code))
+          } else {
+            sb.append(ch)
+          }
+        }
+      }
+    }
+    return sb.toString()
+  }
+
+  internal fun unescapeJsonString(value: String): String {
+    val sb = StringBuilder(value.length)
+    var i = 0
+    while (i < value.length) {
+      val ch = value[i]
+      if (ch == '\\' && i + 1 < value.length) {
+        when (val next = value[i + 1]) {
+          '\\' -> { sb.append('\\'); i += 2 }
+          '"' -> { sb.append('"'); i += 2 }
+          '/' -> { sb.append('/'); i += 2 }
+          'b' -> { sb.append('\b'); i += 2 }
+          'f' -> { sb.append('\u000c'); i += 2 }
+          'n' -> { sb.append('\n'); i += 2 }
+          'r' -> { sb.append('\r'); i += 2 }
+          't' -> { sb.append('\t'); i += 2 }
+          'u' -> {
+            if (i + 5 < value.length) {
+              val hex = value.substring(i + 2, i + 6).toIntOrNull(16)
+              if (hex != null) {
+                sb.append(hex.toChar())
+                i += 6
+              } else {
+                sb.append(next)
+                i += 2
+              }
+            } else {
+              sb.append(next)
+              i += 2
+            }
+          }
+          else -> { sb.append(next); i += 2 }
+        }
+      } else {
+        sb.append(ch)
+        i++
+      }
+    }
+    return sb.toString()
+  }
+
   private fun parseSessionBlock(blockContent: String, defaultTarget: String): TargetSession? {
-    val token = Regex("\"sessionToken\"\\s*:\\s*\"([^\"]+)\"").find(blockContent)?.groupValues?.get(1)
-      ?: Regex("\"token\"\\s*:\\s*\"([^\"]+)\"").find(blockContent)?.groupValues?.get(1)
+    val tokenRaw = Regex("\"sessionToken\"\\s*:\\s*$JSON_STRING_GROUP").find(blockContent)?.groupValues?.get(1)
+      ?: Regex("\"token\"\\s*:\\s*$JSON_STRING_GROUP").find(blockContent)?.groupValues?.get(1)
       ?: return null
+    val token = unescapeJsonString(tokenRaw)
     val port = Regex("\"port\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toIntOrNull() ?: return null
     val timestamp = Regex("\"timestamp\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toLongOrNull() ?: return null
     val pid = Regex("\"pid\"\\s*:\\s*(\\d+)").find(blockContent)?.groupValues?.get(1)?.toLongOrNull()
-    val dataDir = Regex("\"dataDir\"\\s*:\\s*\"([^\"]+)\"").find(blockContent)?.groupValues?.get(1)
-    val instanceId = Regex("\"instanceId\"\\s*:\\s*\"([^\"]+)\"").find(blockContent)?.groupValues?.get(1) ?: defaultTarget
-    val target = Regex("\"target\"\\s*:\\s*\"([^\"]+)\"").find(blockContent)?.groupValues?.get(1) ?: defaultTarget
+    val dataDir = Regex("\"dataDir\"\\s*:\\s*$JSON_STRING_GROUP").find(blockContent)?.groupValues?.get(1)?.let(::unescapeJsonString)
+    val instanceId = Regex("\"instanceId\"\\s*:\\s*$JSON_STRING_GROUP").find(blockContent)?.groupValues?.get(1)?.let(::unescapeJsonString) ?: defaultTarget
+    val target = Regex("\"target\"\\s*:\\s*$JSON_STRING_GROUP").find(blockContent)?.groupValues?.get(1)?.let(::unescapeJsonString) ?: defaultTarget
 
     return TargetSession(
       token = token,
@@ -241,8 +307,8 @@ internal object SessionStore {
   }
 
   private fun parseStandaloneSession(text: String, fallbackTarget: String): TargetSession? {
-    val hasInstanceId = Regex("\"instanceId\"\\s*:\\s*\"([^\"]+)\"").find(text)
-    val hasSessionToken = Regex("\"sessionToken\"\\s*:\\s*\"([^\"]+)\"").find(text)
+    val hasInstanceId = Regex("\"instanceId\"\\s*:\\s*$JSON_STRING_GROUP").find(text)
+    val hasSessionToken = Regex("\"sessionToken\"\\s*:\\s*$JSON_STRING_GROUP").find(text)
 
     if (hasInstanceId == null && hasSessionToken == null) {
       val isMultiTargetMap = listOf("desktop", "wasm", "android", "ios").any { t ->
@@ -258,26 +324,26 @@ internal object SessionStore {
 
   private fun buildTargetBlockJson(target: String, session: TargetSession): String {
     val parts = mutableListOf(
-      "\"token\":\"${session.token}\"",
+      "\"token\":\"${escapeJsonString(session.token)}\"",
       "\"port\":${session.port}",
       "\"timestamp\":${session.timestamp}"
     )
     if (session.pid != null) parts.add("\"pid\":${session.pid}")
-    if (session.dataDir != null) parts.add("\"dataDir\":\"${session.dataDir}\"")
+    if (session.dataDir != null) parts.add("\"dataDir\":\"${escapeJsonString(session.dataDir)}\"")
 
-    return "\"$target\":{${parts.joinToString(",")}}"
+    return "\"${escapeJsonString(target)}\":{${parts.joinToString(",")}}"
   }
 
   private fun buildStandaloneJson(session: TargetSession): String {
     val id = session.instanceId.ifBlank { session.target }
     val parts = mutableListOf(
-      "\"instanceId\":\"$id\"",
-      "\"target\":\"${session.target}\"",
+      "\"instanceId\":\"${escapeJsonString(id)}\"",
+      "\"target\":\"${escapeJsonString(session.target)}\"",
       "\"port\":${session.port}",
-      "\"sessionToken\":\"${session.token}\""
+      "\"sessionToken\":\"${escapeJsonString(session.token)}\""
     )
     if (session.pid != null) parts.add("\"pid\":${session.pid}")
-    if (!session.dataDir.isNullOrBlank()) parts.add("\"dataDir\":\"${session.dataDir}\"")
+    if (!session.dataDir.isNullOrBlank()) parts.add("\"dataDir\":\"${escapeJsonString(session.dataDir)}\"")
     parts.add("\"timestamp\":${session.timestamp}")
 
     return "{\n  ${parts.joinToString(",\n  ")}\n}\n"

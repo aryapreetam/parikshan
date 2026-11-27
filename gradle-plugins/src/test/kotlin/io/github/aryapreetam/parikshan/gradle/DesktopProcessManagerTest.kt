@@ -175,6 +175,90 @@ class DesktopProcessManagerTest {
     assertFalse(DesktopProcessManager.isInstanceAlive("user2"))
   }
 
+  @Test
+  fun testInvalidActorIdRejectedBeforeProcessLaunch() {
+    val dummyJar = createDummyExecutableJar(tempDir)
+    kotlin.test.assertFailsWith<IllegalArgumentException> {
+      DesktopProcessManager.launchInstances(
+        jarFile = dummyJar,
+        instances = listOf("alice", "../evil"),
+        baseOutputDir = tempDir,
+        useAppLauncher = false,
+        waitForReady = false
+      )
+    }
+    assertFalse(DesktopProcessManager.isInstanceAlive("alice"))
+  }
+
+  @Test
+  fun testStartIndexOffsetsJitSecondaryWindowCoordinates() {
+    val pos = DesktopProcessManager.calculateWindowCoordinates(
+      index = 1,
+      totalCount = 2,
+      preferredWindowWidth = 800,
+      preferredWindowHeight = 700,
+      paddingX = 20,
+      paddingY = 40,
+      originX = 50,
+      originY = 50
+    )
+    assertEquals(Pair(870, 50), pos, "Secondary JIT window (startIndex=1) must tile beside primary (50, 50)")
+  }
+
+  @Test
+  fun testIsEndpointReadyRequiresHttp200Not401() {
+    val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+    try {
+      server.createContext("/") { exchange ->
+        val body = exchange.requestBody.bufferedReader(Charsets.UTF_8).readText()
+        val status = if (body.contains("\"token\":\"valid-token\"")) 200 else 401
+        exchange.sendResponseHeaders(status, -1)
+        exchange.close()
+      }
+      server.start()
+      val port = server.address.port
+
+      assertTrue(DesktopProcessManager.isEndpointReady("127.0.0.1", port, "valid-token"))
+      assertFalse(DesktopProcessManager.isEndpointReady("127.0.0.1", port, "wrong-token"))
+    } finally {
+      server.stop(0)
+    }
+  }
+
+  @Test
+  fun testActiveInstancesAreScopedPerOutputDirectory() {
+    val dirA = File(tempDir, "projectA").apply { mkdirs() }
+    val dirB = File(tempDir, "projectB").apply { mkdirs() }
+    val dummyJar = createDummyExecutableJar(tempDir)
+
+    try {
+      DesktopProcessManager.launchInstances(
+        jarFile = dummyJar,
+        instances = listOf("alice"),
+        baseOutputDir = dirA,
+        useAppLauncher = false,
+        waitForReady = false
+      )
+      DesktopProcessManager.launchInstances(
+        jarFile = dummyJar,
+        instances = listOf("alice"),
+        baseOutputDir = dirB,
+        useAppLauncher = false,
+        waitForReady = false
+      )
+
+      assertTrue(DesktopProcessManager.isInstanceAlive("alice", dirA))
+      assertTrue(DesktopProcessManager.isInstanceAlive("alice", dirB))
+
+      DesktopProcessManager.stopAll(dirA)
+      assertFalse(DesktopProcessManager.isInstanceAlive("alice", dirA))
+      assertTrue(DesktopProcessManager.isInstanceAlive("alice", dirB), "Stopping dirA must not stop dirB's alice")
+    } finally {
+      DesktopProcessManager.stopAll(dirA)
+      DesktopProcessManager.stopAll(dirB)
+    }
+  }
+
   private fun createDummyExecutableJar(dir: File): File {
     val srcDir = File(dir, "src").apply { mkdirs() }
     val binDir = File(dir, "bin").apply { mkdirs() }

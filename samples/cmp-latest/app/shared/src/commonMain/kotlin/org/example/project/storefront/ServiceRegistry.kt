@@ -10,7 +10,7 @@ class LocalDatabase {
   private val orders = mutableListOf<OrderRecord>()
   private var currentUserEmail: String? = null
 
-  data class OrderRecord(val id: String, val signatureSvg: String, val itemNames: List<String>, val total: Double)
+  data class OrderRecord(val id: String, val shippingMethod: String, val itemNames: List<String>, val total: Double)
 
   fun clearAll() {
     orders.clear()
@@ -23,10 +23,10 @@ class LocalDatabase {
 
   fun getUser(): String? = currentUserEmail
 
-  fun saveOrder(signature: String, items: List<CartItem>): String {
+  fun saveOrder(shippingMethod: String, items: List<CartItem>): String {
     val orderId = "ORD-" + (1000..9999).random()
     val total = items.sumOf { (it.product.price + if (it.giftWrap) 5.0 else 0.0) * it.quantity }
-    orders.add(OrderRecord(orderId, signature, items.map { it.product.title }, total))
+    orders.add(OrderRecord(orderId, shippingMethod, items.map { it.product.title }, total))
     return orderId
   }
 
@@ -60,13 +60,13 @@ class StorefrontApi(private val clientProvider: () -> HttpClient?) {
     }
   }
 
-   suspend fun submitOrder(signature: String, items: List<CartItem>): String {
+  suspend fun submitOrder(shippingMethod: String, items: List<CartItem>): String {
     val client = try { clientProvider() } catch (e: Throwable) { null }
     if (client == null) return "ORD-" + (1000..9999).random()
     return try {
-      val productIds = items.joinToString(",") { it.product.id }
+      val productIds = items.flatMap { item -> List(item.quantity) { item.product.id } }.joinToString(",")
       val response = client.post("$baseUrl/orders") {
-        setBody("""{"signature":"$signature","itemsCount":${items.size},"productIds":"$productIds"}""")
+        setBody("""{"shippingMethod":"$shippingMethod","itemsCount":${items.size},"productIds":"$productIds"}""")
       }.bodyAsText()
       extractField(response, "orderId") ?: ("ORD-" + (1000..9999).random())
     } catch (e: Throwable) {

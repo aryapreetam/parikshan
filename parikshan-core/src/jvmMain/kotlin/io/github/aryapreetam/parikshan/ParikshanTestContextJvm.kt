@@ -5,6 +5,7 @@ import java.io.File
 /**
  * Convenience factory function creating a [ParikshanTestContext] with a Java [File] for [dataDir].
  */
+@InternalParikshanApi
 fun ParikshanTestContext(
   instanceId: String,
   host: String = "127.0.0.1",
@@ -24,5 +25,6 @@ fun ParikshanTestContext(
 /**
  * Returns [ParikshanTestContext.dataDir] resolved as a Java [File], or null if [dataDir] was not specified.
  */
+@InternalParikshanApi
 val ParikshanTestContext.dataDirFile: File?
   get() = dataDir?.let { File(it) }

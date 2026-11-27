@@ -1,13 +1,7 @@
 public final class io/github/aryapreetam/parikshan/E2ETestEntryKt {
 	public static final fun e2eTest (Lio/github/aryapreetam/parikshan/E2ETestLifecycle;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;)V
-	public static final fun e2eTest (Lio/github/aryapreetam/parikshan/E2ETestLifecycle;Ljava/lang/String;[Ljava/lang/String;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function3;)V
-	public static final fun e2eTest (Lio/github/aryapreetam/parikshan/E2ETestLifecycle;Ljava/util/List;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function3;)V
-	public static final fun e2eTest (Lio/github/aryapreetam/parikshan/E2ETestLifecycle;Ljava/util/Map;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function3;)V
 	public static final fun e2eTest (Ljava/lang/String;[Ljava/lang/String;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function3;)V
 	public static synthetic fun e2eTest$default (Lio/github/aryapreetam/parikshan/E2ETestLifecycle;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function2;ILjava/lang/Object;)V
-	public static synthetic fun e2eTest$default (Lio/github/aryapreetam/parikshan/E2ETestLifecycle;Ljava/lang/String;[Ljava/lang/String;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function3;ILjava/lang/Object;)V
-	public static synthetic fun e2eTest$default (Lio/github/aryapreetam/parikshan/E2ETestLifecycle;Ljava/util/List;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function3;ILjava/lang/Object;)V
-	public static synthetic fun e2eTest$default (Lio/github/aryapreetam/parikshan/E2ETestLifecycle;Ljava/util/Map;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function3;ILjava/lang/Object;)V
 	public static synthetic fun e2eTest$default (Ljava/lang/String;[Ljava/lang/String;Lio/github/aryapreetam/parikshan/E2ETestConfig;Lkotlin/jvm/functions/Function3;ILjava/lang/Object;)V
 }
 

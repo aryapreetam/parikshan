@@ -189,4 +189,30 @@ class E2EMultiInstanceScopeTest {
     assertTrue(driverAlice.isClosed)
     assertTrue(driverBob.isClosed)
   }
+
+  @Test
+  fun testInvalidActorIdentifiersRejected() {
+    val scope = E2ETestScope(MockDriver("desktop"), E2ETestConfig())
+    val invalidNames = listOf("", "   ", "alice bob", "../escape", "alice/bob", "alice\\bob", "alice.bob", "user@host")
+    for (invalid in invalidNames) {
+      assertFailsWith<IllegalArgumentException>("Expected rejection for actor id '$invalid'") {
+        E2EMultiInstanceScope(mapOf(invalid to scope))
+      }
+    }
+  }
+
+  @Test
+  fun testDestructuringOutOfBoundsThrowsDescriptiveIllegalArgumentException() {
+    val scope = E2ETestScope(MockDriver("desktop"), E2ETestConfig())
+    val multiScope = E2EMultiInstanceScope(mapOf("alice" to scope))
+
+    val error = assertFailsWith<IllegalArgumentException> {
+      val (alice, bob) = multiScope
+      assertEquals("desktop", alice.targetPlatform)
+      assertEquals("desktop", bob.targetPlatform)
+    }
+
+    assertTrue(error.message?.contains("Cannot destructure instance #2") == true, "Unexpected message: ${error.message}")
+    assertTrue(error.message?.contains("[alice]") == true, "Unexpected message: ${error.message}")
+  }
 }

@@ -147,6 +147,14 @@ class MultiInstanceCollaborationTest {
 
 ---
 
+## 0.1.0 Scope & Known Limitations
+
+* **Supported Targets**: Multi-instance and multi-target orchestration support **Desktop (JVM)** and **Web (Wasm)** in `0.1.0`. Android and iOS multi-instance/multi-target orchestration is planned for `0.2.0`.
+* **Video Recording**: Video capture is skipped during multi-instance and multi-target runs in `0.1.0` (single-instance video recording continues to work across all targets).
+* **Dedicated Classes**: Place multi-instance and multi-target tests in dedicated classes separate from single-instance `E2ETestLifecycle` classes.
+
+---
+
 ## Upgrading to 0.1.0
 
 In your `build.gradle.kts`:

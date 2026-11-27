@@ -1,3 +1,5 @@
+@file:OptIn(InternalParikshanApi::class)
+
 package io.github.aryapreetam.parikshan
 
 import kotlinx.coroutines.async
@@ -42,6 +44,7 @@ class E2EMultiInstanceScope(
 ) {
   init {
     require(instances.isNotEmpty()) { "E2EMultiInstanceScope requires at least one registered instance" }
+    instances.keys.forEach { validateActorIdentifier(it) }
   }
 
   /**
@@ -106,9 +109,30 @@ class E2EMultiInstanceScope(
     }
   }
 
-  operator fun component1(): E2ETestScope = instances.values.elementAt(0)
-  operator fun component2(): E2ETestScope = instances.values.elementAt(1)
-  operator fun component3(): E2ETestScope = instances.values.elementAt(2)
-  operator fun component4(): E2ETestScope = instances.values.elementAt(3)
-  operator fun component5(): E2ETestScope = instances.values.elementAt(4)
+  operator fun component1(): E2ETestScope = elementAtOrFail(0)
+  operator fun component2(): E2ETestScope = elementAtOrFail(1)
+  operator fun component3(): E2ETestScope = elementAtOrFail(2)
+  operator fun component4(): E2ETestScope = elementAtOrFail(3)
+  operator fun component5(): E2ETestScope = elementAtOrFail(4)
+
+  private fun elementAtOrFail(index: Int): E2ETestScope {
+    if (index >= instances.size) {
+      throw IllegalArgumentException(
+        "Cannot destructure instance #${index + 1}: only ${instances.size} instance(s) declared [${instances.keys.joinToString()}]."
+      )
+    }
+    return instances.values.elementAt(index)
+  }
+}
+
+private val ACTOR_ID_PATTERN = Regex("^[a-zA-Z0-9_-]+$")
+
+/**
+ * Validates that [name] is a safe, portable actor identifier (`[a-zA-Z0-9_-]+`).
+ */
+@InternalParikshanApi
+fun validateActorIdentifier(name: String) {
+  require(name.isNotBlank() && ACTOR_ID_PATTERN.matches(name)) {
+    "Invalid instance identifier '$name'. Instance identifiers must be non-empty and match [a-zA-Z0-9_-]+."
+  }
 }

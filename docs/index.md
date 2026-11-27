@@ -233,7 +233,7 @@ Create your test in `src/commonTest/kotlin`:
 
     </div>
 
-> **Note:** The standalone desktop test task name depends on your target configuration in `build.gradle.kts` (`jvm("desktop")` registers `e2eDesktopTest`; `jvm()` registers `e2eJvmTest`). The unified `e2eTest` task accepts both `--targets=desktop` and `--targets=jvm`.
+> **Note:** For projects configuring `jvm()` or `jvm("desktop")`, both `e2eDesktopTest` and `e2eJvmTest` are registered as full Gradle `Test` tasks supporting `--tests`. Custom JVM target names (such as `jvm("custom")`) register `e2eCustomTest`. The unified `e2eTest` task accepts both `--targets=desktop` and `--targets=jvm`.
 
 ---
 

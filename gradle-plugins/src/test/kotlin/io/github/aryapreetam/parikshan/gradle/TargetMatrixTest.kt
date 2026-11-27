@@ -730,6 +730,58 @@ class TargetMatrixTest {
       assertTrue(iosVideoDir.endsWith("parikshan/videos/ios"), "Video output dir must end with parikshan/videos/ios")
     }
   }
+
+  @Test
+  fun `test jvm target registers both e2eJvmTest and e2eDesktopTest as Test tasks`() {
+    val project = createProject()
+    project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+    val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+    kmp.jvm()
+
+    project.pluginManager.apply("io.github.aryapreetam.parikshan")
+    evaluate(project)
+
+    val jvmTask = project.tasks.findByName("e2eJvmTest") as? org.gradle.api.tasks.testing.Test
+    val desktopTask = project.tasks.findByName("e2eDesktopTest") as? org.gradle.api.tasks.testing.Test
+    assertNotNull(jvmTask, "e2eJvmTest must be a Gradle Test task")
+    assertNotNull(desktopTask, "e2eDesktopTest must be a Gradle Test task supporting --tests")
+    assertTrue(desktopTask.filter.excludePatterns.isEmpty(), "e2eDesktopTest must not have E2E test classes excluded")
+    assertTrue(
+      desktopTask.reports.junitXml.outputLocation.get().asFile.path.endsWith("test-results/e2eTest/desktop"),
+      "e2eDesktopTest XML output must align with e2eDesktopTestReport input"
+    )
+  }
+
+  @Test
+  fun `test jvm desktop target registers both e2eDesktopTest and e2eJvmTest as Test tasks`() {
+    val project = createProject()
+    project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+    val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+    kmp.jvm("desktop")
+
+    project.pluginManager.apply("io.github.aryapreetam.parikshan")
+    evaluate(project)
+
+    val desktopTask = project.tasks.findByName("e2eDesktopTest")
+    val jvmTask = project.tasks.findByName("e2eJvmTest")
+    assertTrue(desktopTask is org.gradle.api.tasks.testing.Test, "e2eDesktopTest must be a Gradle Test task")
+    assertTrue(jvmTask is org.gradle.api.tasks.testing.Test, "e2eJvmTest must be a Gradle Test task supporting --tests")
+  }
+
+  @Test
+  fun `test jvm custom target registers only e2eCustomTest without polluting e2eDesktopTest or e2eJvmTest`() {
+    val project = createProject()
+    project.pluginManager.apply("org.jetbrains.kotlin.multiplatform")
+    val kmp = project.extensions.getByType(KotlinMultiplatformExtension::class.java)
+    kmp.jvm("custom")
+
+    project.pluginManager.apply("io.github.aryapreetam.parikshan")
+    evaluate(project)
+
+    assertTrue(project.tasks.findByName("e2eCustomTest") is org.gradle.api.tasks.testing.Test)
+    kotlin.test.assertNull(project.tasks.findByName("e2eDesktopTest"))
+    kotlin.test.assertNull(project.tasks.findByName("e2eJvmTest"))
+  }
 }
 
 

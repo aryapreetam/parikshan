@@ -65,9 +65,6 @@ internal object DesktopTargetConfigurer {
       .orElse(project.providers.systemProperty("parikshan.desktop.windowPosition"))
     val autoDiscoveredInstances = project.discoverE2eTestInstances()
     val autoInstStr = if (autoDiscoveredInstances.size > 1) autoDiscoveredInstances.joinToString(",") else ""
-    val optInstances = project.providers.gradleProperty("parikshan.instances")
-      .orElse(project.providers.systemProperty("parikshan.instances"))
-      .orElse(autoInstStr)
 
     val startDesktopTask = project.tasks.register(startTaskName) {
       group = "verification"
@@ -100,12 +97,7 @@ internal object DesktopTargetConfigurer {
           System.setProperty("parikshan.desktop.windowY", pos.second.toString())
         }
 
-        val rawInstances = optInstances.orNull
-        val instancesList = if (!rawInstances.isNullOrBlank()) {
-          rawInstances.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-        } else {
-          emptyList()
-        }
+        val instancesList = autoDiscoveredInstances
 
         if (instancesList.size > 1 || (instancesList.size == 1 && instancesList.first() != "desktop")) {
           logger.lifecycle("Parikshan: Launching multi-instance desktop cluster for instances: $instancesList")
@@ -115,6 +107,8 @@ internal object DesktopTargetConfigurer {
             baseOutputDir = File(buildDirVal, "parikshan/desktop"),
             preferredWindowWidth = size?.first ?: 800,
             preferredWindowHeight = size?.second ?: 700,
+            originX = pos?.first ?: 50,
+            originY = pos?.second ?: 50,
             appArgs = appArgsVal,
             host = hostVal,
             timeoutMs = startupTimeoutMsVal,
@@ -230,9 +224,8 @@ internal object DesktopTargetConfigurer {
         val videosDir = project.layout.buildDirectory.dir("parikshan/videos/${reportTargetLabel.lowercase()}").get().asFile.absolutePath
         systemProperty("parikshan.video.outputDir", videosDir)
         systemProperty("parikshan.projectRootDir", project.rootDir.absolutePath)
-        val instStr = optInstances.orNull
-        if (!instStr.isNullOrBlank()) {
-          systemProperty("parikshan.instances", instStr)
+        if (autoInstStr.isNotBlank()) {
+          systemProperty("parikshan.instances", autoInstStr)
           systemProperty("parikshan.sessionsDir", File(buildDirVal, "parikshan/desktop/sessions").absolutePath)
         }
         if (isBackgroundRequested) {

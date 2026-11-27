@@ -85,4 +85,40 @@ class MultiInstanceEntryGuardTest {
     assertTrue(err.message?.contains("bob") == true)
     assertTrue(err.message?.contains("relaunchApp()") == true)
   }
+
+  @Test
+  fun testWasmInstanceSlotsReuseReleasedIndicesAcrossTests() {
+    WasmDriver.resetInstanceSlotsForTesting()
+    try {
+      val aliceSlot = WasmDriver.acquireInstanceSlot("alice")
+      val bobSlot = WasmDriver.acquireInstanceSlot("bob")
+      kotlin.test.assertEquals(0, aliceSlot)
+      kotlin.test.assertEquals(1, bobSlot)
+
+      WasmDriver.releaseInstanceSlot("alice")
+      WasmDriver.releaseInstanceSlot("bob")
+
+      val buyerSlot = WasmDriver.acquireInstanceSlot("buyer")
+      val sellerSlot = WasmDriver.acquireInstanceSlot("seller")
+      kotlin.test.assertEquals(0, buyerSlot)
+      kotlin.test.assertEquals(1, sellerSlot)
+    } finally {
+      WasmDriver.resetInstanceSlotsForTesting()
+    }
+  }
+
+  @Test
+  fun testWasmMultiInstanceViewportUsesNullWhenHeadedAndFixedWhenHeadless() {
+    val headedConfig = io.github.aryapreetam.parikshan.client.ParikshanWasmConfig(
+      appUrl = "http://127.0.0.1:8081",
+      headless = false,
+      viewportWidth = 800,
+      viewportHeight = 600,
+      bridgeReadyTimeoutMs = 30_000L
+    )
+    assertNull(WasmDriver.resolveMultiInstanceViewportSize(headedConfig))
+
+    val headlessConfig = headedConfig.copy(headless = true, viewportWidth = 600, viewportHeight = 700)
+    kotlin.test.assertEquals(Pair(600, 700), WasmDriver.resolveMultiInstanceViewportSize(headlessConfig))
+  }
 }

@@ -20,7 +20,8 @@ This page documents the sample applications included in the repository under `sa
 This sample demonstrates how to use Parikshan to test different UI components and their interactions from the Compose Material library.
 
 ### What This Sample Demonstrates
-* **Material UI Component Testing**: Verifies component rendering and user interactions for buttons, text inputs, sliders, date & time pickers, dropdown menus, bottom sheets, radio buttons, checkboxes, drag & drop elements, vertical & horizontal scrolling views, pull-to-refresh indicators, navigation flows, accessibility semantics, and duplicate testTag selectors.
+* **Material UI Component Testing**: Verifies component rendering and user interactions for buttons, text inputs, sliders, date & time pickers, dropdown menus, bottom sheets, radio buttons, checkboxes, drag & drop elements, vertical & horizontal scrolling views, pull-to-refresh indicators, navigation flows, accessibility semantics, and duplicate `testTag` selectors.
+* **Multi-Instance & Multi-Target Collaboration**: Two-user chat and bidirectional file-attachment transfer (`MultiInstanceCollaborationTest`) running across Desktop+Desktop, Web+Web, and Desktop+Web.
 
 ### Execution Commands
 
@@ -68,7 +69,8 @@ This sample demonstrates how to use Parikshan to test different UI components an
 A real-world full-stack Compose Multiplatform application (**StorefrontApp**) communicating with an embedded Ktor backend server (`:server`).
 
 ### What This Sample Demonstrates
-* **Server Mocking & API Setup**: Demonstrates how to mock Ktor HTTP endpoints (`GET /api/products`, `POST /api/login`, `POST /api/orders`) by registering a custom client with Ktor `MockEngine` in `@BeforeTest` and resetting the service registry in `@AfterTest`.
+* **Single-User Storefront Flow**: Authentication, catalog browsing, details bottom sheet, selectable shipping methods, and checkout (`StorefrontFlowTest`, using Ktor `MockEngine` on hermetic runs).
+* **Multi-Instance & Multi-Target Inventory Sync**: Alice and Bob operating against the live Ktor `:server` backend (`StorefrontMultiInstanceInventoryTest`) across Desktop+Desktop, Web+Web, and Desktop+Web to verify real-time stock decrements and out-of-stock state.
 
 ### Execution Commands
 

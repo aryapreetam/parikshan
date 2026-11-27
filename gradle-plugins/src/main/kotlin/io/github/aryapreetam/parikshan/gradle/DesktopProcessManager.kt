@@ -116,6 +116,8 @@ internal object DesktopProcessManager {
     baseOutputDir: File,
     preferredWindowWidth: Int = 800,
     preferredWindowHeight: Int = 700,
+    originX: Int = 50,
+    originY: Int = 50,
     appArgs: List<String> = emptyList(),
     host: String = "127.0.0.1",
     timeoutMs: Long = 15000L,
@@ -154,7 +156,9 @@ internal object DesktopProcessManager {
           index = startIndex + index,
           totalCount = startIndex + instances.size,
           preferredWindowWidth = preferredWindowWidth,
-          preferredWindowHeight = preferredWindowHeight
+          preferredWindowHeight = preferredWindowHeight,
+          originX = originX,
+          originY = originY
         )
 
         val logFile = File(logsDir, "desktop-$instanceId.log")

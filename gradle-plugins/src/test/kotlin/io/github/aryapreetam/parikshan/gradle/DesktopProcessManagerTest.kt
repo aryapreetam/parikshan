@@ -259,6 +259,25 @@ class DesktopProcessManagerTest {
     }
   }
 
+  @Test
+  fun testLaunchInstancesRespectsCustomOriginCoordinates() {
+    val dummyJar = createDummyExecutableJar(tempDir)
+    val launched = DesktopProcessManager.launchInstances(
+      jarFile = dummyJar,
+      instances = listOf("alice", "bob"),
+      baseOutputDir = tempDir,
+      preferredWindowWidth = 600,
+      preferredWindowHeight = 700,
+      originX = 10,
+      originY = 50,
+      useAppLauncher = false,
+      waitForReady = false
+    )
+
+    assertEquals(Pair(10, 50), launched[0].windowPosition)
+    assertEquals(Pair(10 + 600 + 20, 50), launched[1].windowPosition)
+  }
+
   private fun createDummyExecutableJar(dir: File): File {
     val srcDir = File(dir, "src").apply { mkdirs() }
     val binDir = File(dir, "bin").apply { mkdirs() }

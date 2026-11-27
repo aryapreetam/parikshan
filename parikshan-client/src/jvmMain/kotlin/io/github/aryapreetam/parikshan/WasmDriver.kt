@@ -97,7 +97,10 @@ internal class WasmDriver internal constructor(
         runCatching { disarmFileChooser() }
         runCatching { instancePage?.close() }
         runCatching { instanceContext.close() }
-        context?.instanceId?.let { multiInstanceContexts.remove(it) }
+        context?.instanceId?.let {
+          multiInstanceContexts.remove(it)
+          releaseInstanceSlot(it)
+        }
         markWasmSessionClosed(context?.instanceId)
       }
     }
@@ -672,7 +675,7 @@ internal class WasmDriver internal constructor(
     private var sharedContext: BrowserContext? = null
     private var sharedPage: Page? = null
     private val multiInstanceContexts = java.util.concurrent.ConcurrentHashMap<String, BrowserContext>()
-    private val instanceIndices = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    private val activeInstanceSlots = java.util.concurrent.ConcurrentHashMap<String, Int>()
     @Volatile
     private var lastRequestedVideoPath: String? = null
     private var playwrightTempDir: Path? = null
@@ -680,9 +683,24 @@ internal class WasmDriver internal constructor(
     @Volatile
     private var activeContext: ParikshanTestContext? = null
 
-    private fun getOrCreateInstanceIndex(instanceId: String): Int {
-      return instanceIndices.computeIfAbsent(instanceId) { instanceIndices.size }
+    internal fun acquireInstanceSlot(instanceId: String): Int = synchronized(activeInstanceSlots) {
+      activeInstanceSlots[instanceId]?.let { return@synchronized it }
+      val used = activeInstanceSlots.values.toSet()
+      val slot = generateSequence(0) { it + 1 }.first { it !in used }
+      activeInstanceSlots[instanceId] = slot
+      slot
     }
+
+    internal fun releaseInstanceSlot(instanceId: String) = synchronized(activeInstanceSlots) {
+      activeInstanceSlots.remove(instanceId)
+    }
+
+    internal fun resetInstanceSlotsForTesting() = synchronized(activeInstanceSlots) {
+      activeInstanceSlots.clear()
+    }
+
+    internal fun resolveMultiInstanceViewportSize(config: ParikshanWasmConfig): Pair<Int, Int>? =
+      if (config.headless) Pair(config.viewportWidth, config.viewportHeight) else null
 
     private fun isKeepAliveEnabled(): Boolean =
       System.getProperty("parikshan.keepAlive") == "true" || System.getenv("PARIKSHAN_KEEP_ALIVE") == "true"
@@ -717,7 +735,7 @@ internal class WasmDriver internal constructor(
 
             multiInstanceContexts.values.forEach { runCatching { it.close() } }
             multiInstanceContexts.clear()
-            instanceIndices.clear()
+            activeInstanceSlots.clear()
 
             // Close page & context first so Playwright flushes the recording while sharedPlaywright is still open
             if (!isKeepAliveEnabled()) {
@@ -1115,10 +1133,11 @@ internal class WasmDriver internal constructor(
         val browser = checkNotNull(sharedBrowser) { "Shared browser must be initialized for multi-instance Wasm" }
 
         val contextOptions = Browser.NewContextOptions()
-        if (config.appMode) {
-          contextOptions.setViewportSize(config.viewportWidth, config.viewportHeight - 28)
+        val fixedViewport = resolveMultiInstanceViewportSize(config)
+        if (fixedViewport != null) {
+          contextOptions.setViewportSize(fixedViewport.first, fixedViewport.second)
         } else {
-          contextOptions.setViewportSize(config.viewportWidth, config.viewportHeight)
+          contextOptions.setViewportSize(null)
         }
 
         val actorContext = browser.newContext(contextOptions)
@@ -1135,16 +1154,15 @@ internal class WasmDriver internal constructor(
           }
           pageRef.onClose { markWasmSessionClosed(context.instanceId) }
 
-          val instanceIndex = getOrCreateInstanceIndex(context.instanceId)
+          val instanceIndex = acquireInstanceSlot(context.instanceId)
           val windowX = (config.windowX ?: 10) + (instanceIndex * (config.viewportWidth + 20))
           val windowY = config.windowY ?: 50
 
           fun applyActorViewport() {
             runCatching {
-              if (config.appMode) {
-                pageRef.setViewportSize(config.viewportWidth, config.viewportHeight - 28)
-                pageRef.evaluate("() => { window.resizeTo(${config.viewportWidth}, ${config.viewportHeight}); }")
-              } else if (!config.headless) {
+              if (fixedViewport != null) {
+                pageRef.setViewportSize(fixedViewport.first, fixedViewport.second)
+              } else {
                 val cdp = actorContext.newCDPSession(pageRef)
                 try {
                   val windowInfo = cdp.send("Browser.getWindowForTarget")
@@ -1209,6 +1227,7 @@ internal class WasmDriver internal constructor(
           )
         } catch (t: Throwable) {
           multiInstanceContexts.remove(context.instanceId)
+          releaseInstanceSlot(context.instanceId)
           runCatching { actorPage?.close() }
           runCatching { actorContext.close() }
           throw t

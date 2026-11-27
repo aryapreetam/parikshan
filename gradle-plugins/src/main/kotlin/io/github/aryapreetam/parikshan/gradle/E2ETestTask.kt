@@ -54,10 +54,6 @@ abstract class E2ETestTask : DefaultTask() {
   var layout: String = "default"
 
   @get:Input
-  @set:Option(option = "instances", description = "Comma-separated list of multi-instance actors to launch and control (e.g. alice,bob)")
-  var instances: String = ""
-
-  @get:Input
   @set:Option(option = "window-size", description = "Global window width and height override (format: <width>x<height>, e.g. 360x800)")
   var windowSize: String = ""
 
@@ -620,14 +616,6 @@ abstract class E2ETestTask : DefaultTask() {
   )
 
   private fun resolveScopedInstancesForClasses(classes: List<String>): List<String> {
-    val explicitRaw = instances.ifBlank {
-      providers.gradleProperty("parikshan.instances").orNull
-        ?: providers.systemProperty("parikshan.instances").orNull
-        ?: ""
-    }
-    if (explicitRaw.isNotBlank()) {
-      return explicitRaw.split(",").map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-    }
     val byClass = autoDiscoveredInstancesByClass.orNull ?: emptyMap()
     if (byClass.isNotEmpty()) {
       val scoped = classes.flatMap { clazz ->
@@ -784,6 +772,8 @@ abstract class E2ETestTask : DefaultTask() {
                   baseOutputDir = targetBaseDir,
                   preferredWindowWidth = size?.first ?: 800,
                   preferredWindowHeight = size?.second ?: 700,
+                  originX = pos?.first ?: 50,
+                  originY = pos?.second ?: 50,
                   appArgs = appArgs.get(),
                   host = host.get(),
                   timeoutMs = 15000L,
@@ -891,6 +881,8 @@ abstract class E2ETestTask : DefaultTask() {
                 baseOutputDir = targetBaseDir,
                 preferredWindowWidth = size?.first ?: 800,
                 preferredWindowHeight = size?.second ?: 700,
+                originX = pos?.first ?: 50,
+                originY = pos?.second ?: 50,
                 appArgs = appArgs.get(),
                 host = host.get(),
                 timeoutMs = 15000L,
@@ -943,6 +935,8 @@ abstract class E2ETestTask : DefaultTask() {
                   baseOutputDir = targetBaseDir,
                   preferredWindowWidth = size?.first ?: 800,
                   preferredWindowHeight = size?.second ?: 700,
+                  originX = pos?.first ?: 50,
+                  originY = pos?.second ?: 50,
                   appArgs = appArgs.get(),
                   host = host.get(),
                   timeoutMs = 15000L,
@@ -3106,6 +3100,8 @@ abstract class E2ETestTask : DefaultTask() {
                       baseOutputDir = multiTargetBaseDir,
                       preferredWindowWidth = size?.first ?: 800,
                       preferredWindowHeight = size?.second ?: 700,
+                      originX = pos?.first ?: 50,
+                      originY = pos?.second ?: 50,
                       appArgs = appArgs.get(),
                       host = host.get(),
                       timeoutMs = 15000L,

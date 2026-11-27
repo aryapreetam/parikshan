@@ -1,19 +1,19 @@
 # Multi-Instance Testing
 
-Multi-instance testing allows running multiple instances of your application simultaneously on the same platform target within a single test scenario. This is useful for verifying peer-to-peer messaging, collaborative editing, multi-user permissions, and real-time synchronization workflows.
+Multi-instance testing runs multiple instances of your application at the same time on a single platform within one test. Use it to verify peer-to-peer messaging, collaborative editing, inventory contention, and multi-role workflows.
 
 ---
 
 ## Declaring Multi-Instance Tests
 
-Pass a list of unique actor names to `e2eTest`. The test lambda provides an `E2EMultiInstanceScope` which supports Kotlin destructuring up to 5 instances:
+Pass a list of actor names directly to `e2eTest`. The test lambda receives an `E2EMultiInstanceScope`, which supports Kotlin destructuring for up to 5 actors:
 
 ```kotlin
 @Test
 fun testTwoPartyChatCollaboration() = e2eTest(listOf("alice", "bob")) { (alice, bob) ->
-  // 1. Both instances navigate to the chat screen
-  alice.navigateToSection("nav_chat_playground")
-  bob.navigateToSection("nav_chat_playground")
+  // 1. Both instances open the chat screen
+  alice.click("nav_chat_playground")
+  bob.click("nav_chat_playground")
 
   alice.assertVisible("Collaboration Chat")
   bob.assertVisible("Collaboration Chat")
@@ -22,11 +22,11 @@ fun testTwoPartyChatCollaboration() = e2eTest(listOf("alice", "bob")) { (alice, 
   alice.input("chat_input", "Hello Bob!")
   alice.click("chat_send_button")
 
-  // 3. Both observe Alice's message in their chat streams
+  // 3. Both observe Alice's message
   alice.assertVisible("alice: Hello Bob!")
   bob.assertVisible("alice: Hello Bob!")
 
-  // 4. Bob sends a reply
+  // 4. Bob replies
   bob.input("chat_input", "Hey Alice, message received!")
   bob.click("chat_send_button")
 
@@ -36,9 +36,11 @@ fun testTwoPartyChatCollaboration() = e2eTest(listOf("alice", "bob")) { (alice, 
 }
 ```
 
-### Actor Identification & Indexing
+You can also use the vararg form (`e2eTest("alice", "bob") { (alice, bob) -> ... }`).
 
-Each actor is an instance of `Actor` (a typealias for `E2ETestScope`). Actor identifiers must match `^[a-zA-Z0-9_-]+$` (letters, digits, hyphens, and underscores only). If you have more than 5 instances or prefer named indexing, access instances directly:
+### Actor Identifiers & Indexing
+
+Each actor is an `Actor` (a typealias for `E2ETestScope`). Actor identifiers must match `^[a-zA-Z0-9_-]+$` (letters, digits, hyphens, and underscores only). If you have more than 5 actors or prefer named access, index the scope directly:
 
 ```kotlin
 e2eTest(listOf("alice", "bob", "charlie")) { scope ->
@@ -52,46 +54,96 @@ e2eTest(listOf("alice", "bob", "charlie")) { scope ->
 }
 ```
 
+### Parallel Actor Actions (`inParallel`)
+
+When actors do not need strict step-by-step ordering (for example, navigating or filling forms concurrently), use `inParallel`:
+
+```kotlin
+e2eTest(listOf("alice", "bob")) { scope ->
+  scope.inParallel {
+    click("nav_chat_playground")
+    assertVisible("Collaboration Chat")
+  }
+
+  scope.inParallel(
+    "alice" to { input("chat_input", "Hi from Alice") },
+    "bob" to { input("chat_input", "Hi from Bob") }
+  )
+}
+```
+
+---
+
+## Reading Actor Identity in Your App
+
+If your application needs to distinguish which actor instance is running (for example, to label a sender or isolate local storage):
+
+| Target | How to read actor identity | Isolated data directory |
+| :--- | :--- | :--- |
+| **Desktop (JVM)** | `System.getProperty("parikshan.instance.id")` | `System.getProperty("parikshan.data.dir")` (`build/parikshan/<target>/data/<actor>`) |
+| **Web (Wasm)** | URL query parameter `?parikshan_instance=<actor>` | Isolated per Playwright `BrowserContext` (`localStorage`, `sessionStorage`, cookies) |
+
+---
+
+## Setup & Teardown
+
+In `0.1.0`, `E2ETestLifecycle` (`beforeEach` / `afterEach`) applies only to single-instance `e2eTest { ... }`. For multi-instance tests:
+
+* Use standard `kotlin.test.@BeforeTest` and `@AfterTest` for non-UI resets (backend fixtures, temp files, database state).
+* Wrap repeated UI setup/teardown across actors in a `suspend` helper with `try { ... } finally { ... }`:
+
+```kotlin
+private suspend fun withSignedInActors(
+  alice: Actor,
+  bob: Actor,
+  block: suspend () -> Unit
+) {
+  alice.click("nav_chat_playground")
+  bob.click("nav_chat_playground")
+  try {
+    block()
+  } finally {
+    // optional UI cleanup
+  }
+}
+```
+
 ---
 
 ## Supported Platforms (0.1.0)
 
 | Target | Status in 0.1.0 | Behavior |
 | :--- | :--- | :--- |
-| **Desktop (JVM)** | Supported | Launches one isolated JVM process per actor with an ephemeral port and dedicated data directory. |
-| **Web (Wasm)** | Supported | Provisions one isolated Playwright `BrowserContext` per actor with separate storage and cookies. |
-| **Android** | Planned (0.2.0) | `e2eTest(listOf(...))` tests in `commonTest` are skipped via `TestAbortedException` during `e2eAndroidTest`. |
-| **iOS** | Planned (0.2.0) | `e2eTest(listOf(...))` tests in `commonTest` are skipped via `TestAbortedException` during `e2eIosTest`. |
+| **Desktop (JVM)** | Supported | Launches one JVM process per actor with an ephemeral port and separate data directory. |
+| **Web (Wasm)** | Supported | Creates a fresh Playwright `BrowserContext` per actor per test with separate storage and cookies. |
+| **Android** | Planned (0.2.0) | `e2eTest(listOf(...))` in `commonTest` is skipped via `TestAbortedException` during `e2eAndroidTest`. |
+| **iOS** | Planned (0.2.0) | `e2eTest(listOf(...))` in `commonTest` is skipped via `TestAbortedException` during `e2eIosTest`. |
 
 ---
 
 ## Platform Execution Models
 
-Multi-instance tests execute identically in test code, but their underlying isolation and process management adapt to each platform.
-
 ### Desktop (JVM)
 
-On Desktop, Parikshan launches independent application processes for each actor:
+On Desktop, Parikshan launches an independent JVM process for each actor:
 
-1. **Port Isolation**: Each desktop process allocates an independent ephemeral HTTP/WebSocket port. Test commands are routed directly to the designated actor's port.
-2. **Session Namespacing**: Session connection descriptors are written to isolated paths (`build/parikshan/desktop/sessions/<actor>.json`), preventing port or process collisions.
-3. **Window Layout**: When launched, instances inherit window geometry and positioning flags. Combine with `--layout=side-by-side` or explicit coordinates (`--desktop-window-position=X,Y`) to arrange windows automatically on screen.
-4. **Just-In-Time (JIT) Window Lifecycle**: The primary instance launches at the start of the Desktop test run to execute single-instance test suites. When multi-instance test classes execute, secondary window processes launch on demand immediately before that class begins and terminate immediately after it completes.
-5. **State Reuse Across Methods**: Within a Desktop test class, application processes persist between test methods. Reset app state explicitly (for example, signing out or clearing backend fixtures) at the start and end of each scenario.
+1. **Port Isolation**: Each process allocates an ephemeral HTTP port and writes its descriptor to `build/parikshan/<target>/sessions/<actor>.json`.
+2. **Window Tiling**: Desktop windows tile automatically from `(50, 50)` or from your `--desktop-window-position=X,Y` / `--layout=side-by-side` origin.
+3. **Just-In-Time (JIT) Secondary Windows (`e2eTest`)**: When running `./gradlew e2eTest --targets=desktop`, single-instance classes run first with only the primary window open. Secondary windows launch immediately before multi-instance classes execute and close afterward.
+4. **State Reuse Across Methods**: Desktop processes stay running between test methods in a class. Reset app and backend state explicitly at the start or end of each test.
 
 ### Web (Wasm)
 
-On Web (Wasm), running multiple actors in a single browser profile would share `localStorage`, `sessionStorage`, and cookies. Parikshan isolates actors at the browser engine level:
+On Web (Wasm), actors share the local Wasm server while staying isolated in the browser:
 
-1. **Browser Context Isolation**: Parikshan provisions a fresh Playwright `BrowserContext` (`browser.newContext()`) per actor per test against the local web server.
-2. **State Separation**: Cookies, local storage, session storage, and cache partitions are isolated between actors and cleared when each test completes.
-3. **Page Orchestration**: Each context hosts its own active page, with JS bridge hooks and driver events serialized through a single Playwright dispatch thread so concurrent `inParallel { ... }` blocks execute safely.
+1. **Browser Context Isolation**: Each actor gets a fresh Playwright `BrowserContext` (`browser.newContext()`) per test method, isolating cookies, `localStorage`, and `sessionStorage`.
+2. **Serialized Playwright Dispatch**: All browser commands run on a single Playwright dispatch thread so `inParallel { ... }` blocks across Wasm actors remain thread-safe.
 
 ---
 
 ## Executing Multi-Instance Tests
 
-Run multi-instance tests using standard Gradle test tasks. Both `e2eDesktopTest` and `e2eJvmTest` support `--tests` filtering on projects using `jvm()` or `jvm("desktop")`:
+Both `e2eDesktopTest` and `e2eJvmTest` support `--tests` filtering on projects using `jvm()` or `jvm("desktop")`:
 
 === "Desktop"
     ```bash
@@ -112,8 +164,9 @@ Run multi-instance tests using standard Gradle test tasks. Both `e2eDesktopTest`
 
 ## Known Limitations (0.1.0)
 
-* **Video Recording**: Video capture is skipped during multi-instance and multi-target runs in `0.1.0` (single-instance video recording is unaffected).
-* **Dedicated Test Classes**: Place multi-instance and multi-target tests in dedicated test classes separate from single-instance `E2ETestLifecycle` classes. `E2ETestLifecycle` (`beforeEach` / `afterEach`) applies to single-instance `e2eTest { ... }` only in `0.1.0`.
-* **Static Actor Discovery**: Gradle discovers actor names from literal `e2eTest(listOf("a", "b"))` and `e2eTest("a", "b")` calls in `commonTest` / `jvmTest`. If your test constructs actor lists dynamically at runtime, pass `--instances=a,b` on the CLI or configure `parikshan { instances = listOf("a", "b") }`.
+* **Literal Actor Names Required**: Gradle discovers actor names by scanning `commonTest` and `jvmTest` source files at build time. Pass string literals directly to `e2eTest(listOf("alice", "bob"))` or `e2eTest("alice", "bob")`; variables or dynamically constructed lists are not discovered in `0.1.0`.
+* **Video Recording Skipped**: Video capture is skipped during multi-instance and multi-target runs in `0.1.0`. Single-instance video recording is unaffected.
+* **Dedicated Test Classes**: Place multi-instance tests in their own test classes separate from single-instance `E2ETestLifecycle` classes.
+* **Standalone `e2eDesktopTest` Boot Scope**: `e2eDesktopTest` boots all discovered Desktop actors in the module before filtering `--tests`. Use `e2eTest --targets=desktop --tests="..."` if you want JIT window scoping per class.
 * **Desktop `relaunchApp()`**: Calling `relaunchApp()` on a multi-instance Desktop actor throws `UnsupportedOperationException` in `0.1.0`.
 * **Synchronized Mode (`--sync`)**: Multi-instance tests are skipped when `--sync` is active.

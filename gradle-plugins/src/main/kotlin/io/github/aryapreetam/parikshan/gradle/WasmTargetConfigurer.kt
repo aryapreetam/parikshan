@@ -28,9 +28,6 @@ internal object WasmTargetConfigurer {
     val tokenVal = sessionToken
     val autoDiscoveredInstances = project.discoverE2eTestInstances()
     val autoInstStr = if (autoDiscoveredInstances.size > 1) autoDiscoveredInstances.joinToString(",") else ""
-    val optInstances = project.providers.gradleProperty("parikshan.instances")
-      .orElse(project.providers.systemProperty("parikshan.instances"))
-      .orElse(autoInstStr)
     val rootDirVal = project.rootDir.absolutePath
 
     val startWasmTask = project.tasks.register("startParikshanWasmApp") {
@@ -46,12 +43,7 @@ internal object WasmTargetConfigurer {
         wasmPortFileVal.parentFile.mkdirs()
         wasmPortFileVal.writeText(boundPort.toString())
 
-        val rawInstances = optInstances.orNull
-        val instancesList = if (!rawInstances.isNullOrBlank()) {
-          rawInstances.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-        } else {
-          emptyList()
-        }
+        val instancesList = autoDiscoveredInstances
         if (instancesList.isNotEmpty()) {
           val baseDir = wasmOutputDirVal.parentFile
           val sessionsDir = File(baseDir, "sessions").apply { mkdirs() }
@@ -76,12 +68,7 @@ internal object WasmTargetConfigurer {
       group = "verification"
       doLast {
         WasmServer.stop()
-        val rawInstances = optInstances.orNull
-        val instancesList = if (!rawInstances.isNullOrBlank()) {
-          rawInstances.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-        } else {
-          emptyList()
-        }
+        val instancesList = autoDiscoveredInstances
         if (instancesList.isNotEmpty()) {
           val sessionsDir = File(wasmOutputDirVal.parentFile, "sessions")
           instancesList.forEach { instanceId ->
@@ -113,9 +100,8 @@ internal object WasmTargetConfigurer {
       systemProperty("parikshan.target", "wasm")
       systemProperty("parikshan.token", tokenVal)
       systemProperty("parikshan.projectRootDir", rootDirVal)
-      val instStr = optInstances.orNull
-      if (!instStr.isNullOrBlank()) {
-        systemProperty("parikshan.instances", instStr)
+      if (autoInstStr.isNotBlank()) {
+        systemProperty("parikshan.instances", autoInstStr)
         systemProperty("parikshan.sessionsDir", File(wasmOutputDirVal.parentFile, "sessions").absolutePath)
       }
       environment("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1")

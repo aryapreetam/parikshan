@@ -70,7 +70,7 @@ All E2E actions, assertions, and waiting methods execute inside the `e2eTest` bl
 * **`input(selector: Selector, text: String)`**: Inputs the specified text into a text field. Clears existing text contents first.
 * **`drag(fromX: Double, fromY: Double, toX: Double, toY: Double, durationMs: Long)`**: Simulates a dragging gesture across custom coordinates.
 * **`relaunchApp()`**: Force-terminates and relaunches the application process.  
-  * *Note: This is a fast browser refresh on WasmJs, but introduces a 1–2s boot latency on Desktop JVM targets. It is recommended to avoid using this method sequentially across many tests; use in-app UI navigation resets via `E2ETestLifecycle` instead.*
+  * *Note: Clears storage and reloads on WasmJs; introduces 1–2s boot latency on Desktop JVM. On multi-instance Desktop actors, `relaunchApp()` throws `UnsupportedOperationException` in `0.1.0`.*
 
 ### Assertions
 
@@ -89,6 +89,12 @@ All E2E actions, assertions, and waiting methods execute inside the `e2eTest` bl
 
 !!! warning "No Auto-Scrolling"
     Unlike some testing frameworks that automatically attempt to scroll containers to locate off-screen targets, Parikshan requires explicit scrolling commands. If the element is not currently in the visible viewport, you must use `scrollUntilVisible` to bring it into view before performing actions or assertions.
+
+### Multi-Instance & Multi-Target Entrypoints (Desktop & Wasm)
+
+* **`e2eTest(instances: List<String>, config, block)`** / **`e2eTest("alice", "bob") { ... }`**: Launches multiple isolated actors on the same target (Desktop JVM processes or Wasm `BrowserContext`s) and provides an `E2EMultiInstanceScope`.
+* **`e2eTest(instances: Map<String, Target>, config, block)`**: Coordinates actors mapped to `Target.Desktop` and `Target.Wasm` inside a single test block.
+* **`E2EMultiInstanceScope`**: Supports destructuring up to 5 `Actor` handles (`(alice, bob) ->`), named lookup (`scope["alice"]` / `scope.instance("alice")`), and concurrent execution via `inParallel { ... }` or `inParallel("alice" to { ... }, "bob" to { ... })`.
 
 ---
 

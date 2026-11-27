@@ -424,7 +424,7 @@ private fun resolveInstanceContext(
       error(
         "No session descriptor or port configuration found for actor '$name'. " +
           "Expected session descriptor at '${instanceFile.absolutePath}' or system property 'parikshan.instance.$name.port'. " +
-          "Ensure the multi-instance cluster was launched via '--instances' or 'parikshan.instances'."
+          "Declare actor names as string literals in e2eTest(listOf(...)) or e2eTest(instances = mapOf(...)) so Parikshan discovers and launches them at build time."
       )
     }
   val token = System.getProperty("parikshan.instance.$name.token")

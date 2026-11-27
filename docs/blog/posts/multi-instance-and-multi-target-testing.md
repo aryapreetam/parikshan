@@ -18,11 +18,11 @@ Parikshan `0.1.0` adds multi-instance and multi-target orchestration for Desktop
 
 ## Same Platform, Multiple Actors (Multi-Instance)
 
-Pass a list of actor names to `e2eTest`. Each actor handle is an `Actor` (a typealias for `E2ETestScope`), destructurable up to 5 actors:
+Pass actor names to `e2eTest`. Each actor handle is an `Actor` (a typealias for `E2ETestScope`), destructurable up to 5 actors:
 
 ```kotlin
 @Test
-fun testTwoPartyChatCollaboration() = e2eTest(listOf("alice", "bob")) { (alice, bob) ->
+fun testTwoPartyChatCollaboration() = e2eTest("alice", "bob") { (alice, bob) ->
   alice.click("nav_chat_playground")
   bob.click("nav_chat_playground")
 
@@ -46,14 +46,31 @@ What runs underneath depends on the target:
 * **Web (Wasm)**: Parikshan opens a fresh Playwright `BrowserContext` per actor per test against the local Wasm server, isolating cookies, `localStorage`, and `sessionStorage`. Actor identity is passed via `?parikshan_instance=<actor>`.
 
 ```bash
-# Two Desktop windows
-./gradlew :samples:multiplatform-showcase:composeApp:e2eDesktopTest \
-  --tests="sample.app.MultiInstanceCollaborationTest.testTwoPartyChatCollaboration"
-
-# Two isolated Chromium contexts
-./gradlew :samples:multiplatform-showcase:composeApp:e2eWasmTest \
-  --tests="sample.app.MultiInstanceCollaborationTest.testTwoPartyChatCollaboration"
+# Two Desktop windows side by side
+./gradlew e2eTest --targets=jvm \
+  --tests="sample.app.MultiInstanceCollaborationTest.testTwoPartyChatCollaboration" \
+  --desktop-window-position=895x0 \
+  --layout=side-by-side \
+  --window-size=430x900 \
+  --step-delay-ms=200
 ```
+
+![Two Desktop instances running a chat test](../../assets/multi-instance-chat.gif)
+
+### Multi-Instance with File Picker Automation
+
+`withFilePicker` also works per actor, so one Desktop instance can attach a fixture file while the other reads and confirms its payload:
+
+```bash
+./gradlew e2eTest --targets=jvm \
+  --tests="sample.app.MultiInstanceCollaborationTest.testTwoPartyChatFileTransfer" \
+  --desktop-window-position=895x0 \
+  --layout=side-by-side \
+  --window-size=430x900 \
+  --step-delay-ms=200
+```
+
+![Two Desktop instances exchanging file attachments](../../assets/multi-instance-chat-wt-file.gif)
 
 ---
 
@@ -63,38 +80,34 @@ To run one actor on Desktop and another on Web inside the same scenario, map act
 
 ```kotlin
 @Test
-fun testDesktopToWebChatFileTransfer() = e2eTest(
+fun testDesktopToWebChatCollaboration() = e2eTest(
   instances = mapOf("alice" to Target.Desktop, "bob" to Target.Wasm)
 ) { (alice, bob) ->
   alice.click("nav_chat_playground")
   bob.click("nav_chat_playground")
 
-  // Alice attaches a file via the Desktop AWT file dialog hook
-  alice.withFilePicker("alice_payload.txt") {
-    click("chat_attach_button")
-  }
+  alice.input("chat_input", "Hello Bob!")
+  alice.click("chat_send_button")
+  bob.assertVisible("alice: Hello Bob!")
 
-  // Bob verifies the decoded payload on Web
-  bob.assertVisible("alice: Sent file: alice_payload.txt")
-  bob.assertText("chat_file_payload_alice", "JetBrains Compose Multiplatform")
-
-  // Bob sends a file back via the Chromium file chooser hook
-  bob.withFilePicker("bob_payload.txt") {
-    click("chat_attach_button")
-  }
-
-  alice.assertText("chat_file_payload_bob", "Parikshan Cross-Process Testing")
+  bob.input("chat_input", "Hey Alice, message received!")
+  bob.click("chat_send_button")
+  alice.assertVisible("bob: Hey Alice, message received!")
 }
 ```
 
 Run it with both targets side by side:
 
 ```bash
-./gradlew :samples:multiplatform-showcase:composeApp:e2eTest \
-  --targets=jvm,wasm \
-  --tests="sample.app.MultiInstanceCollaborationTest.testDesktopToWebChatFileTransfer" \
-  --layout=side-by-side
+./gradlew e2eTest --targets=jvm,wasm \
+  --tests="sample.app.MultiInstanceCollaborationTest.testDesktopToWebChatCollaboration" \
+  --desktop-window-position=850x0 \
+  --layout=side-by-side \
+  --window-size=430x900 \
+  --step-delay-ms=200
 ```
+
+![Desktop and Web instances running a chat test](../../assets/multi-target-chat.gif)
 
 Because the `--tests` filter matches only a multi-target method, Gradle skips the redundant single-target Desktop and Wasm passes and runs only the cross-target batch:
 
@@ -105,6 +118,8 @@ Parikshan [multi-target]: Running sample.app.MultiInstanceCollaborationTest...
 
 [MULTI-TARGET] SUCCESS - 1 test passed. (19s)
 ```
+
+The same cross-target pattern works with `withFilePicker` (`testDesktopToWebChatFileTransfer`), where Desktop intercepts the AWT file dialog and Web intercepts Chromium's file chooser inside the same test.
 
 ---
 

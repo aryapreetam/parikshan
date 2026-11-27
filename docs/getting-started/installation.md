@@ -11,7 +11,7 @@ Add the plugin to your `shared` / `composeApp` `build.gradle.kts`:
 
 ```kotlin
 plugins {
-  id("io.github.aryapreetam.parikshan") version "0.0.13"
+  id("io.github.aryapreetam.parikshan") version "0.1.0"
 }
 ```
 

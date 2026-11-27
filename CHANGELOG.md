@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.1.0] - 2026-11-27
+
+### Added
+- **Multi-Instance & Multi-Target E2E Testing (Desktop & Wasm) ([#39](https://github.com/aryapreetam/parikshan/pull/39))**: Drive multiple isolated Desktop JVM processes and/or Web (Wasm) browser contexts from a single test with `E2EMultiInstanceScope`, `inParallel { ... }`, and per-actor failure screenshots.
+
+```kotlin
+// Multi-instance (Desktop or Wasm)
+@Test
+fun testChat() = e2eTest("alice", "bob") { (alice, bob) ->
+  alice.input("chat_input", "Hello Bob!")
+  alice.click("chat_send_button")
+  bob.assertVisible("alice: Hello Bob!")
+}
+
+// Multi-target (Desktop JVM <-> Web Wasm)
+@Test
+fun testCrossPlatformChat() = e2eTest(
+  instances = mapOf("alice" to Target.Desktop, "bob" to Target.Wasm)
+) { (alice, bob) ->
+  alice.input("chat_input", "Hello from Desktop!")
+  alice.click("chat_send_button")
+  bob.assertVisible("alice: Hello from Desktop!")
+}
+```
+
+- **Docs & Samples**: Added [Multi-Instance](https://aryapreetam.github.io/parikshan/features/multi-instance/) and [Multi-Target](https://aryapreetam.github.io/parikshan/features/multi-target/) guides, `docs/llms.txt`, and live examples in `samples/multiplatform-showcase` and `samples/cmp-latest`.
+
+### Fixed & Resolved Issues
+- **`e2eDesktopTest --tests`**: Registered both `e2eDesktopTest` and `e2eJvmTest` as Gradle `Test` tasks supporting `--tests` filtering.
+- **Wasm Video & Viewport**: Fixed single-instance Wasm video capture on shutdown and disabled fixed viewport emulation in headed multi-instance runs so bottom UI controls are not clipped.
+- **Windows Paths**: Escaped backslashes in `SessionStore` JSON and resolved `java.exe` with process-tree cleanup on Windows.
+
+### Scope & Limitations
+- Desktop (JVM) and Web (Wasm) only in `0.1.0` (Android and iOS multi-target planned for `0.2.0`).
+- Actor names must be declared as string literals in `e2eTest(...)`; video recording is skipped during multi-instance/multi-target runs. See [Known Limitations](https://aryapreetam.github.io/parikshan/getting-started/known-limitations/).
+
 ## [0.0.13] - 2026-11-23
 
 ### Fixed & Resolved Issues

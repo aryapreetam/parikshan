@@ -6,11 +6,11 @@ Multi-instance testing runs multiple instances of your application at the same t
 
 ## Declaring Multi-Instance Tests
 
-Pass a list of actor names directly to `e2eTest`. The test lambda receives an `E2EMultiInstanceScope`, which supports Kotlin destructuring for up to 5 actors:
+Pass actor names directly to `e2eTest`. The test lambda receives an `E2EMultiInstanceScope`, which supports Kotlin destructuring for up to 5 actors:
 
 ```kotlin
 @Test
-fun testTwoPartyChatCollaboration() = e2eTest(listOf("alice", "bob")) { (alice, bob) ->
+fun testTwoPartyChatCollaboration() = e2eTest("alice", "bob") { (alice, bob) ->
   // 1. Both instances open the chat screen
   alice.click("nav_chat_playground")
   bob.click("nav_chat_playground")
@@ -36,7 +36,37 @@ fun testTwoPartyChatCollaboration() = e2eTest(listOf("alice", "bob")) { (alice, 
 }
 ```
 
-You can also use the vararg form (`e2eTest("alice", "bob") { (alice, bob) -> ... }`).
+You can also pass a list directly (`e2eTest(listOf("alice", "bob")) { (alice, bob) -> ... }`).
+
+---
+
+## Visual Demos
+
+### Two-User Chat (Desktop + Desktop)
+
+```bash
+./gradlew e2eTest --targets=jvm \
+  --tests="sample.app.MultiInstanceCollaborationTest.testTwoPartyChatCollaboration" \
+  --desktop-window-position=895x0 \
+  --layout=side-by-side \
+  --window-size=430x900 \
+  --step-delay-ms=200
+```
+
+![Two Desktop instances running a chat test](../assets/multi-instance-chat.gif)
+
+### Two-User Chat with File Upload (Desktop + Desktop)
+
+```bash
+./gradlew e2eTest --targets=jvm \
+  --tests="sample.app.MultiInstanceCollaborationTest.testTwoPartyChatFileTransfer" \
+  --desktop-window-position=895x0 \
+  --layout=side-by-side \
+  --window-size=430x900 \
+  --step-delay-ms=200
+```
+
+![Two Desktop instances exchanging file attachments](../assets/multi-instance-chat-wt-file.gif)
 
 ### Actor Identifiers & Indexing
 

@@ -62,6 +62,32 @@ This sample demonstrates how to use Parikshan to test different UI components an
   </tbody>
 </table>
 
+#### Multi-Instance & Multi-Target Demos
+
+=== "Multi-Instance Chat (Desktop + Desktop)"
+    ```bash
+    ./gradlew e2eTest --targets=jvm \
+      --tests="sample.app.MultiInstanceCollaborationTest.testTwoPartyChatCollaboration" \
+      --desktop-window-position=895x0 --layout=side-by-side --window-size=430x900 --step-delay-ms=200
+    ```
+    ![Two Desktop instances running a chat test](assets/multi-instance-chat.gif)
+
+=== "Multi-Target Chat (Desktop + Web)"
+    ```bash
+    ./gradlew e2eTest --targets=jvm,wasm \
+      --tests="sample.app.MultiInstanceCollaborationTest.testDesktopToWebChatCollaboration" \
+      --desktop-window-position=850x0 --layout=side-by-side --window-size=430x900 --step-delay-ms=200
+    ```
+    ![Desktop and Web instances running a chat test](assets/multi-target-chat.gif)
+
+=== "Multi-Instance File Transfer (Desktop + Desktop)"
+    ```bash
+    ./gradlew e2eTest --targets=jvm \
+      --tests="sample.app.MultiInstanceCollaborationTest.testTwoPartyChatFileTransfer" \
+      --desktop-window-position=895x0 --layout=side-by-side --window-size=430x900 --step-delay-ms=200
+    ```
+    ![Two Desktop instances exchanging file attachments](assets/multi-instance-chat-wt-file.gif)
+
 ---
 
 ## 2. `cmp-latest` (Full-Stack Storefront App)

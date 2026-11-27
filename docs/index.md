@@ -43,7 +43,7 @@ In your shared library module (e.g. `:composeApp`) `build.gradle.kts`:
 
 ```kotlin
 plugins {
-  id("io.github.aryapreetam.parikshan") version "0.0.13"
+  id("io.github.aryapreetam.parikshan") version "0.1.0"
 }
 ```
 
@@ -112,7 +112,7 @@ Create your test in `src/commonTest/kotlin`:
 
     class MultiInstanceCollaborationTest {
       @Test
-      fun testTwoPartyChatCollaboration() = e2eTest(listOf("alice", "bob")) { (alice, bob) ->
+      fun testTwoPartyChatCollaboration() = e2eTest("alice", "bob") { (alice, bob) ->
         // Alice sends a message
         alice.input("chat_input", "Hello Bob!")
         alice.click("chat_send_button")
@@ -138,7 +138,7 @@ Create your test in `src/commonTest/kotlin`:
 
     <div class="preview-column" markdown="1">
 
-    ![Multi-Instance Execution](assets/jvm-wasm-mobile-layout.png)
+    ![Multi-Instance Desktop Chat Demo](assets/multi-instance-chat.gif)
 
     </div>
 
@@ -186,7 +186,7 @@ Create your test in `src/commonTest/kotlin`:
 
     <div class="preview-column" markdown="1">
 
-    ![Multi-Target Execution](assets/jvm-wasm-mobile-layout.png)
+    ![Multi-Target Desktop and Web Chat Demo](assets/multi-target-chat.gif)
 
     </div>
 

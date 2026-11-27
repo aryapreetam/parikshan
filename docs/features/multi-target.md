@@ -116,13 +116,15 @@ Specify all required targets in `--targets`:
 Place Desktop and Web windows side by side with a step delay for visual inspection:
 
 ```bash
-./gradlew :composeApp:e2eTest \
-  --targets=jvm,wasm \
+./gradlew e2eTest --targets=jvm,wasm \
   --tests="sample.app.MultiInstanceCollaborationTest.testDesktopToWebChatCollaboration" \
+  --desktop-window-position=850x0 \
   --layout=side-by-side \
-  --window-size=600x700 \
-  --step-delay-ms=300
+  --window-size=430x900 \
+  --step-delay-ms=200
 ```
+
+![Desktop and Web instances running a chat test](../assets/multi-target-chat.gif)
 
 ---
 
